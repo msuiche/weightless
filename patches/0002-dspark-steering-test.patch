@@ -1,0 +1,182 @@
+diff --git a/tests/dspark_steering_test.py b/tests/dspark_steering_test.py
+new file mode 100644
+index 0000000..9d168b2
+--- /dev/null
++++ b/tests/dspark_steering_test.py
+@@ -0,0 +1,176 @@
++#!/usr/bin/env python3
++"""Tests the DSpark steering port against a real control-vector file.
++
++Runs the ACTUAL loader out of
++vllm/models/deepseek_v4/nvidia/model.py by extracting it with ast, so this
++exercises shipped source rather than a transcription. The rest of the pipeline
++(orthonormalise, dense stack, project) is reimplemented here to assert the
++arithmetic, because importing the model module needs a GPU and a built vLLM.
++
++Usage:
++  python3 tests/dspark_steering_test.py <control-vector.gguf> [--layers 10-38]
++
++Needs torch and gguf. No GPU, no vLLM, no model weights.
++"""
++
++from __future__ import annotations
++
++import argparse
++import ast
++import pathlib
++import sys
++import types
++
++import torch
++
++MODEL_PY = (
++    pathlib.Path(__file__).resolve().parent.parent
++    / "vllm/models/deepseek_v4/nvidia/model.py"
++)
++
++fails: list[str] = []
++
++
++def check(name: str, ok: bool, detail: str = "") -> None:
++    print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f"  -- {detail}" if detail else ""))
++    if not ok:
++        fails.append(name)
++
++
++def load_real_loader():
++    """Extract _load_gguf_control_vector from the shipped model.py."""
++    src = MODEL_PY.read_text()
++    tree = ast.parse(src)
++    fn = next(
++        (
++            n
++            for n in tree.body
++            if isinstance(n, ast.FunctionDef) and n.name == "_load_gguf_control_vector"
++        ),
++        None,
++    )
++    if fn is None:
++        sys.exit(f"FAIL {MODEL_PY} has no _load_gguf_control_vector")
++    mod = types.ModuleType("shim")
++    mod.__dict__.update({"torch": torch, "logger": _QuietLogger()})
++    exec(compile(ast.Module(body=[fn], type_ignores=[]), str(MODEL_PY), "exec"), mod.__dict__)
++    return mod._load_gguf_control_vector
++
++
++class _QuietLogger:
++    def info(self, *a, **k): pass
++    def warning(self, *a, **k): pass
++    def error(self, *a, **k): pass
++
++
++def build_stack(raw, num_layers, hidden, dtype, selected=None):
++    """Mirror _load_steering: orthonormalise per layer, then dense-stack."""
++    dirs = {}
++    fallback = raw.get("global") if isinstance(raw, dict) else None
++    for layer_id in range(num_layers):
++        if selected is not None and layer_id not in selected:
++            continue
++        vec = raw.get(layer_id, raw.get(str(layer_id), fallback)) if isinstance(raw, dict) else None
++        if vec is None:
++            continue
++        vec = vec.detach().to(torch.float32)
++        if vec.ndim == 1:
++            vec = vec.unsqueeze(0)
++        vec = vec.reshape(-1, vec.shape[-1])
++        q, _ = torch.linalg.qr(vec.T)
++        dirs[layer_id] = q.T[: vec.shape[0]].to(dtype)
++    if not dirs:
++        return dirs, None
++    k = max(v.shape[0] for v in dirs.values())
++    stack = torch.zeros(num_layers, k, hidden, dtype=dtype)
++    for layer_id, vec in dirs.items():
++        stack[layer_id, : vec.shape[0]] = vec
++    return dirs, stack
++
++
++def project(hidden_states, steer_dirs, alpha):
++    """The exact expression used in DeepseekV4Model.forward."""
++    coef = torch.einsum("...h,kh->...k", hidden_states, steer_dirs)
++    return hidden_states - alpha * torch.einsum("...k,kh->...h", coef, steer_dirs)
++
++
++def main() -> int:
++    ap = argparse.ArgumentParser()
++    ap.add_argument("gguf")
++    ap.add_argument("--num-layers", type=int, default=43)
++    args = ap.parse_args()
++
++    loader = load_real_loader()
++    print(f"  loader extracted from {MODEL_PY.name}")
++
++    raw = loader(args.gguf)
++    check("loader returned a non-empty mapping", bool(raw), f"{len(raw)} entries")
++
++    layer_ids = sorted(k for k in raw if isinstance(k, int))
++    check("layer ids are ints", bool(layer_ids), f"{layer_ids[:3]}..{layer_ids[-3:]}")
++    widths = {tuple(v.shape) for v in raw.values()}
++    check("all directions share one width", len(widths) == 1, str(widths))
++    hidden = next(iter(raw.values())).shape[-1]
++    check("direction dtype is float32", all(v.dtype == torch.float32 for v in raw.values()))
++    check("layer 0 absent (rejected upstream)", 0 not in layer_ids)
++
++    dtype = torch.bfloat16
++    dirs, stack = build_stack(raw, args.num_layers, hidden, dtype)
++    check("every loaded layer survives into the stack",
++          len(dirs) == len(layer_ids), f"{len(dirs)} of {len(layer_ids)}")
++    check("stack shape is (num_layers, k, hidden)",
++          tuple(stack.shape) == (args.num_layers, stack.shape[1], hidden), str(tuple(stack.shape)))
++
++    steered = [i for i in range(args.num_layers) if stack[i].abs().sum() > 0]
++    check("exactly the loaded layers are non-zero",
++          steered == layer_ids, f"{len(steered)} non-zero rows")
++
++    unsteered = [i for i in range(args.num_layers) if i not in layer_ids]
++    check("unsteered layers are all-zero rows",
++          all(stack[i].abs().sum() == 0 for i in unsteered), f"{len(unsteered)} zero rows")
++
++    # rows are orthonormal after QR
++    d = stack[layer_ids[0]].to(torch.float32)
++    gram = d @ d.T
++    check("rows are orthonormal", torch.allclose(gram, torch.eye(d.shape[0]), atol=1e-2),
++          f"max|GG^T - I| = {(gram - torch.eye(d.shape[0])).abs().max():.2e}")
++
++    # the projection removes the component at alpha=1
++    torch.manual_seed(0)
++    h = torch.randn(4, 2, hidden, dtype=torch.float32)   # (tokens, hc_mult, hidden)
++    dl = stack[layer_ids[0]].to(torch.float32)
++    out = project(h, dl, torch.tensor(1.0))
++    resid = torch.einsum("...h,kh->...k", out, dl).abs().max()
++    check("alpha=1 zeroes the component", resid < 1e-4, f"max residual {resid:.2e}")
++
++    # alpha=0 must be bit-exact identity: this is what makes a zero row a no-op
++    out0 = project(h, dl, torch.tensor(0.0))
++    check("alpha=0 is bit-exact identity", torch.equal(out0, h))
++
++    # a zero direction row is a no-op at any alpha, which is why unsteered
++    # layers can share the traced graph
++    zero = stack[unsteered[0]].to(torch.float32) if unsteered else None
++    if zero is not None:
++        check("zero row is a no-op at alpha=1", torch.equal(project(h, zero, torch.tensor(1.0)), h))
++
++    # alpha=2 reflects rather than removes: sign flips, magnitude preserved
++    out2 = project(h, dl, torch.tensor(2.0))
++    c_before = torch.einsum("...h,kh->...k", h, dl)
++    c_after = torch.einsum("...h,kh->...k", out2, dl)
++    check("alpha=2 reflects the component",
++          torch.allclose(c_after, -c_before, atol=1e-3),
++          f"max|c_after + c_before| = {(c_after + c_before).abs().max():.2e}")
++
++    # each hc stream is treated independently
++    h2 = h.clone()
++    h2[:, 1, :] = 0
++    o2 = project(h2, dl, torch.tensor(1.0))
++    check("an all-zero hc stream stays zero", torch.equal(o2[:, 1, :], h2[:, 1, :]))
++
++    print()
++    print(f"  {len(fails)} failure(s)" + (": " + ", ".join(fails) if fails else ""))
++    return 1 if fails else 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())

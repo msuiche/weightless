@@ -1,0 +1,303 @@
+diff --git a/vllm/models/deepseek_v4/nvidia/model.py b/vllm/models/deepseek_v4/nvidia/model.py
+index 8925890..b8f5181 100644
+--- a/vllm/models/deepseek_v4/nvidia/model.py
++++ b/vllm/models/deepseek_v4/nvidia/model.py
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++import os
+ import typing
+ from collections.abc import Callable, Iterable
+ from itertools import islice
+@@ -84,6 +85,155 @@ from vllm.sequence import IntermediateTensors
+ from vllm.utils.math_utils import cdiv
+ from vllm.v1.attention.backends.registry import AttentionBackendEnum
+ from vllm.v1.worker.ubatching import dbo_current_ubatch_id
++from vllm.logger import init_logger
++
++logger = init_logger(__name__)
++
++# ---------------------------------------------------------------------------
++# Projective activation steering (DSpark).
++#
++# h <- h - alpha * (h . d_hat) d_hat on the residual stream at chosen layers.
++# Activation space rather than weight space on purpose: on this checkpoint the
++# fp8 requantisation floor is ~39% of a lambda=3.5 weight edit, so small
++# coefficients are not representable in the weights at all.
++#
++# Everything here is inert unless DSPARK_STEER_PATH is set.
++# ---------------------------------------------------------------------------
++
++# Recorded for provenance in the startup log. Only "post_layer" is implemented
++# here, which is the shipped setting and the one every measurement was taken at.
++# On this architecture the site matters about 9x: the same direction applied to
++# the attention writer alone left 34.0% refusal, against 3.8% post-layer.
++_DSPARK_STEER_HOOK = (os.environ.get("DSPARK_STEER_HOOK") or "post_layer").strip()
++_DSPARK_HOOK_ALPHA = float(os.environ.get("DSPARK_STEER_ALPHA", "1.0") or 1.0)
++# layer id -> (k, hidden) orthonormal rows. Populated for inspection and for
++# offline tooling; NOT read by the forward path. The pre-fold writer-isolation
++# hooks that used it are deliberately not ported: they branch on
++# _DSPARK_STEER_HOOK inside the traced region, and that choice is not part of
++# vLLM's compile cache key, so a cached artifact would silently ignore a changed
++# hook site. Reintroduce them behind a separate image if that experiment is
++# re-run, and clear the compile cache when doing so.
++_DSPARK_HOOK_DIRS: dict[int, torch.Tensor] = {}
++
++
++def _load_gguf_control_vector(path: str) -> dict:
++    """Load a projective control vector from GGUF into {layer_id: tensor}.
++
++    Container and tensor convention follow llama.cpp: tensors named
++    "direction.<N>", fp32, 1-D, N >= 1, and **N is the layer index**.
++
++    That last point is easy to get wrong, and we did.
++    common_control_vector_load_one() stores direction.N at data offset
++    (N-1)*n_embd, which reads like "N-1 is the layer". But
++    llama_adapter_cvec::apply() then fills tensors[il] from offset (il-1)*n_embd,
++    so the two -1s cancel: tensors[il] holds direction.il, applied at graph layer
++    il. Confirmed by measurement in tests/test-cvec-layer-map.cpp in
++    github.com/msuiche/llama.cpp -- a direction placed in one slot moves logits
++    only when the layer range is restricted to the matching index.
++
++    An off-by-one here degrades quietly instead of failing: adjacent-layer
++    refusal directions have cosine 0.83-0.91, so a stack shifted by one layer
++    still produces plausible output. Layer 0 cannot be expressed.
++
++    `dspark.mode` is enforced, not advisory. llama.cpp ADDS a control vector;
++    we PROJECT one out. The same file under the wrong operation produces no
++    error, just wrong output -- an additive apply pushes every token along the
++    refusal axis instead of removing the component. So an unrecognised mode is
++    a hard failure rather than a fallback.
++    """
++    import gguf
++    import numpy as np
++
++    reader = gguf.GGUFReader(path)
++
++    def _str_field(key):
++        f = reader.fields.get(key)
++        if f is None or not f.data:
++            return None
++        try:
++            return bytes(f.parts[f.data[0]]).decode("utf-8")
++        except Exception:
++            return None
++
++    mode = _str_field("dspark.mode")
++    if mode is None:
++        raise ValueError(
++            f"{path}: no dspark.mode. Refusing to guess: an additive control "
++            f"vector and a projective one are different operations."
++        )
++    if mode != "project":
++        raise ValueError(
++            f"{path}: dspark.mode={mode!r}, but this runtime only implements "
++            f"projective ablation (h -= alpha*(h.d)d). Refusing to apply."
++        )
++
++    hook = _str_field("dspark.hook_point")
++    if hook is not None and hook != "residual_stream_post_layer":
++        raise ValueError(
++            f"{path}: dspark.hook_point={hook!r} does not match this hook "
++            f"(residual_stream_post_layer). The same vector at the wrong hook "
++            f"point measured ~9x weaker; refusing to apply."
++        )
++
++    logger.info(
++        "DSpark GGUF control vector: mode=%s spec_version=%s base_model=%s rev=%s",
++        mode,
++        (reader.fields.get("dspark.spec_version").parts[-1][0]
++         if "dspark.spec_version" in reader.fields else "?"),
++        _str_field("general.base_model.0.name") or _str_field("dspark.base_model"),
++        (_str_field("general.base_model.0.version")
++         or _str_field("dspark.base_revision") or "?")[:12],
++    )
++
++    out = {}
++    for t in reader.tensors:
++        name = t.name
++        dot = name.find(".")
++        if dot < 0 or name[:dot] != "direction":
++            continue
++        try:
++            idx = int(name[dot + 1:])
++        except ValueError:
++            continue
++        if idx < 1:
++            raise ValueError(
++                f"{path}: {name} is invalid; direction.0 is rejected upstream "
++                f"and layer 0 cannot be expressed in this container")
++        arr = np.asarray(t.data, dtype=np.float32).reshape(-1)
++        out[idx] = torch.from_numpy(arr.copy())  # N is the layer, no offset
++    if not out:
++        raise ValueError(f"{path}: no direction.<N> tensors found")
++    widths = {v.numel() for v in out.values()}
++    if len(widths) != 1:
++        raise ValueError(f"{path}: inconsistent n_embd across directions: {widths}")
++
++    # Cross-check the tensor names against the informational layer list. These
++    # are written from the same source, so a disagreement means the file was
++    # produced by a broken exporter -- which is exactly what happened here once:
++    # an exporter wrote direction.11..39 for directions derived at layers 10..38
++    # while this field still read 10..38. The names are what execute, so the
++    # mismatch shifted the whole stack one layer, and a one-layer shift degrades
++    # rather than fails (adjacent-layer cosine 0.83-0.91). The file carried the
++    # evidence and nothing looked at it. Now something does.
++    declared = _str_field("dspark.layer_ids_zero_based")
++    if declared:
++        try:
++            want = sorted(int(x) for x in declared.split(",") if x.strip())
++        except ValueError:
++            want = None
++        if want and want != sorted(out):
++            raise ValueError(
++                f"{path}: dspark.layer_ids_zero_based declares layers "
++                f"{want[0]}..{want[-1]} ({len(want)} entries) but the direction "
++                f"tensors resolve to {sorted(out)[0]}..{sorted(out)[-1]} "
++                f"({len(out)} entries). The tensor names are what get applied, so "
++                f"this file would steer the wrong layers. Re-export it."
++            )
++    logger.info(
++        "DSpark GGUF control vector: %d directions, n_embd=%d, layers %s",
++        len(out), next(iter(widths)), sorted(out),
++    )
++    return out
+ 
+ 
+ class DeepseekV4MLP(nn.Module):
+@@ -1105,6 +1255,117 @@ class DeepseekV4Model(nn.Module, EagleModelMixin):
+         else:
+             self._mtp_hidden_buffer = None
+ 
++        # ---- projective activation steering ---------------------------------
++        self._steer_alpha_val = float(os.environ.get("DSPARK_STEER_ALPHA", "1.0") or 1.0)
++        self._steer_dirs: dict[int, torch.Tensor] = {}
++        _dev = current_platform.device_type
++        _dtype = vllm_config.model_config.dtype
++        # Allocated unconditionally, zeros when steering is off. A
++        # None-when-disabled branch changes the traced graph, and that
++        # difference is not part of vLLM's compile cache key: a compiled
++        # artifact from a 29-layer run was reused by a 16-layer run and died
++        # with KeyError: 23. Clearing torch_compile_cache was not enough,
++        # because an AOT artifact kept it. A dense stack indexed by layer id
++        # keeps the graph identical for every layer set, so only values change.
++        self.register_buffer(
++            "_steer_stack",
++            torch.zeros(
++                config.num_hidden_layers, 1, config.hidden_size,
++                device=_dev, dtype=_dtype,
++            ),
++            persistent=False,
++        )
++        # alpha is a TENSOR, not a Python float. torch.compile bakes Python
++        # scalars into the traced graph as constants and vLLM caches compiled
++        # graphs under VLLM_CACHE_ROOT, so a float alpha is frozen at first
++        # compile and every later boot silently reuses it. Measured: alpha of
++        # 1.0, 2.0 and 4.0 produced byte-identical refusal rates. A tensor is
++        # read at runtime, so alpha takes effect without recompiling.
++        self.register_buffer(
++            "_steer_alpha",
++            torch.zeros((), device=_dev, dtype=_dtype),
++            persistent=False,
++        )
++        # Buffers are non-persistent so they never enter the state dict, which
++        # would make load_weights report them as unexpected keys.
++        self._load_steering(config, _dev, _dtype)
++
++    def _load_steering(self, config, device, dtype) -> None:
++        """Fill _steer_stack from DSPARK_STEER_PATH. No-op when unset.
++
++        Loaded on every rank and indexed by GLOBAL layer id, so this is correct
++        under pipeline parallelism: each rank's forward loop only visits its own
++        layers and looks them up by the same global index.
++        """
++        path = os.environ.get("DSPARK_STEER_PATH", "").strip()
++        if not path:
++            return
++        try:
++            if path.endswith(".gguf"):
++                raw = _load_gguf_control_vector(path)
++            else:
++                raw = torch.load(path, map_location="cpu")
++            want = os.environ.get("DSPARK_STEER_LAYERS", "").strip()
++            selected = (
++                {int(t) for t in want.replace(" ", "").split(",") if t} if want else None
++            )
++            fallback = raw.get("global") if isinstance(raw, dict) else None
++
++            for layer_id in range(config.num_hidden_layers):
++                if selected is not None and layer_id not in selected:
++                    continue
++                vec = None
++                if isinstance(raw, dict):
++                    vec = raw.get(layer_id, raw.get(str(layer_id), fallback))
++                if vec is None:
++                    continue
++                vec = vec.detach().to(torch.float32)
++                if vec.ndim == 1:
++                    vec = vec.unsqueeze(0)
++                vec = vec.reshape(-1, vec.shape[-1])
++                # Rank-k: orthonormalise the basis, otherwise overlapping
++                # components get subtracted more than once. Refusal measured
++                # only 0.147 rank-1 energy here, so k>1 is expected to matter.
++                q, _ = torch.linalg.qr(vec.T)
++                vec = q.T[: vec.shape[0]]
++                # Both of these are per layer and must stay inside this loop.
++                # A previous revision dedented them out, which kept only the
++                # final iteration and silently steered one layer instead of 29.
++                self._steer_dirs[layer_id] = vec.to(device=device, dtype=dtype)
++                _DSPARK_HOOK_DIRS[layer_id] = vec.to(
++                    device=device, dtype=torch.bfloat16
++                )
++
++            if not self._steer_dirs:
++                logger.warning(
++                    "DSPARK_STEER_PATH=%s matched no layers; serving unsteered", path
++                )
++                return
++
++            k = max(v.shape[0] for v in self._steer_dirs.values())
++            stack = torch.zeros(
++                config.num_hidden_layers, k, config.hidden_size,
++                device=device, dtype=dtype,
++            )
++            for layer_id, vec in self._steer_dirs.items():
++                stack[layer_id, : vec.shape[0]] = vec
++            self._steer_stack = stack
++            self._steer_alpha = torch.tensor(
++                self._steer_alpha_val, device=device, dtype=dtype
++            )
++            logger.info(
++                "DSpark refusal steering active: hook=%s alpha=%.3f rank=%s "
++                "layers=%d %s",
++                _DSPARK_STEER_HOOK,
++                self._steer_alpha_val,
++                {k_: int(v.shape[0]) for k_, v in sorted(self._steer_dirs.items())},
++                len(self._steer_dirs),
++                sorted(self._steer_dirs),
++            )
++        except Exception as exc:
++            logger.error("DSpark steering load failed (%s); serving unsteered", exc)
++            self._steer_dirs = {}
++
+     def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
+         return self.embed_tokens(input_ids)
+ 
+@@ -1172,6 +1433,17 @@ class DeepseekV4Model(nn.Module, EagleModelMixin):
+                 res_mix,
+                 residual,
+             )
++            # Unconditional per-layer projection: h <- h - alpha (h.d) d. Rows
++            # are zero for layers we do not steer, so this is a numeric no-op
++            # there while the traced graph stays identical for every layer set.
++            # hidden_states is (tokens, hc_mult, hidden_size) here, and the
++            # ellipsis contracts only the last axis, so the component is removed
++            # from each hyper-connection stream independently.
++            steer_dirs = self._steer_stack[idx]
++            steer_coef = torch.einsum("...h,kh->...k", hidden_states, steer_dirs)
++            hidden_states = hidden_states - self._steer_alpha * torch.einsum(
++                "...k,kh->...h", steer_coef, steer_dirs
++            )
+             if idx + 1 in self.aux_hidden_state_layers:
+                 # Reconstruct the aux hidden state for draft models
+                 aux_recon = mhc_post_tilelang(

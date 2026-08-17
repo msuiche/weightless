@@ -1,0 +1,73 @@
+# syntax=docker/dockerfile:1
+# Applies the DSpark projective-steering patch on top of a vLLM v0.27.0 image
+# that already carries native DeepSeek V4 support.
+#
+# The patch is applied to the directory Python actually resolves `vllm` from,
+# discovered at build time rather than hardcoded. The previous generation of this
+# overlay COPYed into an absolute site-packages path, which meant that pointing
+# it at an image with a different layout produced a green build in which every
+# patch was inert: the files were on disk and nothing imported them. An unsteered
+# server answers normally, so that failure is invisible at runtime.
+ARG BASE_IMAGE=ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production
+FROM ${BASE_IMAGE}
+
+LABEL org.msuiche.dspark.steering="projective" \
+      org.msuiche.dspark.upstream="vllm v0.27.0"
+
+COPY patches/0001-dspark-projective-steering.patch /opt/dspark/
+
+# Resolve, patch, then prove the patch is live in the resolved tree.
+RUN set -eu; \
+    VLLM_PKG="$(python3 -c 'import importlib.util,pathlib; s=importlib.util.find_spec("vllm"); print(pathlib.Path(s.origin).resolve().parent)')"; \
+    echo "dspark: vllm resolves to ${VLLM_PKG}"; \
+    cd "${VLLM_PKG}/.."; \
+    if command -v patch >/dev/null 2>&1; then \
+        patch -p1 --forward --batch < /opt/dspark/0001-dspark-projective-steering.patch; \
+    elif command -v git >/dev/null 2>&1; then \
+        git apply -p1 /opt/dspark/0001-dspark-projective-steering.patch; \
+    else \
+        echo "dspark: neither patch(1) nor git available to apply the overlay" >&2; exit 1; \
+    fi; \
+    find "${VLLM_PKG}/models/deepseek_v4" -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+
+# Liveness check. find_spec resolves without executing, so this needs no GPU and
+# cannot fail for CUDA reasons during a build.
+RUN python3 - <<'PY'
+import ast, importlib.util, pathlib, sys
+
+MODEL = "vllm.models.deepseek_v4.nvidia.model"
+REQUIRED = ("_load_gguf_control_vector", "_DSPARK_STEER_HOOK", "_load_steering")
+
+spec = importlib.util.find_spec(MODEL)
+if spec is None or not spec.origin:
+    sys.exit(f"FAIL cannot resolve {MODEL}; the base image layout changed")
+path = pathlib.Path(spec.origin)
+tree = ast.parse(path.read_text())
+
+names = {
+    n.name for n in ast.walk(tree)
+    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+}
+names |= {
+    t.id for n in ast.walk(tree) if isinstance(n, ast.Assign)
+    for t in n.targets if isinstance(t, ast.Name)
+}
+missing = [s for s in REQUIRED if s not in names]
+if missing:
+    sys.exit(
+        f"FAIL {path} is missing {missing}. The patch did not reach the tree "
+        f"Python imports, so the control vector would load into a model that "
+        f"never applies it."
+    )
+
+# The dense stack must be allocated unconditionally and alpha must be a tensor.
+src = path.read_text()
+for needle, why in (
+    ('register_buffer(\n            "_steer_stack"', "steer stack must be a registered buffer"),
+    ("torch.einsum", "the projection itself must be present"),
+):
+    if needle.replace("\n            ", "") not in src.replace("\n            ", ""):
+        sys.exit(f"FAIL {why}: {needle!r} not found in {path}")
+
+print(f"ok dspark steering live in {path}: {', '.join(REQUIRED)}")
+PY
