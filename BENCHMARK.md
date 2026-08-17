@@ -154,6 +154,21 @@ uninitialised always-on expert. The rewrite fixed it. `DSpark draft model loaded
 Also worth noting: steering was active throughout, so a rank-1 projection on 29
 layers does not measurably damage draft acceptance.
 
+### Reproducibility, and cold start on the peak prompt
+
+Re-measured after an unrelated restart, same config:
+
+| prompt shape | first measurement | after restart |
+|---|---:|---:|
+| peak-finder | 77.3 tok/s, 99.7 %, MAL 5.99 | 65.8 tok/s, 97.4 %, MAL 5.87 |
+| prose | 43.1 tok/s, 46.6 %, MAL 3.33 | 43.2 tok/s, 46.6 %, MAL 3.33 |
+
+The prose row reproduces to within 0.1 tok/s and identical MAL, so the harness is
+stable. The peak row is the one that moves, and it moves with warmth: the outgoing
+README documents the same effect, quoting 78.4 tok/s warm against 56.8 tok/s
+immediately after a cold start. Quote the peak figure only with its warm-up state
+attached.
+
 ### Where spec decode does and does not help
 
 At the Run 001 random-token shape, single stream: TPOT improved 38.2 -> 32.1 ms
@@ -218,8 +233,22 @@ loader is fine, ~25% means it is not. Measure, do not port.
    torch.compile is not accidentally disabled, it is unsupported for this
    architecture. Setting the env var to 0 opts out of the *supported* cudagraph
    path rather than enabling compilation, and should be expected to hurt.
-3. **Raise `max-num-seqs` and the cudagraph capture sizes.** 6 and 8 are the
-   binding constraints on the concurrency scaling measured above.
+3. **Raise `max-num-seqs`** — attempted and **reverted**. `max-num-seqs=32` at
+   `gpu-memory-utilization 0.80` with speculative decoding on **fails during
+   warmup**: the worker dies in `compile_or_warm_up_model` with exit code None
+   (killed, not an exception), and the engine core then aborts. The visible
+   `UnicodeDecodeError` in `torch/library.py:_del_library` is torch's atexit
+   handler failing while unwinding, not the cause.
+
+   The headroom explains it: with the draft loaded, model weights take 79.54 GiB
+   and vLLM reports **`Available KV cache memory: 13.43 GiB`**, so ~93 of the
+   ~97 GiB that 0.80 of 121 GiB allows is already committed before the larger
+   capture buffers 32 sequences require. Restored to `max-num-seqs=6`, which
+   serves.
+
+   Next attempt should move `gpu-memory-utilization` **down** to free capture
+   headroom, or step `max-num-seqs` to 12 or 16, rather than jumping to 32.
+   Each attempt costs a full reload (~4 min to `Application startup complete`).
 4. **NVFP4 KV.** `fp8_ds_mla` roughly doubles bytes per token against the
    previous stack's `nvfp4_ds_mla`, which is what limits KV to 182,410 tokens and
    concurrency to 2.78x at 65k. This is the binding constraint for a 1M target.
