@@ -179,6 +179,49 @@ same machinery yields 3x. Enable it, but do not expect it to help uniformly.
 
 ---
 
+## Prefill vs decode — the two numbers, kept apart
+
+Same server, same config as Run 002 (v027, TP=2 on 2x DGX Spark, spec decode on,
+`fp8_ds_mla` KV, 65k ctx, steering on, warm, concurrency 1).
+
+| phase | how it is measured | result |
+|---|---|---:|
+| **prefill** | `prompt_tokens / median TTFT`, input 1024, output 1 | **1,522 tok/s** |
+| **prefill** | `prompt_tokens / median TTFT`, input 4096, output 1 | **2,495 tok/s** |
+| **decode** | output tok/s, random tokens (worst case for drafting) | 25.7 tok/s |
+| **decode** | output tok/s, prose | 43.2 tok/s |
+| **decode** | output tok/s, peak-finder (predictable) | 77.3 tok/s |
+
+Prefill runs ~60x decode because it is compute-bound and processes the whole
+prompt in parallel, while decode is memory-bandwidth-bound and strictly serial.
+Prefill also improves with length (1,522 -> 2,495 tok/s from 1k to 4k) as the
+GPU fills up. **The headline "77 tok/s" is decode.**
+
+Do not quote `Total token throughput` from `vllm bench serve` as a speed: it is
+`(input + output) / duration`, which blends the two phases and flatters the
+result (443.6 tok/s for the same run that decodes at 49.1).
+
+### How not to measure prefill
+
+A first attempt gave 83, 896, 2,476, 24,800 and 1,612 tok/s across runs of the
+same script — non-monotonic and unusable. Two causes, both mine:
+
+- `--enable-prefix-caching` is on and the filler text was one sentence repeated,
+  so later requests shared a long prefix with earlier ones. The 24,800 tok/s row
+  is a cache hit, not a prefill.
+- the first request of the process was cold, giving 83 tok/s.
+
+Measuring via `--dataset-name random` fixes both: tokens are unique per request
+so nothing is shared, and TTFT p99 lands within 5 % of the median (748 vs 673 ms
+at 1k, 1697 vs 1642 ms at 4k), which is what a trustworthy measurement looks
+like.
+
+Note these TTFTs are far above Run 001's 93 ms at the same 1024 input, because
+Run 001 had speculative decoding **off**. Turning it on raises TTFT (the draft
+runs during prefill too) and lowers TPOT; see Run 002.
+
+---
+
 ## Reference: the previous stack, for context
 
 From the outgoing repo's README, measured on **2x DGX Spark, TP=2, k=5, nvfp4 KV,
