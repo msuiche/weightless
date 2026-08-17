@@ -154,6 +154,8 @@ services:
       - >
         SPECULATIVE_CONFIG="{\"method\":\"dspark\",\"num_speculative_tokens\":${MTP_NUM_TOKENS:-5},\"draft_sample_method\":\"probabilistic\"}";
         echo "dspark: vllm=$(command -v vllm) python=$(command -v python3)";
+        SPEC_ARGS=""; if [ "${DSPARK_SPEC:-0}" = "1" ]; then SPEC_ARGS="--speculative-config $${SPECULATIVE_CONFIG}"; fi;
+        echo "dspark: spec=${DSPARK_SPEC:-0} args=$${SPEC_ARGS}";
         python3 -c "import importlib.util,pathlib;p=pathlib.Path(importlib.util.find_spec(\"vllm.models.deepseek_v4.nvidia.model\").origin);import sys;src=p.read_text();print(\"dspark: model.py\",p,len(src.splitlines()),\"lines steering=\",\"_DSPARK_STEER_HOOK\" in src)";
         exec vllm serve ${DSPARK_MODEL:-deepseek-ai/DeepSeek-V4-Flash-DSpark}
         --served-model-name ${SERVED_MODEL_NAME:-deepseek-v4-flash-dspark}
@@ -171,7 +173,7 @@ services:
         --enable-prefix-caching
         --async-scheduling
         --enable-chunked-prefill
-        ${DSPARK_SPEC_ARGS:-}
+        $${SPEC_ARGS}
         --tokenizer-mode deepseek_v4
         --distributed-executor-backend mp
         --tool-call-parser deepseek_v4

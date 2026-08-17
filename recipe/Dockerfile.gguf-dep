@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1
+# v027 + the gguf reader dependency. Nothing else.
+#
+# The steering patch stays bind-mounted (see README) so it can be iterated
+# without a rebuild. This image exists only because the base has no `gguf`
+# module, which makes DSPARK_STEER_PATH refuse a .gguf and fall back to
+# unsteered. Loading a converted .pt instead works, but it goes through
+# torch.load and bypasses every check the GGUF reader performs: the
+# dspark.mode=project enforcement, the layer-id cross-check against tensor
+# names, the n_embd consistency check, and the direction.0 rejection. Those
+# checks are the reason the format exists, so production should exercise them.
+#
+# Tag this something distinct from the pulled base. The old launcher's build
+# step uses DSPARK_VLLM_IMAGE as its build OUTPUT tag, so naming a derived
+# image after the upstream tag overwrites the pulled image with a local build
+# and everything afterwards silently runs the wrong vLLM.
+ARG BASE_IMAGE=ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production
+FROM ${BASE_IMAGE}
+
+LABEL org.msuiche.dspark.adds="gguf" \
+      org.msuiche.dspark.base="${BASE_IMAGE}"
+
+# Pinned: the reader only needs GGUFReader and numpy, both stable in this line.
+# 0.19.0 is the version the loader was written and tested against, in the
+# previous runtime image. It is also current on PyPI.
+ARG GGUF_VERSION=0.19.0
+RUN python3 -m pip install --no-cache-dir --no-deps "gguf==${GGUF_VERSION}" \
+ && python3 -c "import importlib.metadata as m; print('gguf', m.version('gguf'))"
+
+# Prove the reader is importable by the interpreter that will serve, not just by
+# whichever python3 happened to run the pip above.
+RUN set -eu; \
+    python3 - <<'PY'
+import importlib.util, pathlib, sys
+for mod in ("gguf", "numpy"):
+    if importlib.util.find_spec(mod) is None:
+        sys.exit(f"FAIL {mod} not importable after install")
+v = importlib.util.find_spec("vllm")
+print("ok gguf + numpy importable; vllm resolves to",
+      pathlib.Path(v.origin).resolve().parent)
+PY

@@ -179,6 +179,44 @@ same machinery yields 3x. Enable it, but do not expect it to help uniformly.
 
 ---
 
+## Run 003 — 1M declared context, and a correction
+
+**2026-08-17.** Same as Run 002 with `--max-model-len 1048576`, restoring the
+context length the previous stack ran at.
+
+I predicted this would be a declaration rather than a capability, reasoning that
+14.53 GiB of KV held 138,742 tokens at 65k, so one 1,048,576-token request would
+need ~7.6x more than the whole cache. **That was wrong.**
+
+| declared `max-model-len` | KV memory | GPU KV cache | max concurrency at full length |
+|---:|---:|---:|---:|
+| 65,536 | 14.53 GiB | 138,742 tokens | 2.12x |
+| **1,048,576** | 13.54 GiB | **1,375,854 tokens** | **1.31x** |
+
+Roughly the same memory yields **10x more KV tokens**. The error was assuming KV
+cost per token is a constant. On DeepSeek V4 Flash it is not: sparse MLA with
+C128 compression means the compression regime is chosen from `max_model_len`, so
+declaring a longer context makes each cached token cheaper. The cache holds 1.31
+full-length requests, so 1M is real here, not nominal.
+
+`VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` is baked into both the old and new images, so
+vLLM would have started at 1M regardless of whether the KV could back it. That
+flag is why the declared number cannot be trusted on its own and the
+`Maximum concurrency` line has to be read.
+
+**This invalidates the justification for the NVFP4 KV lever.** It was listed as
+the binding constraint for reaching 1M; 1M is reached without it. NVFP4 KV is
+still worth having for concurrency at a given context, but it is not what stood
+between us and long context.
+
+Latency at genuinely long prompts is **not yet measured**: a ~30k-token prompt
+submitted after this reconfiguration had not returned after 7 minutes, which is
+itself worth chasing and is most likely JIT/autotune for the new compressor
+shapes rather than steady-state cost. Do not quote long-context throughput until
+that is understood.
+
+---
+
 ## Prefill vs decode — the two numbers, kept apart
 
 Same server, same config as Run 002 (v027, TP=2 on 2x DGX Spark, spec decode on,
@@ -292,10 +330,12 @@ loader is fine, ~25% means it is not. Measure, do not port.
    Next attempt should move `gpu-memory-utilization` **down** to free capture
    headroom, or step `max-num-seqs` to 12 or 16, rather than jumping to 32.
    Each attempt costs a full reload (~4 min to `Application startup complete`).
-4. **NVFP4 KV.** `fp8_ds_mla` roughly doubles bytes per token against the
-   previous stack's `nvfp4_ds_mla`, which is what limits KV to 182,410 tokens and
-   concurrency to 2.78x at 65k. This is the binding constraint for a 1M target.
-5. **Raise context to 1M** once the above are settled.
+4. **NVFP4 KV.** Still worth having: `fp8_ds_mla` roughly doubles bytes per token
+   against the previous stack's `nvfp4_ds_mla`, so it buys concurrency at a fixed
+   context. It is **not** the blocker for long context, contrary to what this list
+   said before Run 003.
+5. ~~Raise context to 1M.~~ **Done, Run 003**, and it holds 1.31 full-length
+   requests. What remains is measuring latency at long prompts.
 
 Each should be measured at the Run 001 shape (1024/128, concurrency 1 and 6,
 warm) so the rows stay comparable.
