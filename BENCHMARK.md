@@ -98,6 +98,72 @@ cudagraph capture ceiling of 8.
 
 ---
 
+## Run 002 — speculative decoding ON, same stack
+
+**2026-08-17.** Identical to Run 001 except `--speculative-config
+{"method":"dspark","num_speculative_tokens":5,"draft_sample_method":"probabilistic"}`.
+Steering still active on the same general direction at alpha 4.0, layers 10-38.
+
+Cost of enabling it: model load 74.11 -> **79.54 GiB** and 172 -> **223 s**, and GPU
+KV cache 182,410 -> **133,197 tokens**, because the draft stages need weights and
+KV of their own. vLLM also warns that `max_num_scheduled_tokens` drops to 8,168.
+
+### The finding that reframes Run 001
+
+**Acceptance depends enormously on how predictable the output is, so the choice
+of benchmark dataset dominates the result.** Same server, same config, three
+prompt shapes:
+
+| prompt shape | out tok/s | acceptance | MAL (tok/step) |
+|---|---:|---:|---:|
+| `random` tokens, 1024/128 (Run 001 shape) | 25.7 | **31.0 %** | 2.55 |
+| prose: "explain TCP congestion control" | **43.1** | 46.6 % | 3.33 |
+| peak-finder: "Count from 1 to 300, separated by commas." | **77.3** | **99.7 %** | **5.99** |
+
+A drafter cannot predict random tokens, so `--dataset-name random` is close to a
+worst case for any speculative stack and understates it by ~3x here. Run 001's
+numbers are not wrong, but they measure the shape they were taken at and must not
+be read as this stack's throughput.
+
+### Against the previous stack
+
+The outgoing README's peak-finder figure was **78.4 tok/s at 98.9 % acceptance,
+5.95 accepted tokens per step out of 6**, with Patch 4 applied, at 1M context on
+nvfp4 KV.
+
+| | out tok/s | acceptance | MAL |
+|---|---:|---:|---:|
+| previous stack, Patch 4, 1M ctx, nvfp4 KV | 78.4 | 98.9 % | 5.95 |
+| **this stack, no Patch 4, 65k ctx, fp8_ds_mla KV** | **77.3** | **99.7 %** | **5.99** |
+
+Parity on the same prompt, within 1.4 %.
+
+### Patch 4 is not needed on v0.27.0
+
+Settled by measurement rather than by porting. Patch 4 existed because the DSpark
+draft loader dropped `.shared_experts.w1/.w3`, leaving the draft's always-on
+shared expert uninitialised and collapsing acceptance to 25.7 % at 2.28 tok/step.
+Upstream v0.27.0 rewrote that loader: there is no
+`_STACKED_PARAM_NAME_MAPPING` and no `map_dspark_stacked_param_name` to patch.
+
+At 99.7 % acceptance and 5.99 of a maximum 6 accepted tokens per step, the draft
+is accepting essentially everything it proposes, which is not possible with an
+uninitialised always-on expert. The rewrite fixed it. `DSpark draft model loaded:
+96 params`.
+
+Also worth noting: steering was active throughout, so a rank-1 projection on 29
+layers does not measurably damage draft acceptance.
+
+### Where spec decode does and does not help
+
+At the Run 001 random-token shape, single stream: TPOT improved 38.2 -> 32.1 ms
+(16 %) but TTFT rose 93 -> 726 ms, so aggregate throughput was flat at ~25.7
+tok/s. The drafting overhead is paid on every step whether or not the draft is
+accepted, and at 31 % acceptance it roughly cancels. On predictable output the
+same machinery yields 3x. Enable it, but do not expect it to help uniformly.
+
+---
+
 ## Reference: the previous stack, for context
 
 From the outgoing repo's README, measured on **2x DGX Spark, TP=2, k=5, nvfp4 KV,
@@ -139,9 +205,9 @@ loader is fine, ~25% means it is not. Measure, do not port.
 
 ## Open levers, in expected-payoff order
 
-1. **Enable speculative decoding.** `--speculative-config` with method `dspark`,
-   `num_speculative_tokens=5`. Report acceptance and `tok/step` alongside tok/s,
-   since that is what diagnoses Patch 4's bug class on the new loader.
+1. ~~Enable speculative decoding.~~ **Done, Run 002.** 99.7 % acceptance on
+   predictable output, 77.3 tok/s, parity with the previous stack. Patch 4 not
+   needed.
 2. **Re-enable torch.compile.** `VLLM_USE_BREAKABLE_CUDAGRAPH=1` is auto-enabled
    and disables it. Find out whether that is protecting against a real GB10
    cudagraph failure or is merely conservative.
