@@ -14,7 +14,7 @@ steering hook, and that is a 271-line patch to one file.
 | | |
 |---|---|
 | `patches/` | the steering patch against vLLM v0.27.0, applied after docker |
-| `recipe/` | overlay Dockerfile that applies it to a v027 base image |
+| `recipe/` | overlay Dockerfile, for baking the patch into an image |
 | `scripts/` | build-guard tests |
 
 Maintenance home for the patch is the `dspark-steering-v027` branch of the
@@ -26,6 +26,32 @@ git -C ../vllm diff v0.27.0..dspark-steering-v027 \
   -- vllm/models/deepseek_v4/nvidia/model.py \
   > patches/0001-dspark-projective-steering.patch
 ```
+
+## Applying it: no image build required
+
+The patch is one file, so the fast path is to run the **stock** v027 image and
+bind-mount the patched `model.py` over the original. Verified on this setup: a
+bind-mounted file resolves at its package path and Python reads the mounted
+content, so no overlay build is needed to iterate.
+
+```sh
+# discover the path in the image rather than assuming it
+VLLM_PKG=$(docker run --rm --entrypoint python3 "$BASE_IMAGE" \
+  -c 'import importlib.util,pathlib;print(pathlib.Path(importlib.util.find_spec("vllm").origin).parent)')
+
+docker run ... \
+  -v /opt/dspark/model.py:$VLLM_PKG/models/deepseek_v4/nvidia/model.py:ro \
+  ...
+```
+
+Bind-mounting onto a path that does **not** exist in the container silently
+creates it, which yields an inert patch and a server that answers normally. So
+resolve `VLLM_PKG` from the image as above rather than hardcoding it, and treat
+the `layers=29` boot line as the confirmation that steering is live.
+
+Use `recipe/Dockerfile.steering-overlay` once the configuration is settled, to
+get one reproducible artifact instead of a mount that has to match on both
+nodes.
 
 ## Base image
 
