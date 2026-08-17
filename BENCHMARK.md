@@ -235,10 +235,35 @@ At 110 tok/s a genuine 1,048,576-token prompt needs **~2.6 hours** to prefill. S
 1M is real in KV capacity and impractical in latency, and "we support 1M context"
 needs both numbers attached or it is misleading.
 
-**Reverted to 65,536**, which is the better default for mixed traffic. Choose the
-declared context from the workload: short prompts and throughput want a small
-declared context, genuine long-document work wants a large one and must budget
-for the prefill.
+#### The control, and the actual answer: 256k is free
+
+The first comparison was confounded — 4k-token prefill at 65k declared against
+58k-token prefill at 1M declared, so prompt length and declared context both
+moved. Re-run with prompt length held constant at 58,008 tokens, and swept:
+
+| declared `max-model-len` | GPU KV cache | conc. at full length | prefill, 58,008-tok prompt | trivial request |
+|---:|---:|---:|---:|---:|
+| 65,536 | 138,742 | 2.12x | 2,089 tok/s | 0.20 s |
+| **262,144** | **492,549** | **1.88x** | **2,098 tok/s** | **0.20 s** |
+| 1,048,576 | 1,375,854 | 1.31x | **110 tok/s** | 36.9 s |
+
+The confound was worth checking and the effect survived it: at fixed prompt
+length, 1M is **19x** slower to prefill than 65k. Prompt length itself barely
+matters, 4k to 58k moving prefill only 2,495 -> 2,089 tok/s.
+
+But the degradation is **not gradual, it is a cliff between 256k and 1M**. At
+262,144 the context is 4x larger than 65k with 3.5x the KV tokens and *no
+measurable prefill cost at all* (2,098 against 2,089 tok/s, within noise), and
+decode is unaffected (peak-finder 77.5 tok/s at 99.7 % acceptance).
+
+That is consistent with the base image being named
+`v027-ngc2607-dsv4-0731-dspark-k7-**256k**-production`: 256k looks like the
+configuration it was built and validated for, and 1M is outside it.
+
+**Settled on `max-model-len 262144`.** 65,536 was needlessly small; 1,048,576 is
+capacity-real and latency-impractical. Anything needing true 1M prompts should
+expect ~2.6 h of prefill and be scheduled as batch work, not served
+interactively.
 
 ---
 
@@ -361,8 +386,8 @@ loader is fine, ~25% means it is not. Measure, do not port.
    said before Run 003.
 5. ~~Raise context to 1M.~~ **Done and reverted, Run 003.** KV holds 1.31
    full-length requests, but prefill drops to 110 tok/s (23x slower), so a full
-   1M prompt would take ~2.6 hours. Declared context is a workload choice, not a
-   capability to maximise. Running at 65,536.
+   1M prompt would take ~2.6 hours. But the loss is a cliff between 256k and 1M:
+   **262,144 costs nothing measurable** and is now the setting. Running at 262,144.
 
 Each should be measured at the Run 001 shape (1024/128, concurrency 1 and 6,
 warm) so the rows stay comparable.
