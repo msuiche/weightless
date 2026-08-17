@@ -208,9 +208,16 @@ loader is fine, ~25% means it is not. Measure, do not port.
 1. ~~Enable speculative decoding.~~ **Done, Run 002.** 99.7 % acceptance on
    predictable output, 77.3 tok/s, parity with the previous stack. Patch 4 not
    needed.
-2. **Re-enable torch.compile.** `VLLM_USE_BREAKABLE_CUDAGRAPH=1` is auto-enabled
-   and disables it. Find out whether that is protecting against a real GB10
-   cudagraph failure or is merely conservative.
+2. ~~Re-enable torch.compile.~~ **Dead end, settled by reading v0.27.0.**
+   `vllm/config/vllm.py:1211-1234` auto-enables `VLLM_USE_BREAKABLE_CUDAGRAPH`
+   for an explicit list of architectures including `DeepseekV4ForCausalLM` and
+   `DeepSeekV4MTPModel`, with the comment: *"For model classes don't carry
+   @support_torch_compile — the breakable cudagraph is the supported PIECEWISE
+   path."* There are **zero** occurrences of `support_torch_compile` anywhere
+   under `vllm/models/deepseek_v4/`, against e.g. `qwen3.py` which has it. So
+   torch.compile is not accidentally disabled, it is unsupported for this
+   architecture. Setting the env var to 0 opts out of the *supported* cudagraph
+   path rather than enabling compilation, and should be expected to hurt.
 3. **Raise `max-num-seqs` and the cudagraph capture sizes.** 6 and 8 are the
    binding constraints on the concurrency scaling measured above.
 4. **NVFP4 KV.** `fp8_ds_mla` roughly doubles bytes per token against the
