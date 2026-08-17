@@ -44,10 +44,19 @@ docker run ... \
   ...
 ```
 
-Bind-mounting onto a path that does **not** exist in the container silently
-creates it, which yields an inert patch and a server that answers normally. So
-resolve `VLLM_PKG` from the image as above rather than hardcoding it, and treat
-the `layers=29` boot line as the confirmation that steering is live.
+Resolve `VLLM_PKG` from the image rather than hardcoding it. In this base it is
+**`/opt/vllm-src/vllm`**, a source install, not the
+`/usr/local/lib/python3.12/dist-packages/vllm` that the image's `PATH` and
+`LD_LIBRARY_PATH` imply. Bind-mounting onto a path that does not exist in the
+container silently creates it, which yields an inert patch and a server that
+answers normally, so the `layers=29` boot line is the confirmation that steering
+is actually live.
+
+Verified in the image: `vllm` resolves to `/opt/vllm-src/vllm`, it self-reports
+`0.27.1.dev0+g4bdc8a788` (a post-v0.27.0 dev build), its
+`models/deepseek_v4/nvidia/model.py` is 1548 lines matching upstream v0.27.0 so
+the patch applies unchanged, and the DSV4 sparse-MLA decode dispatch carries
+`(32,256)@pbs64` and `(32,128)@pbs256`.
 
 Use `recipe/Dockerfile.steering-overlay` once the configuration is settled, to
 get one reproducible artifact instead of a mount that has to match on both
