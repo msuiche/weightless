@@ -209,11 +209,36 @@ the binding constraint for reaching 1M; 1M is reached without it. NVFP4 KV is
 still worth having for concurrency at a given context, but it is not what stood
 between us and long context.
 
-Latency at genuinely long prompts is **not yet measured**: a ~30k-token prompt
-submitted after this reconfiguration had not returned after 7 minutes, which is
-itself worth chasing and is most likely JIT/autotune for the new compressor
-shapes rather than steady-state cost. Do not quote long-context throughput until
-that is understood.
+### The cost of declaring 1M: prefill collapses
+
+Chasing the slow prompt gave the other half of the trade-off, and it is the more
+important half.
+
+| declared `max-model-len` | KV per 13.5 GiB | prefill |
+|---:|---:|---:|
+| 65,536 | 138,742 tokens | **2,495 tok/s** |
+| 1,048,576 | 1,375,854 tokens | **110 tok/s** |
+
+Measured directly: a 58,012-token prompt took **526.4 s**, i.e. 110 tok/s, about
+**23x slower** than the same server at 65k. It was not a hang and not JIT, which
+was my first guess: `num_requests_running` was 1 the whole time and the request
+completed correctly. Confirming symptom, a trivial "Say OK" request submitted
+alongside took **36.9 s**, because it queued behind the prefill.
+
+The likely mechanism is the mirror of the KV win. Sparse MLA sizes its indexer
+and compressor work from `max_model_len`, so declaring 1M makes every prefill
+chunk pay 1M-sized cost regardless of the live prompt length, while
+simultaneously choosing a compression regime that makes each cached token
+cheaper. One number improves 10x and the other degrades 23x.
+
+At 110 tok/s a genuine 1,048,576-token prompt needs **~2.6 hours** to prefill. So
+1M is real in KV capacity and impractical in latency, and "we support 1M context"
+needs both numbers attached or it is misleading.
+
+**Reverted to 65,536**, which is the better default for mixed traffic. Choose the
+declared context from the workload: short prompts and throughput want a small
+declared context, genuine long-document work wants a large one and must budget
+for the prefill.
 
 ---
 
@@ -334,8 +359,10 @@ loader is fine, ~25% means it is not. Measure, do not port.
    against the previous stack's `nvfp4_ds_mla`, so it buys concurrency at a fixed
    context. It is **not** the blocker for long context, contrary to what this list
    said before Run 003.
-5. ~~Raise context to 1M.~~ **Done, Run 003**, and it holds 1.31 full-length
-   requests. What remains is measuring latency at long prompts.
+5. ~~Raise context to 1M.~~ **Done and reverted, Run 003.** KV holds 1.31
+   full-length requests, but prefill drops to 110 tok/s (23x slower), so a full
+   1M prompt would take ~2.6 hours. Declared context is a workload choice, not a
+   capability to maximise. Running at 65,536.
 
 Each should be measured at the Run 001 shape (1024/128, concurrency 1 and 6,
 warm) so the rows stay comparable.
