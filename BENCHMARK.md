@@ -249,7 +249,9 @@ moved. Re-run with prompt length held constant at 58,008 tokens, and swept:
 
 The confound was worth checking and the effect survived it: at fixed prompt
 length, 1M is **19x** slower to prefill than 65k. Prompt length itself barely
-matters, 4k to 58k moving prefill only 2,495 -> 2,089 tok/s.
+matters: at 262,144 declared, prefill is flat across an order of magnitude of
+prompt size — **2,495 tok/s at 4k, 2,098 at 58k, 2,087 at 101k**. Whatever the 1M
+setting does, it is not a function of how long the prompt actually is.
 
 But the degradation is **not gradual, it is a cliff between 256k and 1M**. At
 262,144 the context is 4x larger than 65k with 3.5x the KV tokens and *no
@@ -264,6 +266,28 @@ configuration it was built and validated for, and 1M is outside it.
 capacity-real and latency-impractical. Anything needing true 1M prompts should
 expect ~2.6 h of prefill and be scheduled as batch work, not served
 interactively.
+
+#### Verify the window functionally, not from metadata
+
+`/v1/models` reporting a number is weak evidence, and `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1`
+is baked into these images, so a declared value need not be backed by KV. The
+check that actually settles it is to send a prompt larger than the value you
+doubt:
+
+```
+101,211 prompt tokens accepted in 48.5 s (2,087 tok/s), replied "OK"
+```
+
+A server limited to 65,536 must reject that. It did not, so 262,144 is real.
+
+**Clients cache this value.** A long-running client kept reporting a 65K window
+for ~47 minutes after the server moved to 262,144, because it had read
+`/v1/models` once at its own startup — the server had genuinely been at 65,536 for
+hours beforehand. The endpoint was truthful and the reader was stale. Same shape
+as reading `docker compose logs` after a relaunch and getting the previous
+container's output, which happened twice while producing this file: after
+changing serving config, refresh the reader before doubting the source, and
+prefer a functional probe to any reported field.
 
 ---
 
