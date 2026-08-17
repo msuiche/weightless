@@ -16,6 +16,7 @@ steering hook, and that is a 271-line patch to one file.
 | `patches/` | the steering patch against vLLM v0.27.0, applied after docker |
 | `recipe/` | overlay Dockerfile, for baking the patch into an image |
 | `scripts/` | build-guard tests |
+| `spec/CONTROL-VECTOR.md` | the projective control-vector GGUF format: the `dspark.mode` contract, layer-id mapping, and why an additive reader must refuse the file |
 
 Maintenance home for the patch is the `dspark-steering-v027` branch of the
 private `msuiche/vllm` fork, so upstream bumps get a real 3-way merge instead of
