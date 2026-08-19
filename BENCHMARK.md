@@ -534,3 +534,84 @@ leaving 24 GiB per node unused and was about to recommend raising it. Measured
 first: the box reports 111 GiB used of 121 GiB with 9 GiB available while
 serving. On unified memory that fraction does not correspond to idle capacity,
 and there is no 24 GiB to reclaim.
+
+---
+
+## Run 005 — the 1M collapse localised, and worked around
+
+**2026-08-19.** The Run 003 collapse turned out to be a narrow, avoidable bug
+rather than a property of long context. **Running at 1,032,192.**
+
+### My stated mechanism was wrong
+
+Run 004 blamed the compressor's adaptive topk width and cited PR #50004. Reading
+`vllm/models/deepseek_v4/sparse_mla.py:264` disproves that:
+
+```python
+active_topk_width = min(
+    max(next_power_of_2(cm.max_seq_len // compress_ratio), _C128A_TOPK_ALIGNMENT),
+    self.c128a_max_compressed,
+)
+```
+
+`cm.max_seq_len` is the **live** batch length, so a 58,008-token prompt yields
+`next_pow2(453) = 512` at every declared context. The adaptive path works and is
+not the cause.
+
+### Bisection
+
+Same 58,008-token prompt at each setting. `c128a_max_compressed`, the buffer row
+width, is `align(ctx / 128, 128)`.
+
+| declared context | c128a width | prefill | trivial request |
+|---:|---:|---:|---:|
+| 65,536 | 512 | 2,089 tok/s | 0.20 s |
+| 262,144 | 2048 | 2,098 tok/s | 0.20 s |
+| 524,288 | 4096 | 2,089 tok/s | 0.16 s |
+| 786,432 | 6144 | 2,076 tok/s | 0.21 s |
+| **1,032,192** | **8064** | **2,090 tok/s** | **0.19 s** |
+| 1,048,576 | **8192** | **110 tok/s** | 36.9 s |
+
+**A 1.6 % increase in declared context (16,384 tokens) changes prefill by 19x.**
+Everything up to width 8064 is at full speed; width 8192 collapses.
+
+8192 is not an arbitrary number. It is the kernel's hardcoded default width, per
+the comment at `sparse_mla.py:178-182`: *"Otherwise the kernel's default 8192
+iterates past row width and spills writes into adjacent rows."* The pathological
+case is precisely where the computed width equals that default. Cause not proven
+beyond the coincidence, but the boundary is exact and reproducible.
+
+### The workaround
+
+Declare **1,032,192** instead of 1,048,576: 98.4 % of the context, full prefill
+speed, and KV of 1,367,456 tokens against 1,375,854 (0.6 % less).
+
+Verified functionally, not from metadata — an **815,037-token** prompt, which
+exceeds the 786,432 setting below it:
+
+```
+815,037 prompt tokens in 737.2 s = 1,106 tok/s prefill
+needle at 50 % depth: FOUND (58FC9C942D)
+```
+
+### Correction: prefill is not flat at extreme length
+
+Run 004 concluded prefill is "very nearly independent of prompt length" on
+evidence up to 307k. At 815k it is **1,106 tok/s against 2,090 at 58k**, roughly
+half. So prefill degrades gradually with prompt length after all — the claim was
+right over the range measured and wrong as stated generally.
+
+That degradation is a different phenomenon from the width-8192 collapse: gradual
+and ~1.9x over a 14x longer prompt, against abrupt and 19x from a 1.6 % config
+change.
+
+For scale, `Entrpi/ds4` reports 633 tok/s ingesting 975k tokens on one Spark at
+2-bit. At 815k we measure 1,106 tok/s, about 1.75x faster at comparable depth.
+
+### Worth reporting upstream
+
+A declared context of 1,048,576 — the model's own native maximum, and the obvious
+value to configure — lands exactly on the kernel's default width and costs 19x
+prefill. Anyone serving DeepSeek V4 Flash at its documented context on vLLM
+v0.27.x hits this, and the symptom looks like "long context is slow" rather than
+like a bug.

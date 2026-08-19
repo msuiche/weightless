@@ -143,7 +143,7 @@ Settled configuration:
 | | |
 |---|---|
 | image | `vllm-dspark-steering:v027-gguf` (v027 + `gguf==0.19.0`) |
-| context | **524,288** — 65,536 is needlessly small, 1,048,576 collapses prefill to 110 tok/s |
+| context | **1,032,192** — see BENCHMARK.md Run 005; 1,048,576 collapses prefill to 110 tok/s, 1,032,192 does not |
 | KV dtype | `fp8_ds_mla` (`nvfp4_ds_mla` does not exist upstream in v0.27) |
 | speculative decoding | **on**, `method=dspark`, `num_speculative_tokens=5` |
 | `max-num-seqs` | 6 — 32 dies during warmup, only ~14 GiB is left for KV |
