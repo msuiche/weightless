@@ -244,7 +244,8 @@ moved. Re-run with prompt length held constant at 58,008 tokens, and swept:
 | declared `max-model-len` | GPU KV cache | conc. at full length | prefill, 58,008-tok prompt | trivial request |
 |---:|---:|---:|---:|---:|
 | 65,536 | 138,742 | 2.12x | 2,089 tok/s | 0.20 s |
-| **262,144** | **492,549** | **1.88x** | **2,098 tok/s** | **0.20 s** |
+| 262,144 | 492,549 | 1.88x | 2,098 tok/s | 0.20 s |
+| **524,288** | **883,902** | **1.69x** | **2,089 tok/s** | **0.16 s** |
 | 1,048,576 | 1,375,854 | 1.31x | **110 tok/s** | 36.9 s |
 
 The confound was worth checking and the effect survived it: at fixed prompt
@@ -258,12 +259,27 @@ But the degradation is **not gradual, it is a cliff between 256k and 1M**. At
 measurable prefill cost at all* (2,098 against 2,089 tok/s, within noise), and
 decode is unaffected (peak-finder 77.5 tok/s at 99.7 % acceptance).
 
-That is consistent with the base image being named
-`v027-ngc2607-dsv4-0731-dspark-k7-**256k**-production`: 256k looks like the
-configuration it was built and validated for, and 1M is outside it.
+**512K is free as well**, which narrows the cliff considerably: 524,288 matches
+262,144 on every measure — prefill 2,089 against 2,098 tok/s, trivial request
+0.16 against 0.20 s, decode 77.9 tok/s at 99.7 % acceptance — while holding
+883,902 KV tokens. So the collapse is specific to 1,048,576 and not a gradient
+across the range.
 
-**Settled on `max-model-len 262144`.** 65,536 was needlessly small; 1,048,576 is
-capacity-real and latency-impractical. Anything needing true 1M prompts should
+That it is a threshold rather than a slope is itself informative. If the cost
+tracked the compressor's topk width, which scales with `max_model_len`, 512K
+should sit halfway to 1M's penalty. It does not, it sits at zero. vLLM v0.27.0
+does contain PR #50004 (adaptive topk width, which loops the live context rather
+than the maximum), so the most plausible reading is that the adaptive path covers
+up to some bound and 1,048,576 falls outside it. Unconfirmed; worth a look if 1M
+is ever needed.
+
+The base image is named
+`v027-ngc2607-dsv4-0731-dspark-k7-**256k**-production`, so 256k is presumably
+what it was validated at. 512K measuring identically suggests the validated
+figure is conservative rather than a hard boundary.
+
+**Settled on `max-model-len 524288`.** 65,536 was needlessly small, 262,144 was an
+unnecessary compromise, and 1,048,576 is capacity-real and latency-impractical. Anything needing true 1M prompts should
 expect ~2.6 h of prefill and be scheduled as batch work, not served
 interactively.
 
@@ -275,10 +291,14 @@ check that actually settles it is to send a prompt larger than the value you
 doubt:
 
 ```
-101,211 prompt tokens accepted in 48.5 s (2,087 tok/s), replied "OK"
+at 262,144 declared:  101,211 prompt tokens in  48.5 s (2,087 tok/s), replied "OK"
+at 524,288 declared:  307,609 prompt tokens in 152.8 s (2,013 tok/s), replied "OK"
 ```
 
-A server limited to 65,536 must reject that. It did not, so 262,144 is real.
+Each overflows the next setting down, so neither window is nominal. Note also
+that prefill is flat across the whole range tested — 2,495 tok/s at 4k, 2,098 at
+58k, 2,087 at 101k, 2,013 at 307k — so on this architecture prefill throughput is
+very nearly independent of prompt length.
 
 **Clients cache this value.** A long-running client kept reporting a 65K window
 for ~47 minutes after the server moved to 262,144, because it had read
@@ -411,7 +431,7 @@ loader is fine, ~25% means it is not. Measure, do not port.
 5. ~~Raise context to 1M.~~ **Done and reverted, Run 003.** KV holds 1.31
    full-length requests, but prefill drops to 110 tok/s (23x slower), so a full
    1M prompt would take ~2.6 hours. But the loss is a cliff between 256k and 1M:
-   **262,144 costs nothing measurable** and is now the setting. Running at 262,144.
+   **262,144 and 524,288 both cost nothing measurable**; 524,288 is the setting.
 
 Each should be measured at the Run 001 shape (1024/128, concurrency 1 and 6,
 warm) so the rows stay comparable.
