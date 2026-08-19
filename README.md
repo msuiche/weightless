@@ -14,13 +14,13 @@ steering hook, and that is a 271-line patch to one file.
 | | |
 |---|---|
 | `patches/` | the steering patch against vLLM v0.27.0, applied after docker |
-| `recipe/` | overlay Dockerfile, for baking the patch into an image |
+| `recipe/` | `Dockerfile.gguf-dep` (**required**, adds `gguf`), `Dockerfile.steering-overlay` (optional, bakes the patch), and the working `docker-compose.v027.yml` |
 | `scripts/` | build-guard tests |
 | `spec/CONTROL-VECTOR.md` | the projective control-vector GGUF format: the `dspark.mode` contract, layer-id mapping, and why an additive reader must refuse the file |
 
-Maintenance home for the patch is the `dspark-steering-v027` branch of the
-private `msuiche/vllm` fork, so upstream bumps get a real 3-way merge instead of
-a hand-resolved `.patch` conflict. Regenerate with:
+Maintenance home for the patch is the `dspark-steering-v027` branch of
+[`msuiche/vllm`](https://github.com/msuiche/vllm) (public), so upstream bumps get
+a real 3-way merge instead of a hand-resolved `.patch` conflict. Regenerate with:
 
 ```sh
 git -C ../vllm diff v0.27.0..dspark-steering-v027 \
@@ -90,8 +90,24 @@ per-kernel: a 2x kernel is not a 2x server.
 
 Off unless `DSPARK_STEER_PATH` is set.
 
+**The base image has no `gguf` module**, so a `.gguf` steer path fails and the
+server logs `DSpark steering load failed (No module named 'gguf'); serving
+unsteered` — honest, but unsteered. Build `recipe/Dockerfile.gguf-dep` (one pip
+layer on top of v027, tagged `vllm-dspark-steering:v027-gguf`) and point
+`DSPARK_VLLM_IMAGE` at it. Do **not** tag it after the upstream image: the old
+launcher uses `DSPARK_VLLM_IMAGE` as its *build output* name, so reusing the
+upstream tag overwrites the pulled image with a local build.
+
+Loading a `.pt` instead works and skips the dependency, but it goes through
+`torch.load` and bypasses every check in the reader — the `dspark.mode=project`
+enforcement, the layer-id cross-check, the `direction.0` rejection. Serve the
+GGUF.
+
 ```sh
-DSPARK_STEER_PATH=/cache/huggingface/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec-L10-38-a4.gguf
+# the general/broad direction, recovered from Keys' published weights by SVD.
+# The cyber-derived alternative is ...-cyber-abliterated-cvec-L10-38-a4.gguf;
+# both are 29 directions over layers 10-38 at n_embd 4096.
+DSPARK_STEER_PATH=/cache/huggingface/DeepSeek-V4-Flash-0731-general-abliterated-cvec-L10-38-a4-keysdir.gguf
 DSPARK_STEER_ALPHA=4.0
 DSPARK_STEER_LAYERS=$(seq -s, 10 38)
 ```
@@ -118,9 +134,25 @@ carry it to another model.
 
 ## Status
 
-Untested end to end. The patch applies cleanly to a pristine v0.27.0 tree and
-compiles, and `tests/dspark_steering_test.py` in the vllm fork passes 15 checks
-against the real 29-layer control vector, including that all 29 layers reach the
-stack and that alpha=2 reflects rather than removes. Nothing has been served on
-v027 yet, and there is no throughput baseline on the outgoing image to compare
-against, so the performance question is still open.
+**Serving.** Continuously up on 2x DGX Spark since 2026-08-17, TP=2, steering
+active on 29 layers. Measurements and their full configuration are in
+[`BENCHMARK.md`](BENCHMARK.md); the working values are in `.env.v027.working`.
+
+Settled configuration:
+
+| | |
+|---|---|
+| image | `vllm-dspark-steering:v027-gguf` (v027 + `gguf==0.19.0`) |
+| context | **524,288** — 65,536 is needlessly small, 1,048,576 collapses prefill to 110 tok/s |
+| KV dtype | `fp8_ds_mla` (`nvfp4_ds_mla` does not exist upstream in v0.27) |
+| speculative decoding | **on**, `method=dspark`, `num_speculative_tokens=5` |
+| `max-num-seqs` | 6 — 32 dies during warmup, only ~14 GiB is left for KV |
+
+Headline numbers, all with their shape stated in `BENCHMARK.md`: prefill flat at
+1,774–2,341 tok/s from 2k to 262k input; decode flat at 29–37 ms/tok over the same
+range; 77.3 tok/s on the peak-finder prompt at 99.7 % draft acceptance, which is
+parity with the retired stack's 78.4 tok/s and needs no Patch 4.
+
+Known gaps: no needle is perfect at ~0.5M (5 of 6 exact to 514,035 tokens, one
+returned 9 of 10 characters), 1M context remains impractical, and there is no
+throughput baseline on the retired image so the upgrade is not attributable.
