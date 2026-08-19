@@ -435,3 +435,102 @@ loader is fine, ~25% means it is not. Measure, do not port.
 
 Each should be measured at the Run 001 shape (1024/128, concurrency 1 and 6,
 warm) so the rows stay comparable.
+
+---
+
+## Run 004 — decode at depth, and a needle test
+
+**2026-08-19.** `max-model-len 524288`, spec decode on, steering on, TP=2, warm.
+Prompted by a comparison against `Entrpi/ds4`, which publishes deep-context
+numbers and needle validation that we had no equivalent of.
+
+### Decode does not degrade with depth; prefill is the only thing that scales
+
+`vllm bench serve`, random tokens (unique per request, so prefix caching cannot
+serve them), 128 output tokens, concurrency 1. TPOT excludes the first token, so
+it isolates decode from prefill.
+
+| input | median TTFT | implied prefill | median TPOT | decode |
+|---:|---:|---:|---:|---:|
+| 2,048 | 1.13 s | 1,812 tok/s | 29.24 ms | 34.2 tok/s |
+| 32,768 | 14.04 s | 2,341 tok/s | 31.47 ms | 31.8 tok/s |
+| 131,072 | 64.90 s | 2,019 tok/s | 36.55 ms | 27.4 tok/s |
+| 262,144 | 147.78 s | 1,774 tok/s | **32.52 ms** | **30.8 tok/s** |
+
+Decode is flat within noise across two orders of magnitude of context: 29–37
+ms/tok, with 262k faster than 131k. Prefill is likewise flat per token
+(1,774–2,341 tok/s), so TTFT grows linearly with prompt length and nothing else
+does.
+
+**This is the clearest illustration of why `Output token throughput` must not be
+quoted as a speed.** Over those same four rows it reads 24.95, 7.08, 1.98, 0.84
+tok/s — a 30x "collapse" — while actual decode moves by 12%. It is
+`output_tokens / total_duration`, and at 262k input the duration is 99% prefill.
+
+### Needle-in-haystack
+
+Never tested before. A unique 10-hex-character code is planted at a known depth,
+the filler carries a per-run id in every sentence so no run shares a prefix with
+another, and the model is asked to return only the code.
+
+| prompt tokens | needle depth | wall | result |
+|---:|---:|---:|---|
+| 161,436 | 5 % | 81.4 s | exact |
+| 161,436 | 50 % | 81.6 s | exact |
+| 161,438 | 95 % | 81.6 s | exact |
+| 488,237 | 5 % | 345.5 s | **9 of 10 characters** |
+| 514,036 | 50 % | 374.6 s | exact |
+| 514,035 | 95 % | 373.8 s | exact |
+
+**5 of 6 exact, up to 514,035 tokens.** The exception returned `98F231EFF`
+against `98F231EFF1` — the correct code missing its final character.
+
+That is a real recall error and not output truncation, which was checked: re-run
+at `max_tokens` 64 and 128 both produced 6 output tokens with
+`finish_reason=stop`, so the model chose to stop after nine characters. It sits
+at the deepest tested prompt with the needle earliest in it.
+
+So deep context is substantially trustworthy but not perfect at ~0.5M tokens, and
+a claim of "every needle found" depends on how strictly the match is scored — a
+one-character error passes a fuzzy check and fails an exact one.
+
+### Against Entrpi/ds4 (one Spark, Q2 weights)
+
+Their published figures against ours, noting these are different quantisations on
+different node counts and not a like-for-like contest.
+
+| | ds4, 1 Spark, Q2 | ours, 2 Sparks, fp8 |
+|---|---|---|
+| prefill, shallow | 1,008 tok/s @14k | **2,341 tok/s @32k** |
+| prefill, deep | 776 tok/s @515k, 633 @975k | **1,774 tok/s @262k** |
+| decode, shallow | 22.66 tok/s @2k | **34.2 tok/s @2k** |
+| decode, deep | 45.7 ms/tok @240k; 146–177 ms/tok @248–519k | **32.52 ms/tok @262k** |
+| spec decode | ~2.0 tok/step @85.7 % | **5.99 tok/step @99.7 %** (3.00 on prose) |
+| max active context | **3,019,176 tok** (1 GiB floor) | 883,902 KV tok |
+| nodes | **1** | 2 |
+
+We are 2–3x faster on prefill and 1.4–5x faster on decode at depth. They hold
+~3.4x more active context on half the hardware.
+
+Their capacity advantage is mechanical, not mysterious: Q2 weights (~81 GB, whole
+model on one node, no TP duplication), compressed KV (FP8 codes with an FP4 e2m1
+indexer), and demand-mapped banks so idle context costs nearly nothing. Three
+design choices we do not have.
+
+The cost is precision they have not quantified — their docs state the 2-bit
+quantisations "behave well" and offer no perplexity or accuracy comparison against
+higher precision. For measuring what a rank-1 intervention does to capability
+that is disqualifying: our own numbers put 3.57 % error into the projection at
+int4 against 0.61 % at int8, and 2-bit weight noise would swamp the effect being
+measured. They also have no steering, control-vector, LoRA or hook path at all.
+
+**Worth borrowing regardless:** a memory floor with graceful admission refusal
+instead of an OOM kill (ours SIGKILLed a worker at `max-num-seqs 32`), and
+demand-mapped KV so idle context is nearly free.
+
+**And a correction to an idea this comparison prompted.** Seeing 47 GB of KV on
+their box against our 14.22 GiB, I assumed `--gpu-memory-utilization 0.80` was
+leaving 24 GiB per node unused and was about to recommend raising it. Measured
+first: the box reports 111 GiB used of 121 GiB with 9 GiB available while
+serving. On unified memory that fraction does not correspond to idle capacity,
+and there is no 24 GiB to reclaim.
