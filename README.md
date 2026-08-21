@@ -182,12 +182,6 @@ against the pinned checkpoint revision.
 
 ## Roadmap
 
-- **Serve Flash + Flash-Vision.** `DeepSeek-V4-Flash-Vision-Exp` launched on
-  the DeepSeek API on 2026-08-21 as an experimental, API-only release — no
-  open weights yet. It is the same base family we already serve, so when
-  weights drop the plan is a second serving profile in this repo (vision
-  weights + tower on the same 2-node stack), not a new stack. The community
-  adapter grafts circulating on HF were evaluated and deliberately skipped.
 - **k=7/greedy draft A/B** (upstream issue #84): now one env line
   (`DRAFT_SAMPLE_METHOD=greedy MTP_NUM_TOKENS=7`) after the 2026-08-21
   upstream merge.
