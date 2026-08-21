@@ -6,3 +6,8 @@
 .env.*
 !.env.example
 !.env.*.example
+
+# Refusal-eval material (suites, probe output) lives outside this repo.
+*-suite.json
+probe-*.json
+*refusal*.json
