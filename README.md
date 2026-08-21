@@ -170,15 +170,28 @@ subset the layers and leave alpha alone. The 4.0 above is calibrated for this
 checkpoint's residual stream, where it saturates rather than inverting; do not
 carry it to another model.
 
-## Steering vector
+## Steering artifacts (ours)
 
-The cyber control vector is published at
-[`msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec`](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec)
-(gated; 478 KB GGUF, spec-conformant per [`spec/CONTROL-VECTOR.md`](spec/CONTROL-VECTOR.md)).
-Fetch it into the HF cache on both nodes and point `DSPARK_STEER_PATH` at it —
-see `recipe/anemll/README.md` for the exact wiring. The live config currently
-serves a general-contrast variant from the same derivation; both are verified
-against the pinned checkpoint revision.
+Both lanes' vectors are published under `msuiche/` on Hugging Face (gated —
+fetch with an HF token), spec-conformant per
+[`spec/CONTROL-VECTOR.md`](spec/CONTROL-VECTOR.md) and verified against their
+pinned checkpoint revisions.
+
+- [`msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec`](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec)
+  — **DSV4 lane, GGUF.** Cyber-contrast vector: 29 per-layer directions over
+  L10–38, n_embd 4096, α=4.0. The live config currently serves the
+  general-contrast variant from the same repo family — a *third-party*
+  direction we reformatted, re-measured and repackaged (attribution in the
+  file metadata); swapping is one `DSPARK_STEER_PATH` line. Wiring:
+  `recipe/anemll/README.md`.
+- [`msuiche/Qwen3.8-27B-abliterated-cvec`](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cvec)
+  — **Qwen lane, GGUF + LoRA.** The GGUF is canonical: per-layer diff of
+  means, 49 directions over L10–58, n_embd 5120, α=1.0 (α=4 measurably
+  over-refuses on this model). The rank-1 LoRA (`mlp.down_proj`, L1–63,
+  α=1.0 baked) is the same intervention folded into weights — it loads in
+  stock vLLM/peft/llama.cpp with no hotfix, but is unscored on the cyber
+  holdout and is valid only for checkpoint revision `1d4bf0f2ff60`
+  (`lora_A` embeds `W`). Wiring: `recipe/qwen/README.md`.
 
 ## Roadmap
 
@@ -198,7 +211,6 @@ against the pinned checkpoint revision.
 - [local-inference-lab/b12x](https://github.com/local-inference-lab/b12x) — the sparkinfer/b12x kernel stack inside the image
 - [0xSero/deepseek-v4-flash-0731-spark](https://huggingface.co/0xSero/deepseek-v4-flash-0731-spark) — the single-Spark EXL3/REAP build (evaluated, rejected — see Lanes)
 - [Loke-60000/deepseek-v4-flash-0731-spark-vision](https://huggingface.co/Loke-60000/deepseek-v4-flash-0731-spark-vision) — community Spark vision serving fix (surveyed, not adopted)
-- [msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec) — our steering vector
 - [drowzeys/keys-vLLm.0.27-Qwen3.8-NVFP4-MTP3-Single-DGX-Spark](https://github.com/drowzeys/keys-vLLm.0.27-Qwen3.8-NVFP4-MTP3-Single-DGX-Spark) — the Qwen TP=1 lane's serving recipe
 
 ## Status
