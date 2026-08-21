@@ -15,6 +15,26 @@ it, plus `../../patches/hotfix-dsv4-steering-projective.py` into `patches/`.
 | `start-deepseek-v4-flash-dspark.sh` | worker-sync block for the steering hotfix |
 | `.env.dspark` | full live config: dual-rail fabric (GID index 3 pinned), `DSPARK_REVISION=7872f01b`, served name `deepseek-v4-flash-dspark`, 1M `MAX_MODEL_LEN`, spec decode k=5, `DSPARK_STEER_PATH/_ALPHA=4.0/_LAYERS=10..38` |
 
+## Steering vector
+
+The vector is a 478 KB GGUF control vector (spec:
+[`../../spec/CONTROL-VECTOR.md`](../../spec/CONTROL-VECTOR.md)), read by the
+hotfix from `/cache/huggingface` inside the container (= `$HF_CACHE` on the
+host, both nodes). Published artifact:
+[`msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec`](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec)
+(gated — fetch with an HF token):
+
+```sh
+huggingface-cli download msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec \
+  --local-dir ~/.cache/huggingface   # on BOTH nodes
+```
+
+`.env.dspark` currently points `DSPARK_STEER_PATH` at a general-contrast
+variant (`...-general-abliterated-cvec-L10-38-a4-keysdir.gguf`, from the same
+derivation); the cyber file above is the documented swap. Both were verified
+tensor-identical to their `.pt` sources (cos 1.0000/layer) and carry base rev
+`7872f01b` = the pinned `DSPARK_REVISION`. Off = empty `DSPARK_STEER_PATH`.
+
 Gotchas:
 
 - The start script syncs hotfixes and `.env.dspark` to the worker but **not**

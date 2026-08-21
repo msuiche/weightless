@@ -1,22 +1,25 @@
 # dspark-deploy
 
-Serving DeepSeek V4 Flash 0731 on 2x DGX Spark (GB10, SM121) with projective
-refusal steering.
+Serving DeepSeek V4 Flash 0731 on 2x DGX Spark (GB10, SM121, TP=2 over RoCE)
+with projective refusal steering — the self-contained recipe: serving config,
+boot hotfixes, the steering patch, and the control-vector spec.
 
-Replaces the previous `DeepSeek-v4-Flash-0731-DSpark-1M-NVFP4-KV-2x-DGX-Spark`
-fork, which vendored 18 vLLM files. DeepSeek V4 Flash is native in vLLM as of
-v0.27.0, so 12 of those files now exist upstream and the vendored copy of the
-model implementation was 1,527 lines behind it. What is genuinely ours is the
-steering hook, and that is a 271-line patch to one file.
+The live stack is the Anemll image (`ghcr.io/anemll/dspark-vllm-gx10:0.1.1`,
+vLLM 0.25.2) driven by the MiaAI 2x recipe, with our state on top vendored in
+`recipe/anemll/`. The retired v027 stack's patch is kept for reference and as
+the fallback path.
 
 ## Layout
 
 | | |
 |---|---|
-| `patches/` | the steering patch against vLLM v0.27.0, applied after docker |
-| `recipe/` | `Dockerfile.gguf-dep` (**required**, adds `gguf`), `Dockerfile.steering-overlay` (optional, bakes the patch), and the working `docker-compose.v027.yml` |
+| `recipe/anemll/` | **live**: canonical copies of our compose / start script / `.env.dspark` for the MiaAI 2x clone, plus rebuild notes |
+| `patches/hotfix-dsv4-steering-projective.py` | **live**: steering as a fail-closed boot hotfix for the 0.25.2 image (embedded GGUF reader; no image build) |
+| `patches/0001-dspark-projective-steering.patch` | the same hook as a git patch against vLLM v0.27.0 (fallback stack) |
+| `recipe/` (top level) | retired v027 stack: `Dockerfile.gguf-dep`, `Dockerfile.steering-overlay`, `docker-compose.v027.yml` |
 | `scripts/` | build-guard tests |
 | `spec/CONTROL-VECTOR.md` | the projective control-vector GGUF format: the `dspark.mode` contract, layer-id mapping, and why an additive reader must refuse the file |
+| `BENCHMARK.md` | every serving measurement, with shapes stated (Runs 001–007) |
 
 Maintenance home for the patch is the `dspark-steering-v027` branch of
 [`msuiche/vllm`](https://github.com/msuiche/vllm) (public), so upstream bumps get
@@ -131,6 +134,40 @@ reflected, which installs the behaviour rather than removing it. To run weaker,
 subset the layers and leave alpha alone. The 4.0 above is calibrated for this
 checkpoint's residual stream, where it saturates rather than inverting; do not
 carry it to another model.
+
+## Steering vector
+
+The cyber control vector is published at
+[`msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec`](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec)
+(gated; 478 KB GGUF, spec-conformant per [`spec/CONTROL-VECTOR.md`](spec/CONTROL-VECTOR.md)).
+Fetch it into the HF cache on both nodes and point `DSPARK_STEER_PATH` at it —
+see `recipe/anemll/README.md` for the exact wiring. The live config currently
+serves a general-contrast variant from the same derivation; both are verified
+against the pinned checkpoint revision.
+
+## Roadmap
+
+- **Serve Flash + Flash-Vision.** `DeepSeek-V4-Flash-Vision-Exp` launched on
+  the DeepSeek API on 2026-08-21 as an experimental, API-only release — no
+  open weights yet. It is the same base family we already serve, so when
+  weights drop the plan is a second serving profile in this repo (vision
+  weights + tower on the same 2-node stack), not a new stack. The community
+  adapter grafts circulating on HF were evaluated and deliberately skipped.
+- **k=7/greedy draft A/B** (upstream issue #84): now one env line
+  (`DRAFT_SAMPLE_METHOD=greedy MTP_NUM_TOKENS=7`) after the 2026-08-21
+  upstream merge.
+
+## References & credits
+
+- [deepseek-ai/DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) — the model (MIT)
+- [tonyd2wild/DeepSeek-v4-Flash-0731-DSpark-1M-NVFP4-KV-2x-DGX-Spark](https://github.com/tonyd2wild/DeepSeek-v4-Flash-0731-DSpark-1M-NVFP4-KV-2x-DGX-Spark) — the original 2x DSpark NVFP4-KV recipe; its issue #18 is the spec-decode corruption we root-caused before migrating
+- [MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark) — the 2-node recipe we run (cloned at `~/dspark-miaai`, our state vendored in `recipe/anemll/`)
+- [MiaAI-Lab/DeepSeek-v4-Flash-One-DGX-Spark](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-One-DGX-Spark) — single-Spark EXL3 sibling; source of the b12x backport survey and the KV-pool boot-variance explanation
+- [Anemll's GX10 image](https://github.com/anemll) (`ghcr.io/anemll/dspark-vllm-gx10`) — the vLLM 0.25.2 runtime
+- [local-inference-lab/b12x](https://github.com/local-inference-lab/b12x) — the sparkinfer/b12x kernel stack inside the image
+- [0xSero/deepseek-v4-flash-0731-spark](https://huggingface.co/0xSero/deepseek-v4-flash-0731-spark) — the single-Spark EXL3/REAP build (reference)
+- [Loke-60000/deepseek-v4-flash-0731-spark-vision](https://huggingface.co/Loke-60000/deepseek-v4-flash-0731-spark-vision) — community Spark vision serving fix (surveyed, not adopted)
+- [msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec) — our steering vector
 
 ## Status
 
