@@ -1,1 +1,8 @@
 .omc/
+
+# Local serving config — never commit real .env files.
+# Examples (.env.example, .env.*.example) stay tracked.
+.env
+.env.*
+!.env.example
+!.env.*.example

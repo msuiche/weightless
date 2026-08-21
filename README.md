@@ -13,7 +13,7 @@ the fallback path.
 
 | | |
 |---|---|
-| `recipe/anemll/` | **live**: canonical copies of our compose / start script / `.env.dspark` for the MiaAI 2x clone, plus rebuild notes |
+| `recipe/anemll/` | **live**: canonical copies of our compose / start script / `.env.dspark.example` for the MiaAI 2x clone, plus rebuild notes (the real `.env.dspark` is gitignored) |
 | `patches/hotfix-dsv4-steering-projective.py` | **live**: steering as a fail-closed boot hotfix for the 0.25.2 image (embedded GGUF reader; no image build) |
 | `patches/0001-dspark-projective-steering.patch` | the same hook as a git patch against vLLM v0.27.0 (fallback stack) |
 | `recipe/` (top level) | retired v027 stack: `Dockerfile.gguf-dep`, `Dockerfile.steering-overlay`, `docker-compose.v027.yml` |
@@ -186,7 +186,7 @@ Run 007. The v027 stack remains parked as fallback. Cluster ops runbook:
 
 **Serving.** Continuously up on 2x DGX Spark since 2026-08-17, TP=2, steering
 active on 29 layers. Measurements and their full configuration are in
-[`BENCHMARK.md`](BENCHMARK.md); the working values are in `.env.v027.working`.
+[`BENCHMARK.md`](BENCHMARK.md); the working values are in `.env.v027.working.example`.
 
 Settled configuration:
 
