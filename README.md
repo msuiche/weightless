@@ -16,10 +16,18 @@ the fallback path.
 | `recipe/anemll/` | **live**: canonical copies of our compose / start script / `.env.dspark.example` for the MiaAI 2x clone, plus rebuild notes (the real `.env.dspark` is gitignored) |
 | `patches/hotfix-dsv4-steering-projective.py` | **live**: steering as a fail-closed boot hotfix for the 0.25.2 image (embedded GGUF reader; no image build) |
 | `patches/0001-dspark-projective-steering.patch` | the same hook as a git patch against vLLM v0.27.0 (fallback stack) |
+| `patches/0002-dspark-steering-test.patch` | vLLM-side test that extracts and exercises the real GGUF loader (pairs with 0001) |
 | `recipe/` (top level) | retired v027 stack: `Dockerfile.gguf-dep`, `Dockerfile.steering-overlay`, `docker-compose.v027.yml` |
-| `scripts/` | build-guard tests |
+| `scripts/` | structural guard test for the steering patch |
 | `spec/CONTROL-VECTOR.md` | the projective control-vector GGUF format: the `dspark.mode` contract, layer-id mapping, and why an additive reader must refuse the file |
 | `BENCHMARK.md` | every serving measurement, with shapes stated (Runs 001–007) |
+| `.env.v027.working.example` | env template for the fallback v027 stack |
+
+Real `.env` files are gitignored — only `*.example` templates are tracked
+(`.env.dspark.example` under `recipe/anemll/` is the live one). The live
+values live on the cluster and in `../DSPARK-HANDOFF.md`. **2026-08-21: the
+git history was rewritten to purge previously-committed env files — old
+clones will not fast-forward; re-clone.**
 
 Maintenance home for the patch is the `dspark-steering-v027` branch of
 [`msuiche/vllm`](https://github.com/msuiche/vllm) (public), so upstream bumps get
@@ -31,7 +39,7 @@ git -C ../vllm diff v0.27.0..dspark-steering-v027 \
   > patches/0001-dspark-projective-steering.patch
 ```
 
-## Applying it: no image build required
+## Applying it (fallback v027 stack): no image build required
 
 The patch is one file, so the fast path is to run the **stock** v027 image and
 bind-mount the patched `model.py` over the original. Verified on this setup: a
@@ -66,7 +74,7 @@ Use `recipe/Dockerfile.steering-overlay` once the configuration is settled, to
 get one reproducible artifact instead of a mount that has to match on both
 nodes.
 
-## Base image
+## Base image (fallback v027 stack)
 
 `ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production`
 
@@ -91,9 +99,12 @@ per-kernel: a 2x kernel is not a 2x server.
 
 ## Steering
 
-Off unless `DSPARK_STEER_PATH` is set.
+Off unless `DSPARK_STEER_PATH` is set. On the **live** Anemll stack the env
+vars are passed through by `recipe/anemll/docker-compose.dspark.yml` and the
+GGUF reader is embedded in the hotfix, so nothing here needs building — this
+section's build guidance concerns the fallback v027 stack.
 
-**The base image has no `gguf` module**, so a `.gguf` steer path fails and the
+**The v027 base image has no `gguf` module**, so a `.gguf` steer path fails and the
 server logs `DSpark steering load failed (No module named 'gguf'); serving
 unsteered` — honest, but unsteered. Build `recipe/Dockerfile.gguf-dep` (one pip
 layer on top of v027, tagged `vllm-dspark-steering:v027-gguf`) and point
