@@ -15,51 +15,58 @@ on the post-layer residual stream, layers/alpha/vector gated by env:
                        calibrated AT alpha 1.0 (unlike the DSV4 lane's 4.0)
     QWEN_STEER_LAYERS  optional comma list restricting layer ids
 
-Architecture differences from the DSV4 hotfix, and why:
+TWO FILES are patched, and the reason bit us in production:
 
-- Qwen3_5Model inherits its forward from Qwen3NextModel, so this patches
-  ``qwen3_next.py`` (one file, one class) rather than ``qwen3_5.py``. The
-  machinery is inert unless QWEN_STEER_PATH is set, so Qwen3-Next models
-  sharing the file are unaffected.
+- ``qwen3_next.py`` gets the module block (GGUF reader + loader), the
+  ``_load_steering`` method, and the per-layer apply in
+  ``Qwen3NextModel.forward`` (which Qwen3_5Model inherits).
+- ``qwen3_5.py`` gets the buffer registration in ``Qwen3_5Model.__init__``.
+  Qwen3_5Model OVERRIDES __init__ and deliberately skips its parent's
+  (``super(Qwen3NextModel, self).__init__()``), so buffers registered only
+  in Qwen3NextModel.__init__ never exist on the class that actually serves
+  — while the inherited forward still reads them. First boot crashed at
+  torch.compile with "'Qwen3_5Model' object has no attribute '_steer_stack'".
+  ``_load_steering`` itself stays on Qwen3NextModel: methods inherit, and
+  its globals resolve in qwen3_next.py's module namespace.
+
+Other architecture notes:
+
 - The (hidden_states, residual) pair here is vLLM's decomposed convention:
   the true residual stream after a layer is ``hidden_states + residual`` (the
   add is fused into the next layernorm). The derivation measured the FULL
   post-layer stream (HF layer outputs), so the apply steers the sum and
-  writes it back into hidden_states, leaving residual untouched. Steering
-  hidden_states alone would remove the component from only part of the
-  stream.
-- alpha defaults to 1.0: the shipping Qwen vector
-  (Qwen3.8-27B-refusal-cvec-per_layer-L10-58-a1.gguf) is a re-export at the
-  measured alpha, per the evals. Do not import the DSV4 lane's 4.0.
-
-The GGUF reader and every spec check are verbatim from the DSV4 hotfix: the
-container contract (dspark.mode=project, hook_point, layer-id cross-check,
-direction.0 rejection) is lane-independent. eugr/drowzeys images do not ship
-the ``gguf`` package either, so the embedded parser is kept.
+  writes it back into hidden_states, leaving residual untouched.
+- The GGUF reader and every spec check are verbatim from the DSV4 hotfix:
+  the container contract (dspark.mode=project, hook_point, layer-id
+  cross-check, direction.0 rejection) is lane-independent.
 
 Failure semantics (fail-closed where it matters):
 
-- Anchors not found: exit 1 if QWEN_STEER_PATH is set (a boot that was asked
-  for steering must not silently serve unsteered), exit 0 otherwise.
+- Anchors not found in either file: exit 1 if QWEN_STEER_PATH is set (a boot
+  that was asked for steering must not silently serve unsteered), exit 0
+  otherwise.
 - QWEN_STEER_PATH set but the vector file is missing/invalid/non-project:
   exit 1, before the model load.
 
 Patches
 /usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/qwen3_next.py
-in-place inside the container (called from the serve script before
-``exec vllm serve``). Idempotent: re-applying is a no-op once the marker is
-present. ``--status`` reports state; ``--check`` validates the vector named
-by QWEN_STEER_PATH without touching qwen3_next.py.
+and .../qwen3_5.py in-place inside the container (called from the serve
+script before ``exec vllm serve``). Idempotent per file: re-applying is a
+no-op once the marker is present. ``--status`` reports state; ``--check``
+validates the vector named by QWEN_STEER_PATH without touching the files.
 """
 import os
 from pathlib import Path
 import sys
 
-# Overridable for dry-runs against a copy of qwen3_next.py outside the
-# container.
+# Overridable for dry-runs against copies outside the container.
 P = Path(os.environ.get(
     "QWEN_STEERING_MODEL_PY",
     "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/qwen3_next.py",
+))
+P35 = Path(os.environ.get(
+    "QWEN_STEERING_MODEL_PY_35",
+    str(P.parent / "qwen3_5.py"),
 ))
 MARK = "# [steering-hotfix] projective activation steering (Qwen3.5/3.8)"
 
@@ -266,7 +273,8 @@ def _load_gguf_control_vector(path: str) -> dict:
     return out
 '''
 
-# Module-level block injected after the logger instantiation.
+# Module-level block injected into qwen3_next.py after the logger
+# instantiation.
 MODULE_BLOCK = (
     "\n"
     "# ---------------------------------------------------------------------------\n"
@@ -290,42 +298,9 @@ MODULE_BLOCK = (
     + GGUF_SRC
 )
 
-# __init__ tail block + _load_steering method, injected between the
-# aux_hidden_state_layers assignment and embed_input_ids.
-INIT_BLOCK = '''\
-
-        # ---- projective activation steering ---------------------------------
-        self._steer_alpha_val = float(os.environ.get("QWEN_STEER_ALPHA", "1.0") or 1.0)
-        self._steer_dirs: dict[int, torch.Tensor] = {}
-        _dev = current_platform.device_type
-        _dtype = vllm_config.model_config.dtype
-        # Allocated unconditionally, zeros when steering is off. A
-        # None-when-disabled branch changes the traced graph, and that
-        # difference is not part of vLLM's compile cache key: a compiled
-        # artifact from one layer set was reused by another and died with
-        # KeyError. A dense stack indexed by layer id keeps the graph
-        # identical for every layer set, so only values change.
-        self.register_buffer(
-            "_steer_stack",
-            torch.zeros(
-                config.num_hidden_layers, 1, config.hidden_size,
-                device=_dev, dtype=_dtype,
-            ),
-            persistent=False,
-        )
-        # alpha is a TENSOR, not a Python float. torch.compile bakes Python
-        # scalars into the traced graph as constants and vLLM caches compiled
-        # graphs, so a float alpha is frozen at first compile and every later
-        # boot silently reuses it. A tensor is read at runtime, so alpha
-        # takes effect without recompiling.
-        self.register_buffer(
-            "_steer_alpha",
-            torch.zeros((), device=_dev, dtype=_dtype),
-            persistent=False,
-        )
-        # Buffers are non-persistent so they never enter the state dict, which
-        # would make load_weights report them as unexpected keys.
-        self._load_steering(config, _dev, _dtype)
+# _load_steering method, injected into Qwen3NextModel (qwen3_next.py).
+# Qwen3_5Model inherits it; its globals resolve in this module's namespace.
+LOAD_METHOD_BLOCK = '''\
 
     def _load_steering(self, config, device, dtype) -> None:
         """Fill _steer_stack from QWEN_STEER_PATH. No-op when unset.
@@ -404,7 +379,48 @@ INIT_BLOCK = '''\
             self._steer_dirs = {}
 '''
 
-# Per-layer apply in the forward loop.
+# Buffer registration, injected into BOTH Qwen3NextModel.__init__
+# (qwen3_next.py) and Qwen3_5Model.__init__ (qwen3_5.py). The qwen3_5 copy
+# carries the marker: Qwen3_5Model.__init__ deliberately skips its parent's
+# __init__, and a boot where only the parent got the buffers crashed at
+# torch.compile ('Qwen3_5Model' object has no attribute '_steer_stack').
+INIT_BLOCK = '''\
+
+        # ---- projective activation steering ---------------------------------
+        self._steer_alpha_val = float(os.environ.get("QWEN_STEER_ALPHA", "1.0") or 1.0)
+        self._steer_dirs: dict[int, torch.Tensor] = {}
+        _dev = current_platform.device_type
+        _dtype = vllm_config.model_config.dtype
+        # Allocated unconditionally, zeros when steering is off. A
+        # None-when-disabled branch changes the traced graph, and that
+        # difference is not part of vLLM's compile cache key: a compiled
+        # artifact from one layer set was reused by another and died with
+        # KeyError. A dense stack indexed by layer id keeps the graph
+        # identical for every layer set, so only values change.
+        self.register_buffer(
+            "_steer_stack",
+            torch.zeros(
+                config.num_hidden_layers, 1, config.hidden_size,
+                device=_dev, dtype=_dtype,
+            ),
+            persistent=False,
+        )
+        # alpha is a TENSOR, not a Python float. torch.compile bakes Python
+        # scalars into the traced graph as constants and vLLM caches compiled
+        # graphs, so a float alpha is frozen at first compile and every later
+        # boot silently reuses it. A tensor is read at runtime, so alpha
+        # takes effect without recompiling.
+        self.register_buffer(
+            "_steer_alpha",
+            torch.zeros((), device=_dev, dtype=_dtype),
+            persistent=False,
+        )
+        # Buffers are non-persistent so they never enter the state dict, which
+        # would make load_weights report them as unexpected keys.
+        self._load_steering(config, _dev, _dtype)
+'''
+
+# Per-layer apply in Qwen3NextModel.forward (inherited by Qwen3_5Model).
 FORWARD_BLOCK = '''\
             # Unconditional per-layer projection: h <- h - alpha (h.d) d. Rows
             # are zero for layers we do not steer, so this is a numeric no-op
@@ -422,34 +438,36 @@ FORWARD_BLOCK = '''\
             ) - residual
 '''
 
-ANCHOR_IMPORT = (
+# --- qwen3_next.py anchors -------------------------------------------------
+NEXT_ANCHOR_IMPORT = (
     "import torch\n"
     "from torch import nn"
 )
-REPLACEMENT_IMPORT = (
+NEXT_REPLACEMENT_IMPORT = (
     "import os\n"
     "import torch\n"
     "from torch import nn"
 )
 
-ANCHOR_MODULE = (
+NEXT_ANCHOR_MODULE = (
     "logger = init_logger(__name__)\n"
 )
-REPLACEMENT_MODULE = ANCHOR_MODULE + MODULE_BLOCK
+NEXT_REPLACEMENT_MODULE = NEXT_ANCHOR_MODULE + MODULE_BLOCK
 
-ANCHOR_INIT = (
+NEXT_ANCHOR_INIT = (
     "        self.aux_hidden_state_layers: tuple[int, ...] = ()\n"
     "\n"
     "    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:"
 )
-REPLACEMENT_INIT = (
+NEXT_REPLACEMENT_INIT = (
     "        self.aux_hidden_state_layers: tuple[int, ...] = ()\n"
     + INIT_BLOCK
+    + LOAD_METHOD_BLOCK
     + "\n"
     "    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:"
 )
 
-ANCHOR_FORWARD = (
+NEXT_ANCHOR_FORWARD = (
     "            hidden_states, residual = layer(\n"
     "                positions=positions,\n"
     "                hidden_states=hidden_states,\n"
@@ -457,7 +475,7 @@ ANCHOR_FORWARD = (
     "            )\n"
     "            if (layer_idx + 1) in self.aux_hidden_state_layers"
 )
-REPLACEMENT_FORWARD = (
+NEXT_REPLACEMENT_FORWARD = (
     "            hidden_states, residual = layer(\n"
     "                positions=positions,\n"
     "                hidden_states=hidden_states,\n"
@@ -467,11 +485,56 @@ REPLACEMENT_FORWARD = (
     + "            if (layer_idx + 1) in self.aux_hidden_state_layers"
 )
 
-PATCHES = (
-    ("import os", ANCHOR_IMPORT, REPLACEMENT_IMPORT),
-    ("module steering block", ANCHOR_MODULE, REPLACEMENT_MODULE),
-    ("__init__/_load_steering", ANCHOR_INIT, REPLACEMENT_INIT),
-    ("forward apply", ANCHOR_FORWARD, REPLACEMENT_FORWARD),
+NEXT_PATCHES = (
+    ("import os", NEXT_ANCHOR_IMPORT, NEXT_REPLACEMENT_IMPORT),
+    ("module steering block", NEXT_ANCHOR_MODULE, NEXT_REPLACEMENT_MODULE),
+    ("__init__ buffers + _load_steering", NEXT_ANCHOR_INIT, NEXT_REPLACEMENT_INIT),
+    ("forward apply", NEXT_ANCHOR_FORWARD, NEXT_REPLACEMENT_FORWARD),
+)
+
+# --- qwen3_5.py anchors ------------------------------------------------------
+# Qwen3_5Model.__init__ overrides and SKIPS Qwen3NextModel.__init__, so the
+# buffers must be registered here too. _load_steering is inherited.
+P35_ANCHOR_IMPORT = (
+    "import torch\n"
+    "from torch import nn"
+)
+P35_REPLACEMENT_IMPORT = (
+    "import os\n"
+    "import torch\n"
+    "from torch import nn"
+)
+
+P35_ANCHOR_PLATFORM = (
+    "from vllm.logger import init_logger\n"
+)
+P35_REPLACEMENT_PLATFORM = (
+    "from vllm.logger import init_logger\n"
+    "from vllm.platforms import current_platform\n"
+)
+
+P35_ANCHOR_INIT = (
+    "        self.aux_hidden_state_layers: tuple[int, ...] = ()\n"
+    "\n"
+    "    def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:"
+)
+P35_REPLACEMENT_INIT = (
+    "        self.aux_hidden_state_layers: tuple[int, ...] = ()\n"
+    + INIT_BLOCK
+    + "        " + MARK + "\n"
+    + "\n"
+    "    def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:"
+)
+
+P35_PATCHES = (
+    ("import os", P35_ANCHOR_IMPORT, P35_REPLACEMENT_IMPORT),
+    ("import current_platform", P35_ANCHOR_PLATFORM, P35_REPLACEMENT_PLATFORM),
+    ("__init__ buffers (Qwen3_5Model)", P35_ANCHOR_INIT, P35_REPLACEMENT_INIT),
+)
+
+FILE_PATCHES = (
+    ("qwen3_next.py", P, NEXT_PATCHES),
+    ("qwen3_5.py", P35, P35_PATCHES),
 )
 
 
@@ -534,37 +597,47 @@ def check_vector() -> int:
 
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--status":
-        status_src = P.read_text() if P.is_file() else ""
+        for label, path, _ in FILE_PATCHES:
+            src = path.read_text() if path.is_file() else ""
+            print(
+                f"steering (projective cvec) {label}:",
+                "APPLIED" if MARK in src else "NOT APPLIED",
+            )
         print(
-            "steering (projective cvec)          :",
-            "APPLIED" if MARK in status_src else "NOT APPLIED",
-            "| QWEN_STEER_PATH",
+            "QWEN_STEER_PATH",
             "set" if steer_requested() else "unset",
         )
         return 0
     if len(sys.argv) > 1 and sys.argv[1] == "--check":
         return check_vector()
 
-    src = P.read_text()
-    if MARK in src:
-        print(f"[steering-hotfix] already applied to {P}")
-        return check_vector() if steer_requested() else 0
+    rc = 0
+    for label, path, patches in FILE_PATCHES:
+        src = path.read_text()
+        if MARK in src:
+            print(f"[steering-hotfix] already applied to {path}")
+            continue
 
-    missing = [name for name, old, _ in PATCHES if old not in src]
-    if missing:
-        msg = f"[steering-hotfix] anchors not found: {missing}; refusing to patch"
-        if steer_requested():
-            print(msg + " (QWEN_STEER_PATH is set; failing closed)", file=sys.stderr)
-            return 1
-        print(msg + " (steering off; leaving qwen3_next.py stock)")
-        return 0
+        missing = [name for name, old, _ in patches if old not in src]
+        if missing:
+            msg = (
+                f"[steering-hotfix] anchors not found in {label}: "
+                f"{missing}; refusing to patch"
+            )
+            if steer_requested():
+                print(msg + " (QWEN_STEER_PATH is set; failing closed)",
+                      file=sys.stderr)
+                return 1
+            print(msg + " (steering off; leaving the file stock)")
+            rc = 0
+            continue
 
-    for name, old, new in PATCHES:
-        assert src.count(old) == 1, f"anchor {name!r} not unique"
-        src = src.replace(old, new, 1)
-    P.write_text(src)
-    print(f"[steering-hotfix] applied to {P} ({len(PATCHES)} anchors)")
-    return check_vector() if steer_requested() else 0
+        for name, old, new in patches:
+            assert src.count(old) == 1, f"anchor {name!r} not unique in {label}"
+            src = src.replace(old, new, 1)
+        path.write_text(src)
+        print(f"[steering-hotfix] applied to {path} ({len(patches)} anchors)")
+    return check_vector() if steer_requested() and rc == 0 else rc
 
 
 if __name__ == "__main__":
