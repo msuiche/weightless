@@ -11,27 +11,25 @@ the fallback path.
 
 ## Lanes
 
-Three serving setups are relevant to us. This repo is the home of the first
-and the reference point for the other two.
+Two serving setups are relevant to us. This repo is the home of the first;
+the second is vendored under `recipe/qwen/`.
 
 | lane | hardware | model | steering | status |
 |---|---|---|---|---|
 | **DSV4 TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-0731, NVFP4 (166.9 GB) | projective cvec, live on 29 layers | **live** — this repo |
-| **DSV4 TP=1** | one Spark | same family, EXL3 3.0bpw + REAP-K216 (216/256 experts) | needs port + re-derivation (see below) | planned — [MiaAI One-DGX recipe](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-One-DGX-Spark) |
 | **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | per-layer cvec, L10–58 at α=1.0 ([shipping artifact](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cvec)) | **profile added** — `recipe/qwen/`; structurally tested, not yet booted on hardware |
 
-TP=1 DSV4 is **not** this config with TP flipped: the full NVFP4 checkpoint
-(166.9 GB) exceeds one Spark's 121 GB unified memory before KV cache, so
-single-node means the EXL3 artifact — a different quant with its own quality
-and context tradeoffs. The control vector does not transfer either, for two
-independent reasons: the One-DGX build is REAP-pruned to 216 of 256 routed
-experts per MoE layer, so the refusal direction must be re-derived on the
-pruned circuit (the layer ids survive — REAP cuts experts, not layers); and
-that stack runs sparkinfer, not vLLM, so the projective hook itself needs
-re-implementing against a different MoE forward path. (A quant-only EXL3 of
-the identical checkpoint would likely accept the vector with an α
-recalibration — unverified.) The steering *contract* in
-`spec/CONTROL-VECTOR.md` is lane-independent.
+**Single-Spark DSV4 (EXL3 3.0bpw + REAP-K216): evaluated and rejected.**
+The full NVFP4 checkpoint (166.9 GB) cannot fit one Spark, so single-node
+DSV4 exists only as the pruned/quantized artifact (99.5 GiB — REAP deletes
+40 of 256 routed experts per MoE layer, ~15% of the circuit that produces
+the residual stream, on top of the 3.0bpw quant). Benchmarks pass, but the
+degradation concentrates in rare behaviour by construction, which is not a
+trade we want in our recipes. It would also have meant re-deriving the
+control vector on the pruned circuit and porting the hook to sparkinfer.
+TP=1 DSV4 is therefore not "this config with TP flipped" — it is a smaller,
+approximated model, and we do not serve it. The steering *contract* in
+`spec/CONTROL-VECTOR.md` remains lane-independent.
 
 ## Layout
 
@@ -193,19 +191,18 @@ against the pinned checkpoint revision.
 - **k=7/greedy draft A/B** (upstream issue #84): now one env line
   (`DRAFT_SAMPLE_METHOD=greedy MTP_NUM_TOKENS=7`) after the 2026-08-21
   upstream merge.
-- **TP=1 lanes** (see [Lanes](#lanes)): the Qwen profile is in `recipe/qwen/`
-  awaiting its first hardware boot and refusal probe; the DSV4-EXL3 lane
-  remains planned (vector re-derivation on the pruned artifact).
+- **Qwen TP=1 lane** (see [Lanes](#lanes)): the profile is in `recipe/qwen/`
+  awaiting its first hardware boot and refusal probe.
 
 ## References & credits
 
 - [deepseek-ai/DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) — the model (MIT)
 - [tonyd2wild/DeepSeek-v4-Flash-0731-DSpark-1M-NVFP4-KV-2x-DGX-Spark](https://github.com/tonyd2wild/DeepSeek-v4-Flash-0731-DSpark-1M-NVFP4-KV-2x-DGX-Spark) — the original 2x DSpark NVFP4-KV recipe; its issue #18 is the spec-decode corruption we root-caused before migrating
 - [MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark) — the 2-node recipe we run (cloned at `~/dspark-miaai`, our state vendored in `recipe/anemll/`)
-- [MiaAI-Lab/DeepSeek-v4-Flash-One-DGX-Spark](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-One-DGX-Spark) — single-Spark EXL3 sibling; source of the b12x backport survey and the KV-pool boot-variance explanation
+- [MiaAI-Lab/DeepSeek-v4-Flash-One-DGX-Spark](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-One-DGX-Spark) — single-Spark EXL3/REAP sibling (lane rejected — REAP pruning degrades the tail); source of the b12x backport survey and the KV-pool boot-variance explanation
 - [Anemll's GX10 image](https://github.com/anemll) (`ghcr.io/anemll/dspark-vllm-gx10`) — the vLLM 0.25.2 runtime
 - [local-inference-lab/b12x](https://github.com/local-inference-lab/b12x) — the sparkinfer/b12x kernel stack inside the image
-- [0xSero/deepseek-v4-flash-0731-spark](https://huggingface.co/0xSero/deepseek-v4-flash-0731-spark) — the single-Spark EXL3/REAP build (reference)
+- [0xSero/deepseek-v4-flash-0731-spark](https://huggingface.co/0xSero/deepseek-v4-flash-0731-spark) — the single-Spark EXL3/REAP build (evaluated, rejected — see Lanes)
 - [Loke-60000/deepseek-v4-flash-0731-spark-vision](https://huggingface.co/Loke-60000/deepseek-v4-flash-0731-spark-vision) — community Spark vision serving fix (surveyed, not adopted)
 - [msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec) — our steering vector
 - [drowzeys/keys-vLLm.0.27-Qwen3.8-NVFP4-MTP3-Single-DGX-Spark](https://github.com/drowzeys/keys-vLLm.0.27-Qwen3.8-NVFP4-MTP3-Single-DGX-Spark) — the Qwen TP=1 lane's serving recipe
