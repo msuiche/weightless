@@ -9,6 +9,25 @@ vLLM 0.25.2) driven by the MiaAI 2x recipe, with our state on top vendored in
 `recipe/anemll/`. The retired v027 stack's patch is kept for reference and as
 the fallback path.
 
+## Lanes
+
+Three serving setups are relevant to us. This repo is the home of the first
+and the reference point for the other two.
+
+| lane | hardware | model | steering | status |
+|---|---|---|---|---|
+| **DSV4 TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-0731, NVFP4 (166.9 GB) | projective cvec, live on 29 layers | **live** — this repo |
+| **DSV4 TP=1** | one Spark | same family, EXL3 quant | needs re-derivation on the EXL3 layer stack | planned — [MiaAI One-DGX recipe](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-One-DGX-Spark) |
+| **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | vectors derived and evaluated (`../evals/QWEN38-27B.md`) | research done; not a serving profile here |
+
+TP=1 DSV4 is **not** this config with TP flipped: the full NVFP4 checkpoint
+(166.9 GB) exceeds one Spark's 121 GB unified memory before KV cache, so
+single-node means the EXL3 artifact — a different quant with its own quality
+and context tradeoffs. The control vector does not transfer either way: it is
+calibrated on this checkpoint's residual stream and layer ids, so each lane
+derives its own. The steering *mechanism* (the projective hook and the GGUF
+contract in `spec/CONTROL-VECTOR.md`) is lane-independent.
+
 ## Layout
 
 | | |
@@ -167,6 +186,8 @@ against the pinned checkpoint revision.
 - **k=7/greedy draft A/B** (upstream issue #84): now one env line
   (`DRAFT_SAMPLE_METHOD=greedy MTP_NUM_TOKENS=7`) after the 2026-08-21
   upstream merge.
+- **TP=1 lanes** (DSV4-EXL3 and Qwen, see [Lanes](#lanes)): adopt as serving
+  profiles here once the per-lane steering vectors are derived.
 
 ## References & credits
 
@@ -179,6 +200,7 @@ against the pinned checkpoint revision.
 - [0xSero/deepseek-v4-flash-0731-spark](https://huggingface.co/0xSero/deepseek-v4-flash-0731-spark) — the single-Spark EXL3/REAP build (reference)
 - [Loke-60000/deepseek-v4-flash-0731-spark-vision](https://huggingface.co/Loke-60000/deepseek-v4-flash-0731-spark-vision) — community Spark vision serving fix (surveyed, not adopted)
 - [msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec) — our steering vector
+- [drowzeys/keys-vLLm.0.27-Qwen3.8-NVFP4-MTP3-Single-DGX-Spark](https://github.com/drowzeys/keys-vLLm.0.27-Qwen3.8-NVFP4-MTP3-Single-DGX-Spark) — the Qwen TP=1 lane's serving recipe
 
 ## Status
 
