@@ -615,3 +615,109 @@ value to configure — lands exactly on the kernel's default width and costs 19x
 prefill. Anyone serving DeepSeek V4 Flash at its documented context on vLLM
 v0.27.x hits this, and the symptom looks like "long context is slow" rather than
 like a bug.
+
+
+---
+
+## Run 006 — MiaAI Anemll recipe, migration validation
+
+**2026-08-21.** The serving stack changed underneath this document. The Stage-C
+overlay (vLLM 0.21.1) was retired after its DSpark draft path was isolated as
+the source of deterministic long-context output corruption (spec-gate A/B:
+identical probes clean with spec off, looping with spec on; onset position a
+deterministic function of prompt length — the same family as tonyd2wild issue
+#18). The replacement is the maintained
+[MiaAI-Lab recipe](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark):
+Anemll `ghcr.io/anemll/dspark-vllm-gx10:0.1.1` (vLLM 0.25.2.dev0) + 12 boot
+hotfixes (#21/#22/#26v2/#27/#43/#55 etc.), recipe clone `~/dspark-miaai` on
+both nodes.
+
+| | |
+|---|---|
+| runtime | vLLM `0.25.2.dev0`, Anemll `0.1.1` image (ID `3430d6614a8e`) |
+| model revision | `7872f01b` (on-disk snapshot; recipe-tested pin is `9e165c30`) |
+| max model len | **1,048,576** — KV pool 1,857,271 tokens, 1.77x at 1M |
+| KV cache dtype | `nvfp4_ds_mla` (recipe default + issue-22 dispatch hotfix) |
+| speculative decoding | **on**, `dspark` k=5 probabilistic |
+| max num seqs / batched tokens | 6 / 8,192, prefill threshold 1,024 |
+| gpu mem utilisation | 0.80 |
+| steering | **OFF** — the 271-line patch targets v0.27's `model.py` and does not apply to 0.25.2; port pending |
+
+### Results (client wall over WiFi, TTFT included — not `vllm bench serve`)
+
+| shape | out tok/s | acceptance | note |
+|---|---:|---:|---|
+| peak-finder (count 1–300) | **79.1** | ~100 % | fr=stop |
+| prose (TCP congestion control) | 31.9 | 46 % | fr=length at 512 |
+
+Deep context (needle at 40 % depth, temp 0, generation checked for repetition
+onset):
+
+| prompt tokens | prefill tok/s | needle | repeat onset |
+|---:|---:|---|---|
+| 28,542 | 2,243 | HIT | none |
+| 114,041 | 1,611 | HIT | none |
+| 233,383 | 1,453 | HIT | none |
+
+The tonyd2wild #18 deterministic loop reproducer (Spanish factory arithmetic,
+temp 0) — which verbatim-looped to budget exhaustion on Stage-C every time —
+completes in **152 tokens with the correct answer (636)**.
+
+### Reading these numbers
+
+- Peak-finder at 79.1 tok/s matches Run 002's 77.3 on v027 and the retired
+  stack's 78.4 with Patch 4 — spec decode is at parity or better, with none of
+  the Stage-C corruption. probe6 (repeat-onset sweep 0/4k/16k/64k chars) is
+  clean at every depth.
+- Prose at 31.9 vs Run 002's 43.1: this measurement includes TTFT and WiFi
+  latency; Run 002's was taken in-container. Same shape, same ~46 % acceptance
+  — treat as equal.
+- Prefill at 233k (1,453 tok/s) is inside Run 004/005's gradual-degradation
+  envelope, not the width-8192 collapse. The 1M-collapse localisation was on
+  v0.27.x; whether 0.25.2 shares it was not tested — a full 1M-token prefill
+  was not exercised (233k was the gate, matching Run 004's functional depth).
+- nvfp4_ds_mla is back in use (it does not exist upstream in v0.27, which
+  forced fp8 there); on 0.25.2 it is the recipe default and the issue-22
+  hotfix covers its long-context dispatch regression.
+
+## Run 007 — steering ported to the Anemll stack (0.25.2 hotfix)
+
+Same MiaAI Anemll 0.1.1 stack as Run 006, now with projective steering
+re-enabled via `patches/hotfix-dsv4-steering-projective.py` (boot hotfix, 4
+anchors on the 0.25.2 `model.py`; the v027 patch does not apply there and the
+image ships no `gguf` package, so the spec-conformant GGUF reader is embedded
+in the hotfix). Identical vector, alpha and layer set as the v027 config:
+`DeepSeek-V4-Flash-0731-general-abliterated-cvec-L10-38-a4-keysdir.gguf`,
+alpha 4.0, layers 10–38 (rank 1, 29 directions, n_embd 4096).
+
+Artifact provenance re-verified before wiring: the GGUF parses clean against
+the spec (mode=project, hook residual_stream_post_layer, declared layers =
+tensor layers, base rev 7872f01b = the pinned checkpoint), and the two .pt
+files on disk resolve unambiguously — `steer-keysdir-29.pt` ≡ general-keysdir
+GGUF and `steer-29.pt` ≡ cyber GGUF (cos 1.0000 per layer both ways; the two
+families sit at cos ~0.20 against each other).
+
+Validation (2026-08-21, spec decode ON, steering ON, both TP ranks logging
+`DSpark refusal steering active: hook=post_layer alpha=4.000 ... layers=29`):
+
+| check | result |
+|---|---|
+| boot hotfix | applied at 4/4 anchors both nodes; `--check` validates vector before model load; fail-closed when `DSPARK_STEER_PATH` set but patch/vector can't apply |
+| refusal A/B probe | 8× refusal32 + 4× blueteam32, temp 0: **12/12 bypass, 0 refuse, 0 garbled** (stock refuses the refusal32 class; blue-team answers stayed coherent) |
+| recipe smoke | 6/6 |
+| garble sweep (0/4k/16k/64k chars, temp 0) | **ALL CLEAN**, incl. the 64k case that looped on Stage-C |
+| spec acceptance | 2040/5470 = **37.3 %**, per-position 783/535/357/225/140 — healthy decay, no draft degradation from steering |
+
+Cost: none measured, consistent with the v027 finding (projection is one
+GEMV + one outer product per steered layer against full attention+MoE
+matmuls; v027 measured 42–44 tok/s steered vs unsteered, inside noise).
+
+Ops notes:
+
+- Steering is config in `.env.dspark` (`DSPARK_STEER_PATH/_ALPHA/_LAYERS`),
+  wired through compose env passthrough; off = empty `DSPARK_STEER_PATH`.
+  The cyber variant is a one-line swap.
+- The start script syncs hotfixes and `.env.dspark` to the worker but **not**
+  `docker-compose.dspark.yml` — sync it manually when it changes.
+- v027 stack stays parked as the fallback; its steering image is no longer
+  needed for steering since this port, only for v027-specific experiments.

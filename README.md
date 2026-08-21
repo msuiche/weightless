@@ -134,6 +134,19 @@ carry it to another model.
 
 ## Status
 
+**2026-08-21: the serving stack is now the MiaAI Anemll recipe** (Anemll
+`0.1.1`, vLLM 0.25.2), not the v027+steering image below. Stage-C was retired
+after its DSpark draft was root-caused as the long-context corruption source.
+**Steering is ported**: `patches/hotfix-dsv4-steering-projective.py` applies
+the same projective hook to the 0.25.2 `model.py` as a MiaAI-style fail-closed
+boot hotfix (the image ships no `gguf` package, so the spec-conformant GGUF
+reader is embedded). Live on both TP ranks with the identical vector, alpha
+and layer set as the v027 config; validation in [`BENCHMARK.md`](BENCHMARK.md)
+Run 007. The v027 stack remains parked as fallback. Cluster ops runbook:
+`../DSPARK-HANDOFF.md`.
+
+<details><summary>Superseded status (v027 stack, 2026-08-19)</summary>
+
 **Serving.** Continuously up on 2x DGX Spark since 2026-08-17, TP=2, steering
 active on 29 layers. Measurements and their full configuration are in
 [`BENCHMARK.md`](BENCHMARK.md); the working values are in `.env.v027.working`.
@@ -156,3 +169,5 @@ parity with the retired stack's 78.4 tok/s and needs no Patch 4.
 Known gaps: no needle is perfect at ~0.5M (5 of 6 exact to 514,035 tokens, one
 returned 9 of 10 characters), 1M context remains impractical, and there is no
 throughput baseline on the retired image so the upgrade is not attributable.
+
+</details>
