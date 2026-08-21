@@ -17,16 +17,21 @@ and the reference point for the other two.
 | lane | hardware | model | steering | status |
 |---|---|---|---|---|
 | **DSV4 TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-0731, NVFP4 (166.9 GB) | projective cvec, live on 29 layers | **live** — this repo |
-| **DSV4 TP=1** | one Spark | same family, EXL3 quant | needs re-derivation on the EXL3 layer stack | planned — [MiaAI One-DGX recipe](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-One-DGX-Spark) |
+| **DSV4 TP=1** | one Spark | same family, EXL3 3.0bpw + REAP-K216 (216/256 experts) | needs port + re-derivation (see below) | planned — [MiaAI One-DGX recipe](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-One-DGX-Spark) |
 | **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | vectors derived and evaluated (`../evals/QWEN38-27B.md`) | research done; not a serving profile here |
 
 TP=1 DSV4 is **not** this config with TP flipped: the full NVFP4 checkpoint
 (166.9 GB) exceeds one Spark's 121 GB unified memory before KV cache, so
 single-node means the EXL3 artifact — a different quant with its own quality
-and context tradeoffs. The control vector does not transfer either way: it is
-calibrated on this checkpoint's residual stream and layer ids, so each lane
-derives its own. The steering *mechanism* (the projective hook and the GGUF
-contract in `spec/CONTROL-VECTOR.md`) is lane-independent.
+and context tradeoffs. The control vector does not transfer either, for two
+independent reasons: the One-DGX build is REAP-pruned to 216 of 256 routed
+experts per MoE layer, so the refusal direction must be re-derived on the
+pruned circuit (the layer ids survive — REAP cuts experts, not layers); and
+that stack runs sparkinfer, not vLLM, so the projective hook itself needs
+re-implementing against a different MoE forward path. (A quant-only EXL3 of
+the identical checkpoint would likely accept the vector with an α
+recalibration — unverified.) The steering *contract* in
+`spec/CONTROL-VECTOR.md` is lane-independent.
 
 ## Layout
 
