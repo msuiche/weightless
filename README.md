@@ -18,7 +18,7 @@ and the reference point for the other two.
 |---|---|---|---|---|
 | **DSV4 TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-0731, NVFP4 (166.9 GB) | projective cvec, live on 29 layers | **live** — this repo |
 | **DSV4 TP=1** | one Spark | same family, EXL3 3.0bpw + REAP-K216 (216/256 experts) | needs port + re-derivation (see below) | planned — [MiaAI One-DGX recipe](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-One-DGX-Spark) |
-| **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | vectors derived and evaluated (`../evals/QWEN38-27B.md`) | research done; not a serving profile here |
+| **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | per-layer cvec, L10–58 at α=1.0 ([shipping artifact](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cvec)) | **profile added** — `recipe/qwen/`; structurally tested, not yet booted on hardware |
 
 TP=1 DSV4 is **not** this config with TP flipped: the full NVFP4 checkpoint
 (166.9 GB) exceeds one Spark's 121 GB unified memory before KV cache, so
@@ -38,11 +38,13 @@ recalibration — unverified.) The steering *contract* in
 | | |
 |---|---|
 | `recipe/anemll/` | **live**: canonical copies of our compose / start script / `.env.dspark.example` for the MiaAI 2x clone, plus rebuild notes (the real `.env.dspark` is gitignored) |
+| `recipe/qwen/` | **Qwen TP=1 lane**: serve script + `.env.qwen.example` for the drowzeys single-Spark recipe, with the steering hotfix wired in fail-closed |
 | `patches/hotfix-dsv4-steering-projective.py` | **live**: steering as a fail-closed boot hotfix for the 0.25.2 image (embedded GGUF reader; no image build) |
+| `patches/hotfix-qwen38-steering-projective.py` | the same steering for the Qwen lane: patches `qwen3_next.py` in the eugr/drowzeys vLLM 0.27 image (steers `hidden_states + residual` — vLLM's decomposed convention) |
 | `patches/0001-dspark-projective-steering.patch` | the same hook as a git patch against vLLM v0.27.0 (fallback stack) |
 | `patches/0002-dspark-steering-test.patch` | vLLM-side test that extracts and exercises the real GGUF loader (pairs with 0001) |
 | `recipe/` (top level) | retired v027 stack: `Dockerfile.gguf-dep`, `Dockerfile.steering-overlay`, `docker-compose.v027.yml` |
-| `scripts/` | structural guard test for the steering patch |
+| `scripts/` | structural guard tests for the steering patches (DSV4 + Qwen lanes) |
 | `spec/CONTROL-VECTOR.md` | the projective control-vector GGUF format: the `dspark.mode` contract, layer-id mapping, and why an additive reader must refuse the file |
 | `BENCHMARK.md` | every serving measurement, with shapes stated (Runs 001–007) |
 | `.env.v027.working.example` | env template for the fallback v027 stack |
@@ -191,8 +193,9 @@ against the pinned checkpoint revision.
 - **k=7/greedy draft A/B** (upstream issue #84): now one env line
   (`DRAFT_SAMPLE_METHOD=greedy MTP_NUM_TOKENS=7`) after the 2026-08-21
   upstream merge.
-- **TP=1 lanes** (DSV4-EXL3 and Qwen, see [Lanes](#lanes)): adopt as serving
-  profiles here once the per-lane steering vectors are derived.
+- **TP=1 lanes** (see [Lanes](#lanes)): the Qwen profile is in `recipe/qwen/`
+  awaiting its first hardware boot and refusal probe; the DSV4-EXL3 lane
+  remains planned (vector re-derivation on the pruned artifact).
 
 ## References & credits
 
