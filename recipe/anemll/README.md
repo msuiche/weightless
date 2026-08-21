@@ -9,7 +9,7 @@ at `~/anemll-oci` on the head). This directory holds the canonical copies of
 modified. If a node is rebuilt: clone upstream, copy these three files over
 it, plus `../../patches/hotfix-dsv4-steering-projective.py` into `patches/`.
 
-| file | our changes vs upstream (as of 2026-08-21, upstream −10 commits) |
+| file | our changes vs upstream (as of 2026-08-21, upstream merged @6d00e4a) |
 |---|---|
 | `docker-compose.dspark.yml` | steering hotfix mount, `DSPARK_STEER_*` env passthrough, entrypoint runs the hotfix (`\|\| exit 1`) |
 | `start-deepseek-v4-flash-dspark.sh` | worker-sync block for the steering hotfix |
@@ -20,5 +20,7 @@ Gotchas:
 - The start script syncs hotfixes and `.env.dspark` to the worker but **not**
   `docker-compose.dspark.yml` — sync it manually when it changes.
 - NCCL GID indexes drift across reboots; re-verify per `.env.dspark` notes.
-- `~/dspark-miaai` is 10 commits behind upstream (NCCL passthrough,
-  `draft_sample_method` gate) — merge pending; re-diff these files after.
+- Upstream merged 2026-08-21 (10 commits: NCCL fabric passthrough with
+  empty-to-unset normalization, `DRAFT_SAMPLE_METHOD` probabilistic|greedy
+  gate — the k=7/greedy A/B lever is now one env line). Contract tests
+  29/29 + 7/7 green; takes effect at next boot, no restart was needed.
