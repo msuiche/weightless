@@ -20,7 +20,7 @@ to `.env.dsv4` and fill in the `<...>` placeholders, plus
 ## Steering vector
 
 The vector is a 478 KB GGUF control vector (spec:
-[`../../spec/CONTROL-VECTOR.md`](../../spec/CONTROL-VECTOR.md)), read by the
+[`../../spec/GLP.md`](../../spec/GLP.md)), read by the
 hotfix from `/cache/huggingface` inside the container (= `$HF_CACHE` on the
 host, both nodes). Published artifact:
 [`msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29`](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29)

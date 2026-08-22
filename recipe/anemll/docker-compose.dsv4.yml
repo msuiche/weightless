@@ -47,7 +47,7 @@ services:
       - ${DSPARK_ASSISTANT_FINAL_HOTFIX:-./patches/hotfix-dsv4-assistant-final-continuation.py}:/opt/hotfix-dsv4-assistant-final-continuation.py:ro
       # Projective activation steering (DSpark control vector). Patches
       # models/deepseek_v4/nvidia/model.py; the vector itself is read from
-      # /cache/huggingface via WEIGHTLESS_STEER_PATH. Spec: weightless/spec/CONTROL-VECTOR.md.
+      # /cache/huggingface via WEIGHTLESS_STEER_PATH. Spec: weightless/spec/GLP.md.
       - ${WEIGHTLESS_STEERING_HOTFIX:-./patches/hotfix-dsv4-steering-projective.py}:/opt/hotfix-dsv4-steering-projective.py:ro
       - ${DSPARK_PATCHES_DIR:-./patches}:/opt/dspark-patches:ro
       - ${DSPARK_TMP_HOST:-${HOME}/.cache/dspark-tmp}:/tmp

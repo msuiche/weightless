@@ -38,7 +38,7 @@ The model weights are never redistributed — what this repo ships is the
 *intervention*, tested and self-contained:
 
 - **The steering file.** A GLP vector — a spec-conformant control-vector
-  GGUF ([`spec/CONTROL-VECTOR.md`](spec/CONTROL-VECTOR.md)) with per-layer
+  GGUF ([`spec/GLP.md`](spec/GLP.md)) with per-layer
   directions, derived by us and published under
   [`msuiche/`](https://huggingface.co/msuiche) (see
   [Steering artifacts](#steering-artifacts-ours)). No model weights inside.
@@ -102,7 +102,7 @@ routed experts per MoE layer on top of the 3.0bpw quant. Benchmarks pass,
 but the degradation concentrates in rare behaviour by construction, and the
 control vector would need re-deriving on the pruned circuit. TP=1 DSV4 is a
 smaller, approximated model; we do not serve it. The steering *contract* in
-`spec/CONTROL-VECTOR.md` remains lane-independent.
+`spec/GLP.md` remains lane-independent.
 
 ## Layout
 
@@ -117,7 +117,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `recipe/` (top level) | retired v027 stack: Dockerfiles + compose |
 | `scripts/` | structural guard tests for the steering patches: `test-dsv4-hotfix-structure.py`, `test-qwen-steering-structure.py`, `test-steering-structure.py` (retired v027 overlay) |
 | `tests/` | endpoint smoke tests: endpoint / chat / tool-call / headless omp agent loop — `tests/README.md` |
-| `spec/CONTROL-VECTOR.md` | the GLP format spec: the `glp.mode` contract (legacy `dspark.*` alias), layer-id mapping, why an additive reader must refuse the file |
+| `spec/GLP.md` | the GLP format spec: the `glp.mode` contract, layer-id mapping, why an additive reader must refuse the file |
 | `BENCHMARK.md` | every serving measurement, with shapes stated |
 
 Real `.env` files are gitignored — only `*.example` templates are tracked.
@@ -157,7 +157,7 @@ for this checkpoint; do not carry it to another model.
 Naming convention: **GLP-n** is a GLP vector touching **n layers** — GLP-29
 below is the DSV4 vector, GLP-49 the Qwen one. Both lanes' vectors are
 published under `msuiche/` on Hugging Face (gated — fetch with an HF token),
-spec-conformant per [`spec/CONTROL-VECTOR.md`](spec/CONTROL-VECTOR.md) and
+spec-conformant per [`spec/GLP.md`](spec/GLP.md) and
 verified against their pinned checkpoint revisions.
 
 - [`msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29`](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29)

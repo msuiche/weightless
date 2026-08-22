@@ -53,7 +53,7 @@ respectively) — the bf16→NVFP4 transfer holds for both formats.
 The shipping artifact is
 **`Qwen3.8-27B-abliterated-cyber-GLP-49-L10-58-a1.gguf`** — per-layer diff of
 means, 49 directions over layers 10–58, n_embd 5120, spec-conformant per
-[`../../spec/CONTROL-VECTOR.md`](../../spec/CONTROL-VECTOR.md). Published at
+[`../../spec/GLP.md`](../../spec/GLP.md). Published at
 [`msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49`](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49)
 (gated — fetch with an HF token). Put it in `$MODELS/cvec/` so it lands under
 the `/models` mount:
