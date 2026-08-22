@@ -146,20 +146,23 @@ for this checkpoint; do not carry it to another model.
 
 ## Steering artifacts (ours)
 
-Both lanes' vectors are published under `msuiche/` on Hugging Face (gated —
-fetch with an HF token), spec-conformant per
-[`spec/CONTROL-VECTOR.md`](spec/CONTROL-VECTOR.md) and verified against their
-pinned checkpoint revisions.
+Naming convention: **GLP-n** is a GLP vector touching **n layers** — GLP-29
+below is the DSV4 vector, GLP-49 the Qwen one. Both lanes' vectors are
+published under `msuiche/` on Hugging Face (gated — fetch with an HF token),
+spec-conformant per [`spec/CONTROL-VECTOR.md`](spec/CONTROL-VECTOR.md) and
+verified against their pinned checkpoint revisions.
 
 - [`msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec`](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec)
-  — **DSV4 lane, GGUF.** Cyber-contrast vector: 29 per-layer directions over
+  — **DSV4 lane, GLP-29 (GGUF).** Cyber-contrast vector: 29 per-layer
+  directions over
   L10–38, n_embd 4096, α=4.0. The live config currently serves the
   general-contrast variant from the same repo family — a *third-party*
   direction we reformatted, re-measured and repackaged (attribution in the
   file metadata); swapping is one `DSPARK_STEER_PATH` line. Wiring:
   `recipe/anemll/README.md`.
 - [`msuiche/Qwen3.8-27B-abliterated-cvec`](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cvec)
-  — **Qwen lane, GGUF + LoRA.** The GGUF is canonical: per-layer diff of
+  — **Qwen lane, GLP-49 (GGUF + LoRA).** The GGUF is canonical: per-layer
+  diff of
   means, 49 directions over L10–58, n_embd 5120, α=1.0 (α=4 measurably
   over-refuses on this model). The rank-1 LoRA (`mlp.down_proj`, L1–63,
   α=1.0 baked) is the same intervention folded into weights — it loads in

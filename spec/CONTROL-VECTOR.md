@@ -10,6 +10,11 @@ The motivating result: on `deepseek-ai/DeepSeek-V4-Flash-0731` a **478 KB** file
 reproduces what a **157 GB** re-uploaded checkpoint achieves on our cyber suites.
 Both reach 0% refusal. One of them you can attach to a review comment.
 
+Naming: **GLP-n** marks a vector by coverage — the number of layers it
+steers (GLP-29 for the DSV4 vector over L10–38, GLP-49 for the Qwen one over
+L10–58). Coverage is the variable that dominates this intervention, so it is
+the name.
+
 ## Why this needs a spec at all
 
 llama.cpp has shipped control vectors since 2024 (`--control-vector`), with a
