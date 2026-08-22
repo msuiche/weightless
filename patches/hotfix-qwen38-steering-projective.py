@@ -37,7 +37,7 @@ Other architecture notes:
   post-layer stream (HF layer outputs), so the apply steers the sum and
   writes it back into hidden_states, leaving residual untouched.
 - The GGUF reader and every spec check are verbatim from the DSV4 hotfix:
-  the container contract (dspark.mode=project, hook_point, layer-id
+  the container contract (glp.mode=project (alias dspark.mode), hook_point, layer-id
   cross-check, direction.0 rejection) is lane-independent.
 
 Failure semantics (fail-closed where it matters):
@@ -177,7 +177,7 @@ def _load_gguf_control_vector(path: str) -> dict:
     refusal directions are highly correlated, so a stack shifted by one
     layer still produces plausible output. Layer 0 cannot be expressed.
 
-    `dspark.mode` is enforced, not advisory. llama.cpp ADDS a control
+    `glp.mode` (legacy alias `dspark.mode`) is enforced, not advisory. llama.cpp ADDS a control
     vector; we PROJECT one out. The same file under the wrong operation
     produces no error, just wrong output -- an additive apply pushes every
     token along the refusal axis instead of removing the component. So an
@@ -187,23 +187,28 @@ def _load_gguf_control_vector(path: str) -> dict:
 
     meta, tensors = _read_gguf_cvec(path)
 
-    mode = meta.get("dspark.mode")
+    # glp.* is canonical; dspark.* is the legacy alias for the same
+    # contract (spec_version 1). Transition files carry both.
+    def _mget(key, default=None):
+        return meta.get("glp." + key, meta.get("dspark." + key, default))
+
+    mode = _mget("mode")
     if mode is None:
         raise ValueError(
-            f"{path}: no dspark.mode. Refusing to guess: an additive "
+            f"{path}: no glp.mode/dspark.mode. Refusing to guess: an additive "
             f"control vector and a projective one are different operations."
         )
     if mode != "project":
         raise ValueError(
-            f"{path}: dspark.mode={mode!r}, but this runtime only "
+            f"{path}: glp.mode={mode!r}, but this runtime only "
             f"implements projective ablation (h -= alpha*(h.d)d). "
             f"Refusing to apply."
         )
 
-    hook = meta.get("dspark.hook_point")
+    hook = _mget("hook_point")
     if hook is not None and hook != "residual_stream_post_layer":
         raise ValueError(
-            f"{path}: dspark.hook_point={hook!r} does not match this hook "
+            f"{path}: glp.hook_point={hook!r} does not match this hook "
             f"(residual_stream_post_layer). The same vector at the wrong "
             f"hook point measured ~9x weaker; refusing to apply."
         )
@@ -211,10 +216,10 @@ def _load_gguf_control_vector(path: str) -> dict:
     logger.info(
         "DSpark GGUF control vector: mode=%s spec_version=%s base_model=%s rev=%s",
         mode,
-        meta.get("dspark.spec_version", "?"),
-        meta.get("general.base_model.0.name") or meta.get("dspark.base_model"),
+        _mget("spec_version", "?"),
+        meta.get("general.base_model.0.name") or _mget("base_model"),
         str(meta.get("general.base_model.0.version")
-            or meta.get("dspark.base_revision") or "?")[:12],
+            or _mget("base_revision") or "?")[:12],
     )
 
     out = {}
@@ -251,7 +256,7 @@ def _load_gguf_control_vector(path: str) -> dict:
     # layer, and a one-layer shift degrades rather than fails (adjacent-
     # layer cosine 0.83-0.91). The file carried the evidence and nothing
     # looked at it. Now something does.
-    declared = meta.get("dspark.layer_ids_zero_based")
+    declared = _mget("layer_ids_zero_based")
     if declared:
         try:
             want = sorted(int(x) for x in declared.split(",") if x.strip())
@@ -259,7 +264,7 @@ def _load_gguf_control_vector(path: str) -> dict:
             want = None
         if want and want != sorted(out):
             raise ValueError(
-                f"{path}: dspark.layer_ids_zero_based declares layers "
+                f"{path}: glp.layer_ids_zero_based declares layers "
                 f"{want[0]}..{want[-1]} ({len(want)} entries) but the "
                 f"direction tensors resolve to {sorted(out)[0]}.."
                 f"{sorted(out)[-1]} ({len(out)} entries). The tensor names "

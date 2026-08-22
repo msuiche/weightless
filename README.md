@@ -109,7 +109,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `recipe/` (top level) | retired v027 stack: Dockerfiles + compose |
 | `scripts/` | structural guard tests for the steering patches: `test-dsv4-hotfix-structure.py`, `test-qwen-steering-structure.py`, `test-steering-structure.py` (retired v027 overlay) |
 | `tests/` | endpoint smoke tests: endpoint / chat / tool-call / headless omp agent loop — `tests/README.md` |
-| `spec/CONTROL-VECTOR.md` | the GLP format spec: the `dspark.mode` contract, layer-id mapping, why an additive reader must refuse the file |
+| `spec/CONTROL-VECTOR.md` | the GLP format spec: the `glp.mode` contract (legacy `dspark.*` alias), layer-id mapping, why an additive reader must refuse the file |
 | `BENCHMARK.md` | every serving measurement, with shapes stated |
 
 Real `.env` files are gitignored — only `*.example` templates are tracked.

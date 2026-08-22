@@ -43,15 +43,23 @@ So the operation has to travel with the data, and an unrecognised operation has
 to be fatal. That is the whole reason for the extension:
 
 ```
-dspark.mode = "project" | "add"
+glp.mode = "project" | "add"
 ```
 
 Absent key means `add`, which is what every control vector written before this
 key existed is. This is the one field a reader may not ignore.
 
+**Legacy alias: `dspark.*`.** The spec predates the GLP name; files written
+before 2026-08-22 carry `dspark.mode`, `dspark.hook_point`, etc. A conforming
+reader must treat `dspark.X` as `glp.X` (canonical wins when both are present,
+which is what transition files write). A writer must emit **both** namespaces
+until the installed base has moved — an old reader that sees only `glp.mode`
+would treat a projective file as additive, the exact failure this key exists
+to prevent.
+
 ```mermaid
 flowchart LR
-    F["DeepSeek-V4-Flash-0731-cyber-abliterated-cvec-L10-38-a4.gguf<br/>478 KB"] --> R{"reader knows<br/>dspark.mode?"}
+    F["DeepSeek-V4-Flash-0731-cyber-abliterated-cvec-L10-38-a4.gguf<br/>478 KB"] --> R{"reader knows<br/>glp.mode?"}
     R -- "no" --> W["applies additively<br/>silently wrong"]
     R -- "yes, project" --> P["h -= a(h.d)d<br/>0% refusal"]
     R -- "yes, unknown value" --> E["hard failure<br/>refuse the file"]
@@ -138,10 +146,10 @@ applier decides where a distributed file takes effect, so match the applier.
 
 | key | type | meaning |
 |---|---|---|
-| `dspark.mode` | string | `project` or `add`. **Fatal if unrecognised.** |
-| `dspark.spec_version` | uint32 | How to interpret the `dspark.*` keys. Currently `1`. |
+| `glp.mode` | string | `project` or `add`. **Fatal if unrecognised.** |
+| `glp.spec_version` | uint32 | How to interpret the `glp.*` keys. Currently `1`. |
 
-`dspark.spec_version` is deliberately distinct from `general.version`:
+`glp.spec_version` is deliberately distinct from `general.version`:
 `general.version` says *which build of this vector*, `spec_version` says *which
 contract you are holding*. If `mode` gains a value or `alpha` changes meaning, a
 reader needs to tell those apart. Conflating them is how a format rots.
@@ -150,10 +158,10 @@ reader needs to tell those apart. Conflating them is how a format rots.
 
 | key | type | meaning |
 |---|---|---|
-| `dspark.alpha_default` | float32 | Ablation strength. `1.0` removes the component exactly; we ship `4.0`. |
-| `dspark.rank` | uint32 | Directions per layer. `1` for everything we have measured. |
-| `dspark.orthonormal` | bool | Whether the per-layer basis is orthonormal. Required for rank > 1. |
-| `dspark.hook_point` | string | `residual_stream_post_layer`. |
+| `glp.alpha_default` | float32 | Ablation strength. `1.0` removes the component exactly; we ship `4.0`. |
+| `glp.rank` | uint32 | Directions per layer. `1` for everything we have measured. |
+| `glp.orthonormal` | bool | Whether the per-layer basis is orthonormal. Required for rank > 1. |
+| `glp.hook_point` | string | `residual_stream_post_layer`. |
 
 `alpha` is a **separate parameter, never folded into the vector**. Projection is
 quadratic in the direction's norm — scaling `d` by `s` scales the removal by `s²`
@@ -173,11 +181,11 @@ exactly where llama.cpp's `build_cvec()` already runs.
 | key | type | meaning |
 |---|---|---|
 | `general.base_model.count` / `.0.name` / `.0.organization` / `.0.version` / `.0.repo_url` | | The base model, using GGUF's own convention. `.0.version` is the HF commit. |
-| `dspark.content_sha256` | string | SHA-256 over tensor bytes only. |
-| `dspark.created` | string | ISO date. |
-| `dspark.method` | string | e.g. `paired_difference_of_means`. |
-| `dspark.contrast` | string | e.g. `write_form_vs_explain_form_content_matched`. |
-| `dspark.layer_ids_zero_based` | string | Comma-separated, redundant with the tensor names but readable via `gguf_dump`. |
+| `glp.content_sha256` | string | SHA-256 over tensor bytes only. |
+| `glp.created` | string | ISO date. |
+| `glp.method` | string | e.g. `paired_difference_of_means`. |
+| `glp.contrast` | string | e.g. `write_form_vs_explain_form_content_matched`. |
+| `glp.layer_ids_zero_based` | string | Comma-separated, redundant with the tensor names but readable via `gguf_dump`. |
 
 `created` makes the file non-reproducible — re-exporting identical vectors yields
 different bytes — so `content_sha256` is what lets someone verify they hold the
@@ -192,9 +200,9 @@ a model name.
 
 A conforming reader **must**:
 
-1. Read `dspark.mode`. Treat absence as `add`.
+1. Read `glp.mode`. Treat absence as `add`.
 2. **Fail** on a value it does not implement. Never fall back to `add`.
-3. **Fail** if `dspark.hook_point` names a hook it does not apply at.
+3. **Fail** if `glp.hook_point` names a hook it does not apply at.
 4. Reject `direction.0` and apply `direction.N` at layer `N`.
 5. Not fold `alpha` into the data in `project` mode.
 6. Refuse to merge a `project` file with any other control vector. Elementwise
@@ -261,7 +269,7 @@ control vector path:
 | `src/llama-adapter.cpp` | projective branch in `apply_to()`; norm check in `apply()` |
 | `src/llama-adapter.h` | `mode`, `alpha` on `llama_adapter_cvec` |
 | `src/llama-context.{h,cpp}` | plumb mode/alpha; old entry point wraps the new one as ADD/1.0 |
-| `common/common.{h,cpp}` | read `dspark.mode` / `alpha_default` / `hook_point`; refuse mixing |
+| `common/common.{h,cpp}` | read `glp.mode` / `alpha_default` / `hook_point` (legacy `dspark.*` alias accepted); refuse mixing |
 | `tests/test-cvec-project.cpp` | op composition vs a hand-computed projection |
 | `tests/test-cvec-model.cpp` | logit-level checks on a real model + loader refusals |
 | `tests/test-cvec-layer-map.cpp` | pins `direction.N` → layer `N` by measurement |
@@ -285,7 +293,7 @@ cb(inpL, "l_out", il);
 
 `build_hc_post` is the same `MHCPostOp` folding our overlay applies
 (`post_layer_mix * x + Σ comb_res_mix * residual`), and the control vector goes on
-immediately after it. So `dspark.hook_point=residual_stream_post_layer` names the
+immediately after it. So `glp.hook_point=residual_stream_post_layer` names the
 same tensor in both runtimes on this architecture — verified against the graph, not
 inferred from the field name.
 
@@ -348,5 +356,5 @@ a re-run of the derivation suites, not as a given.
   contrast, it clears cyber suites completely but only partly transfers to an
   unrelated harmful-content suite. A general-purpose direction needs a general
   contrast set.
-- `rank > 1` is expressible (`dspark.rank`, `dspark.orthonormal`) but neither
+- `rank > 1` is expressible (`glp.rank`, `glp.orthonormal`) but neither
   reader implements it, and we have no evidence it helps.
