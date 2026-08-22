@@ -733,7 +733,7 @@ def lane_chain(io, lane_idx):
             values[p] = io.text(f"{prompt} ({p}): ", default)
 
     # 2. steering (default on)
-    steering = io.confirm("Enable refusal steering (control-vector patch)?", True)
+    steering = io.confirm("Enable refusal steering (GLP vector patch)?", True)
     steer_mode = None
     if steering and lane["steer_modes"]:
         labels = [d for _, d in lane["steer_modes"]]
