@@ -223,16 +223,25 @@ def mdns_hosts(timeout=2.5):
 
 
 def pick_host(io, prompt, default=""):
-    """Host prompt backed by mDNS discovery: pick from LAN hosts or enter
-    manually. Falls back to a plain text prompt when nothing is discovered."""
+    """Host prompt backed by mDNS discovery: LAN hosts, plus a keep-current
+    entry when the default isn't discovered (e.g. a fabric IP that is correct
+    for the env but not mDNS-advertised), plus manual entry."""
     hosts = mdns_hosts()
-    if not hosts:
+    items = list(hosts)
+    keep = None
+    if default and default not in hosts:
+        keep = f"keep current: {default}"
+        items.append(keep)
+    items.append("enter manually")
+    if not hosts and keep is None:
         return io.text(prompt + ": ", default)
-    preselect = hosts.index(default) if default in hosts else 0
-    sel = io.menu(f"{prompt} (mDNS):", hosts + ["enter manually"], preselect=preselect)
-    if sel == len(hosts):
+    preselect = items.index(keep) if keep else (hosts.index(default) if default in hosts else 0)
+    sel = io.menu(f"{prompt} (mDNS):", items, preselect=preselect)
+    if items[sel] == "enter manually":
         return io.text(prompt + ": ", default)
-    return hosts[sel]
+    if keep and items[sel] == keep:
+        return default
+    return items[sel]
 
 
 def placeholders(example):
@@ -717,7 +726,11 @@ def lane_chain(io, lane_idx):
     values = {}
     for p in placeholders(example):
         prompt, default = PLACEHOLDER_HINTS.get(p, (p.replace("-", " "), ""))
-        values[p] = io.text(f"{prompt} ({p}): ", saved.get(p, default))
+        default = saved.get(p, default)
+        if p in ("head-ip", "worker-ip"):
+            values[p] = pick_host(io, f"{prompt} ({p})", default)
+        else:
+            values[p] = io.text(f"{prompt} ({p}): ", default)
 
     # 2. steering (default on)
     steering = io.confirm("Enable refusal steering (control-vector patch)?", True)
