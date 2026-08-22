@@ -75,6 +75,64 @@ PLACEHOLDER_HINTS = {
 
 # ---------------------------------------------------------------- core logic
 
+def detect_state():
+    """Summarize existing local setup: per-lane env presence + key values,
+    and whether the omp provider is installed."""
+    lines = []
+    for lane in LANES:
+        path = os.path.join(HERE, lane["target"])
+        label = lane["name"].split(" — ")[0]
+        if not os.path.exists(path):
+            lines.append(f"{label}: not configured")
+            continue
+        with open(path) as f:
+            env = dict(re.findall(r"(?m)^([A-Z_]+)=(\S+)", f.read()))
+        bits = []
+        if env.get("MASTER_ADDR"):
+            bits.append(f"head {env['MASTER_ADDR']}")
+        if env.get("WORKER_HOST"):
+            bits.append(f"worker {env['WORKER_HOST']}")
+        if env.get("MODELS"):
+            bits.append(env["MODELS"])
+        if env.get("VLLM_PORT"):
+            bits.append(f"port {env['VLLM_PORT']}")
+        if env.get("STEER_MODE"):
+            bits.append(f"steer={env['STEER_MODE']}")
+        steer = env.get(lane["steer_key"], "")
+        steer_line = None
+        if steer:
+            layers = [t for t in env.get("DSPARK_STEER_LAYERS", "").split(",") if t.strip()]
+            alpha = env.get("DSPARK_STEER_ALPHA") or env.get("QWEN_STEER_ALPHA") or "?"
+            n = f", {len(layers)} layers" if layers else ""
+            steer_line = f"steering on (α={alpha}{n})"
+        elif lane["steer_key"] in env:
+            bits.append("steering off")
+        lines.append(f"{label}: " + (", ".join(bits) if bits else "configured"))
+        if steer_line:
+            lines.append(f"  ↳ {steer_line} — {os.path.basename(steer)}")
+    if os.path.exists(OMP_MODELS):
+        with open(OMP_MODELS) as f:
+            content = f.read()
+        if re.search(rf"(?m)^  {PROVIDER}:", content):
+            m = re.search(rf"(?ms)^  {PROVIDER}:.*?baseUrl: (\S+)", content)
+            lines.append(f"omp provider '{PROVIDER}': installed"
+                         + (f" ({m.group(1)})" if m else ""))
+        else:
+            lines.append(f"omp provider '{PROVIDER}': config exists, provider missing")
+    else:
+        lines.append(f"omp provider '{PROVIDER}': not installed")
+    return lines
+
+
+def box(io, title, lines):
+    """Draw a unicode info box."""
+    width = min(72, max(len(title) + 2, *(len(l) for l in lines)) + 2)
+    io.info("┌─ " + title + " " + "─" * (width - len(title) - 4) + "┐")
+    for line in lines:
+        io.info("│ " + line[:width - 2].ljust(width - 2) + "│")
+    io.info("└" + "─" * width + "┘")
+
+
 def placeholders(example):
     """Ordered unique <...> placeholders in non-comment lines."""
     out = []
@@ -585,6 +643,8 @@ def run(io):
     bun, omp = prereqs()
     io.info(f"bun: {bun or 'not found (only needed for omp/tests)'}")
     io.info(f"omp:  {omp or 'not found (only needed for tests)'}")
+    io.info("")
+    box(io, "local setup", detect_state())
     io.info("")
     choice = io.menu("What to set up:", [
         "DSV4 TP=2 serving — full chain (env → steering → deploy → omp/tests)",
