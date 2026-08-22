@@ -9,6 +9,8 @@ refusal steering for open-weight models: serving config, boot hotfixes, the
 steering patch, and the GLP (GGUF Layer Projection) format spec. The goal is
 most good open models; the first two lanes are DeepSeek V4 Flash 0731 on 2x
 DGX Spark (GB10, SM121, TP=2 over RoCE) and Qwen3.8-27B on a single Spark.
+The method and the measurements behind it are in the original write-up:
+[Abliteration without redistributing the model](https://www.msuiche.com/posts/autoresearch-abliteration-without-redistributing-the-model/).
 
 The live DSV4 stack is the Anemll image (`ghcr.io/anemll/dspark-vllm-gx10:0.1.1`,
 vLLM 0.25.2) driven by the MiaAI 2x recipe, with our state on top vendored in
