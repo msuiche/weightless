@@ -258,6 +258,66 @@ def deploy_commands(lane_idx, values, ssh_host=None):
     ]
 
 
+# remote files each lane deploys, paired with their local sources
+DEPLOY_MAP = {
+    0: [("recipe/anemll/.env.dspark", "dspark-miaai/.env.dspark"),
+        ("recipe/anemll/docker-compose.dspark.yml", "dspark-miaai/docker-compose.dspark.yml"),
+        ("recipe/anemll/start-deepseek-v4-flash-dspark.sh", "dspark-miaai/start-deepseek-v4-flash-dspark.sh"),
+        ("patches/hotfix-dsv4-steering-projective.py", "dspark-miaai/patches/hotfix-dsv4-steering-projective.py")],
+    1: [("recipe/qwen/serve-qwen38.sh", "dspark-deploy/recipe/qwen/serve-qwen38.sh"),
+        ("recipe/qwen/.env.qwen", "dspark-deploy/recipe/qwen/.env.qwen"),
+        ("patches/hotfix-qwen38-steering-projective.py", "dspark-deploy/patches/hotfix-qwen38-steering-projective.py")],
+}
+CONTAINER_GREP = {0: "deepseek", 1: "qwen38"}
+
+
+def remote_preflight(io, lane_idx, values, ssh_host):
+    """Check the remote before touching it: is the container up, and do the
+    deployed files match the local ones (md5)? Returns True when the remote
+    is fully synced and running."""
+    import hashlib
+    user = values.get("user", os.environ.get("USER", ""))
+    target = f"{user}@{ssh_host}"
+    probe = (
+        f"docker ps --format '{{{{.Names}}}} {{{{.Status}}}}' 2>/dev/null "
+        f"| grep -i {CONTAINER_GREP[lane_idx]} || echo 'CONTAINER_DOWN'; "
+        + " ".join(f"md5sum {r} 2>/dev/null || echo MISSING {r};"
+                   for _, r in DEPLOY_MAP[lane_idx])
+    )
+    io.info(f"$ ssh {target} '<container status + file checksums>'")
+    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
+                        target, probe], capture_output=True, text=True)
+    if r.returncode != 0:
+        io.err(f"ssh failed ({r.returncode}) — cannot preflight")
+        return False
+    running = "CONTAINER_DOWN" not in r.stdout
+    remote_md5 = {}
+    for line in r.stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0] == "MISSING":
+            remote_md5[parts[1]] = None
+        elif len(parts) == 2 and len(parts[0]) == 32:
+            remote_md5[parts[1]] = parts[0]
+    all_match = True
+    for local, remote in DEPLOY_MAP[lane_idx]:
+        lp = os.path.join(HERE, local)
+        lm = hashlib.md5(open(lp, "rb").read()).hexdigest() if os.path.exists(lp) else None
+        rm = remote_md5.get(remote)
+        if rm is None:
+            io.warn(f"  {remote}: missing on remote")
+            all_match = False
+        elif lm != rm:
+            io.warn(f"  {remote}: differs from local")
+            all_match = False
+        else:
+            io.ok(f"  {remote}: in sync")
+    if running:
+        io.ok(f"  container: running")
+    else:
+        io.warn(f"  container: not running")
+    return all_match and running
+
+
 def boot_command(lane_idx, values, ssh_host=None):
     """Just the boot step of deploy_commands, for the diagnose flow."""
     return deploy_commands(lane_idx, values, ssh_host)[-1]
@@ -631,7 +691,7 @@ def lane_chain(io, lane_idx):
         io.info(f"vector (gated, needs HF token): "
                 f"huggingface-cli download {lane['vector_repo']} --include '*.gguf'")
 
-    # 5. deploy (confirm-gated remote actions)
+    # 5. deploy (confirm-gated remote actions, preflight first)
     if io.confirm("Deploy to the node(s) over ssh now?", False):
         # MASTER_ADDR/head-ip is the RoCE fabric address — not routable from
         # the LAN. ssh needs a reachable host: the omp provider's by default.
@@ -642,6 +702,11 @@ def lane_chain(io, lane_idx):
         else:
             ssh_host = io.text("Node ssh host or IP: ",
                                omp_host or values.get("head-ip", ""))
+        if remote_preflight(io, lane_idx, values, ssh_host):
+            io.ok("remote is in sync and running — nothing to deploy")
+            if not io.confirm("Redeploy and restart anyway?", False):
+                io.info("deploy skipped")
+                return tests_chain(io)
         for desc, argv in deploy_commands(lane_idx, values, ssh_host):
             io.info(f"$ {' '.join(argv)}")
             if not io.confirm(f"run: {desc}?", True):
