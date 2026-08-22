@@ -36,7 +36,7 @@ approximated model, and we do not serve it. The steering *contract* in
 | | |
 |---|---|
 | `recipe/anemll/` | **live**: canonical copies of our compose / start script / `.env.dspark.example` for the MiaAI 2x clone, plus rebuild notes (the real `.env.dspark` is gitignored) |
-| `recipe/qwen/` | **Qwen TP=1 lane**: serve script + `.env.qwen.example` for the drowzeys single-Spark recipe, with the steering hotfix wired in fail-closed |
+| `recipe/qwen/` | **Qwen TP=1 lane**: serve script + `.env.qwen.example` for the drowzeys single-Spark recipe; `STEER_MODE=gguf\|lora` — fail-closed hotfix (default) or no-patch LoRA, both hardware-validated 2026-08-22 |
 | `patches/hotfix-dsv4-steering-projective.py` | **live**: steering as a fail-closed boot hotfix for the 0.25.2 image (embedded GGUF reader; no image build) |
 | `patches/hotfix-qwen38-steering-projective.py` | the same steering for the Qwen lane: patches `qwen3_next.py` + `qwen3_5.py` in the eugr/drowzeys vLLM 0.27 image (steers `hidden_states + residual` — vLLM's decomposed convention) |
 | `patches/0001-dspark-projective-steering.patch` | the same hook as a git patch against vLLM v0.27.0 (fallback stack) |
@@ -199,8 +199,9 @@ pinned checkpoint revisions.
 - **k=7/greedy draft A/B** (upstream issue #84): now one env line
   (`DRAFT_SAMPLE_METHOD=greedy MTP_NUM_TOKENS=7`) after the 2026-08-21
   upstream merge.
-- **Qwen TP=1 lane** (see [Lanes](#lanes)): the profile is in `recipe/qwen/`
-  awaiting its first hardware boot and refusal probe.
+- **Qwen LoRA cyber-holdout score** (run L): both Qwen steering arms match
+  on refusal32; the LoRA arm still needs its cyber-holdout number before it
+  can replace GGUF as the default. Lives in the eval pipeline, not this repo.
 
 ## References & credits
 
