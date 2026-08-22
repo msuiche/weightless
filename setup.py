@@ -356,7 +356,7 @@ def run_suite(io, base, model):
 # ---------------------------------------------------------------- IO adapters
 
 class CliIO:
-    C = {"head": "\033[1;36m", "ok": "\033[32m", "err": "\033[31m",
+    C = {"head": "\033[1;38;5;205m", "ok": "\033[38;5;80m", "err": "\033[31m",
          "warn": "\033[33m", "dim": "\033[2m", "reset": "\033[0m"}
 
     def __init__(self):
@@ -428,8 +428,10 @@ class TuiIO:
         if curses.has_colors():
             curses.start_color()
             curses.use_default_colors()
-            for i, fg in enumerate((curses.COLOR_CYAN, curses.COLOR_GREEN,
-                                    curses.COLOR_RED, curses.COLOR_YELLOW), 1):
+            # semantic palette on the brand gradient: pink headers, cyan ok,
+            # red err, yellow warn, violet selection
+            brand = (205, 80, curses.COLOR_RED, curses.COLOR_YELLOW, 99)
+            for i, fg in enumerate(brand, 1):
                 curses.init_pair(i, fg, -1)
             self.color = True
             if curses.COLORS >= 256:
@@ -455,6 +457,7 @@ class TuiIO:
                 "ok": curses.color_pair(2),
                 "err": curses.color_pair(3),
                 "warn": curses.color_pair(4),
+                "sel": curses.color_pair(5) | curses.A_REVERSE,
                 "dim": curses.A_DIM}.get(kind, curses.A_NORMAL)
 
     def _next(self, n=1):
@@ -524,7 +527,7 @@ class TuiIO:
             for i, it in enumerate(items):
                 label = it[1] if isinstance(it, tuple) else it
                 if i == sel:
-                    attr = self._attr("head") | curses.A_REVERSE
+                    attr = self._attr("sel")
                 else:
                     attr = curses.A_NORMAL
                 try:
