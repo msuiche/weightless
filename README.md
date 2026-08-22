@@ -36,6 +36,33 @@ The model weights are never redistributed — what this repo ships is the
 Internals write-up:
 [Abliteration without redistributing the model](https://www.msuiche.com/posts/autoresearch-abliteration-without-redistributing-the-model/).
 
+## The stack
+
+Serving is **vLLM** (the only runtime with working sm_121a NVFP4 + MTP paths
+for these checkpoints on GB10), driven by **[omp](https://omp.sh/)** as the
+agent harness/client — we picked it over stock Pi for the benchmaxxed tool
+loop (hash-anchored edits, LSP/DAP wired in, fast headless mode), and this
+repo's `tests/` suite proves the served model can drive it end to end.
+Steering is optional per lane and off by default when the steer path is
+empty:
+
+```mermaid
+flowchart LR
+    subgraph client[client]
+        OMP[omp<br/>agent harness]
+        WIZ[setup.py<br/>wizard + tests/]
+    end
+    OMP -->|OpenAI-compatible /v1| EP[vLLM endpoint<br/>:8888 or :8078]
+    WIZ -->|probe / diagnose / boot| EP
+    EP --> DSV4[DSV4 lane — TP=2<br/>2x DGX Spark over RoCE<br/>DeepSeek-V4-Flash-0731 NVFP4]
+    EP --> QWEN[Qwen lane — TP=1<br/>single DGX Spark<br/>Qwen3.8-27B NVFP4]
+    CV[GGUF control vector<br/>fail-closed boot hotfix] -.->|optional| DSV4
+    CV2[GGUF control vector hotfix<br/>or rank-1 LoRA, no patch] -.->|optional| QWEN
+```
+
+The two lanes never run at once: DSV4 TP=2 already holds both GPUs at 0.80
+memory utilization, so the Qwen lane is parked until DSV4 is down.
+
 ## Lanes
 
 Two serving setups are relevant to us. This repo is the home of the first;
