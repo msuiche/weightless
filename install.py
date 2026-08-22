@@ -424,14 +424,20 @@ def lane_chain(io, lane_idx):
 
     # 4. validate the steering patch + point at the vector
     if steering:
-        rc = subprocess.call([sys.executable, os.path.join(HERE, lane["structure_test"])],
-                             stdout=subprocess.DEVNULL)
-        if rc == 0:
-            io.ok("steering patch structural test: PASS")
-        elif rc == 2:
-            io.ok("steering patch structural test: PASS (apply tier skipped — no reference model)")
-        else:
-            io.err("steering patch structural test: FAIL")
+        io.info("validating the steering patch:")
+        r = subprocess.run([sys.executable, os.path.join(HERE, lane["structure_test"])],
+                           capture_output=True, text=True)
+        for line in (r.stdout + r.stderr).splitlines():
+            if "[PASS]" in line:
+                io.ok(line.strip())
+            elif "[FAIL]" in line:
+                io.err(line.strip())
+            elif "[SKIP]" in line:
+                io.warn(line.strip())
+            elif line.strip():
+                io.info("  " + line.strip())
+        if r.returncode not in (0, 2):
+            io.err("steering validation failed — do not deploy until this is green")
         io.info(f"vector (gated, needs HF token): "
                 f"huggingface-cli download {lane['vector_repo']} --include '*.gguf'")
 
