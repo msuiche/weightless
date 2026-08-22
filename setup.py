@@ -62,24 +62,10 @@ LOGO = [
     "  ▀          ",
 ]
 
-# 256-color ramp stops sampled from omp's π: pink → lavender → violet → cyan.
-RAMP_STOPS = [219, 213, 183, 141, 105, 63, 51]
-
-
-def column_ramp(n):
-    """n 256-color codes interpolated across RAMP_STOPS, left to right."""
-    if n <= 1:
-        return RAMP_STOPS[:1]
-    out = []
-    for i in range(n):
-        pos = i / (n - 1) * (len(RAMP_STOPS) - 1)
-        a, b = int(pos), min(int(pos) + 1, len(RAMP_STOPS) - 1)
-        f = pos - a
-        out.append(round(RAMP_STOPS[a] + (RAMP_STOPS[b] - RAMP_STOPS[a]) * f))
-    return out
-
-
-LOGO_RAMP = column_ramp(len(LOGO[0]))
+# 256-color ramp per logo column, sampled from omp's π: pink → magenta →
+# violet → blue → cyan. Hand-picked: the 256 cube is not perceptually
+# linear, so interpolating palette indices wanders through green.
+LOGO_RAMP = [219, 213, 207, 183, 177, 153, 147, 111, 105, 75, 69, 45, 51]
 LOGO_ANSI = [f"\033[38;5;{c}m" for c in LOGO_RAMP]
 ANSI_RESET = "\033[0m"
 
