@@ -511,7 +511,7 @@ def run_suite(io, base, model):
 # ---------------------------------------------------------------- IO adapters
 
 class CliIO:
-    C = {"head": "\033[1;38;5;205m", "ok": "\033[38;5;80m", "err": "\033[31m",
+    C = {"head": "\033[1;38;5;45m", "ok": "\033[38;5;80m", "err": "\033[31m",
          "warn": "\033[33m", "dim": "\033[2m", "reset": "\033[0m"}
 
     def __init__(self):
@@ -598,9 +598,9 @@ class TuiIO:
         if curses.has_colors():
             curses.start_color()
             curses.use_default_colors()
-            # semantic palette on the brand gradient: pink headers, cyan ok,
+            # semantic palette on the brand gradient: turquoise headers, teal ok,
             # red err, yellow warn, white-on-violet selection
-            brand = (205, 80, curses.COLOR_RED, curses.COLOR_YELLOW)
+            brand = (45, 80, curses.COLOR_RED, curses.COLOR_YELLOW)
             for i, fg in enumerate(brand, 1):
                 curses.init_pair(i, fg, -1)
             try:
