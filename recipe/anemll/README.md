@@ -46,11 +46,13 @@ Gotchas:
   empty-to-unset normalization, `DRAFT_SAMPLE_METHOD` probabilistic|greedy
   gate — the k=7/greedy A/B lever is now one env line). Contract tests
   29/29 + 7/7 green; takes effect at next boot, no restart was needed.
-- Known flake (observed once, 2026-08-22): the serving layer can emit invalid
+- Known flake (2026-08-22): the serving layer intermittently emits invalid
   JSON on the tool-call path — raw control characters (literal newlines)
-  inside a string, failing strict JSON parsers client-side. Rare
-  (0/12 on retry), nothing in the server logs; the response carries
-  nonstandard fields (`routed_experts`), so the suspect is the recipe's
-  custom response path. `tests/03-tool-call.sh` retries once
-  and reports the byte offset and context if it recurs twice in a row —
-  capture that before assuming client-side breakage.
+  inside a string, failing strict JSON parsers client-side. Not content-
+  determined (the identical bytes serialize fine before and after), nothing
+  in the server logs, and it comes in **bursts**: minutes where every
+  tool-call response is malformed, then long clean stretches (25+/25).
+  That signature points at a concurrency bug in the image's custom response
+  assembly (the response carries nonstandard fields like `routed_experts`).
+  `tests/03-tool-call.sh` retries once and reports byte offset + context
+  when both attempts fail — during a burst both do, which is the signal.
