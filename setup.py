@@ -726,6 +726,16 @@ class TuiIO:
                 if ch == -1:  # timeout tick — animate, keep waiting
                     idle()
                     continue
+                if ch == 27:  # lone Esc or the start of an arrow sequence
+                    # the idle timeout splits escape sequences — reassemble
+                    self.s.nodelay(True)
+                    c2 = self.s.getch()
+                    c3 = self.s.getch() if c2 != -1 else -1
+                    self.s.nodelay(False)
+                    if c2 == ord("[") and c3 in (ord("A"), ord("B")):
+                        ch = curses.KEY_UP if c3 == ord("A") else curses.KEY_DOWN
+                    else:
+                        continue  # actual Esc — ignore in menus
                 if ch in (curses.KEY_UP, ord("k")):
                     sel = (sel - 1) % len(items)
                 elif ch in (curses.KEY_DOWN, ord("j")):
@@ -1027,6 +1037,18 @@ def run(io):
     return diagnose_chain(io)
 
 
+def completion(io, rc):
+    """End-of-run summary. A boxed 'done' on success, a pointer on failure."""
+    io.info("")
+    if rc == 0:
+        box(io, "done", [
+            "you're all set — steering validated, endpoint live,",
+            "omp provider ready. Happy hacking.",
+        ])
+    else:
+        io.warn("setup finished with errors — scroll up for the red rows")
+
+
 def _tui_main(stdscr):
     io = TuiIO(stdscr)
     io.header("  weightless setup")
@@ -1035,9 +1057,13 @@ def _tui_main(stdscr):
     splash_tui(io)
     rc = run(io)
     if not curses.isendwin():
+        completion(io, rc)
         io.info("")
-        io.info("press any key to exit")
-        stdscr.getch()
+        io.info("press q or Esc to exit")
+        while True:
+            ch = stdscr.getch()  # deliberate exit only — Enter must not dismiss
+            if ch in (ord("q"), ord("Q"), 27):
+                break
     return rc
 
 
@@ -1052,7 +1078,9 @@ def main():
     io.info("")
     splash_cli(io)
     io.info("")
-    return run(io)
+    rc = run(io)
+    completion(io, rc)
+    return rc
 
 
 if __name__ == "__main__":
