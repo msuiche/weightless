@@ -720,6 +720,14 @@ class TuiIO:
         self._w(row, col, msg, self._attr(kind) if kind else curses.A_NORMAL)
         self.s.refresh()
 
+    def repaint(self):
+        """Authoritative full redraw from the stdscr buffer. Scroll-heavy
+        sessions can desync the physical screen (a terminal that drops or
+        mis-handles scroll-up leaves half-erased boxes behind); clearok forces
+        doupdate to repaint every cell from the buffer, ending clean."""
+        self.s.clearok(True)
+        self.s.refresh()
+
     def info(self, msg):
         self._put(self._next(), 0, msg)
 
@@ -1188,6 +1196,7 @@ def _tui_main(stdscr):
         completion(io, rc)
         io.info("")
         io.info("press q or Esc to exit")
+        io.repaint()
         while True:
             ch = stdscr.getch()  # deliberate exit only — Enter must not dismiss
             if ch in (ord("q"), ord("Q"), 27):
