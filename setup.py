@@ -779,23 +779,26 @@ class TuiIO:
         self._w(self._begin_row, 0, f"  {msg}", self._attr(kind))
         self.s.refresh()
 
+    def _draw_box(self, row, col, width, title, lines, border, title_kind):
+        """Frame + title + body drawn straight onto stdscr. A floating newwin
+        gets erased by the next stdscr scroll (its rows repaint as blanks), so
+        boxes live in the main buffer like everything else."""
+        battr = self._attr(border)
+        self._w(row, col, "╭" + "─" * (width - 2) + "╮", battr)
+        for i in range(1, len(lines) + 1):
+            self._w(row + i, col, "│", battr)
+            self._w(row + i, col + width - 1, "│", battr)
+        self._w(row + len(lines) + 1, col, "╰" + "─" * (width - 2) + "╯", battr)
+        self._w(row, col + 2, f" {title} ", self._attr(title_kind))
+        for i, l in enumerate(lines):
+            self._w(row + 1 + i, col + 2, l[: width - 4])
+        self.s.refresh()
+
     def tui_box(self, title, lines, border="dim", title_kind="head"):
-        """A bordered window box with colored frame and embedded title."""
         max_y, max_x = self.s.getmaxyx()
         width = min(max(len(title) + 2, *(len(l) for l in lines)) + 4, max_x - 4)
-        bh = len(lines) + 2
-        row = self._next(bh)
-        win = curses.newwin(bh, width, row, 2)
-        win.attron(self._attr(border))
-        win.box()
-        win.attroff(self._attr(border))
-        try:
-            win.addstr(0, 2, f" {title} ", self._attr(title_kind))
-            for i, l in enumerate(lines):
-                win.addstr(1 + i, 2, l[: width - 4])
-        except curses.error:
-            pass
-        win.refresh()
+        row = self._next(len(lines) + 2)
+        self._draw_box(row, 2, width, title, lines, border, title_kind)
 
     def animate_logo(self):
         """Rotate the feather's gradient one column to the left."""
@@ -1116,21 +1119,7 @@ def splash_tui(io):
         bcol = 0
     bw = min(content_w + 2, cols - bcol)  # outer width incl. borders
 
-    win = curses.newwin(bh, bw, brow, bcol)
-    if io.color:
-        win.attron(io._attr("dim"))
-    win.box()
-    win.addstr(0, 2, " local setup ")
-    if io.color:
-        win.attroff(io._attr("dim"))
-    for i, l in enumerate(lines):
-        room = bw - 4
-        shown = l if len(l) <= room else l[:room - 1] + "…"
-        try:
-            win.addstr(1 + i, 2, shown)
-        except curses.error:
-            pass
-    win.refresh()
+    io._draw_box(brow, bcol, bw, "local setup", lines, "dim", "head")
 
     io.logo_pos = (io.row, logo_col)
     for i, art in enumerate(LOGO):
