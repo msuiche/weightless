@@ -721,3 +721,53 @@ Ops notes:
   `docker-compose.dspark.yml` — sync it manually when it changes.
 - v027 stack stays parked as the fallback; its steering image is no longer
   needed for steering since this port, only for v027-specific experiments.
+
+## Run 008 — clock-lock A/B and prefill/decode interference
+
+**2026-08-22.** Same stack as Run 007 (Anemll 0.1.1, steering ON, spec ON,
+container up 6 h, 0 restarts). Two questions, both client-wall over WiFi.
+
+### `nvidia-smi -lgc 0,2300` costs nothing on this workload
+
+Head node had its GPU clock locked to max 2300 MHz (thermal/noise
+management); the worker never got the lock. Under sustained decode both
+nodes ride at ~2270 MHz / ~26 W regardless — the GB10 does not sustain its
+2418 MHz applications boost under this workload anyway, so the lock only
+clips idle/light-load boosting. Measured with the lock active on the head:
+
+| shape | tok/s | Run 006 baseline |
+|---|---:|---:|
+| peak-finder (count 1–300), 3 reps | 76.0 / 76.5 / 77.6 | 79.1 |
+| prose, 512 tok | 40.9 | 31.9 (acceptance-dependent) |
+| prefill, 90k prompt | 1,543 | 1,611 @ 114k, 2,243 @ 28.5k |
+
+All inside noise / on the historical curve. **Keep the lock**; note it is
+not persistent across reboots and the worker has never had it applied.
+
+### One heavy prefill tanks every other stream to ~15 tok/s
+
+No decode/prefill isolation: with chunked prefill
+(`max_num_batched_tokens=8192`, prefill threshold 1024), a single long-context
+request's prefill dominates every engine step for its duration. Measured
+(decode = peak-finder shape, solo vs during a cache-missing 90k prefill,
+~58 s prefill wall):
+
+| condition | decode tok/s |
+|---|---:|
+| solo | 73.4 |
+| during 90k prefill | **11.1** |
+| after prefill done | 77.6 |
+
+The signature (seen in an independent measurement that collided with this
+run's own 90k prefill): decode stuck at ~15 tok/s on every content shape,
+step rate ~2.7/s instead of ~14, spec acceptance and tok/step unchanged
+(draft path healthy), GPU util ~75 % at ~38 W (prefill GEMMs, vs 95 % /
+26 W for solo decode). If a benchmark shows ~15 tok/s with intact
+acceptance, check for a concurrent long-context request before suspecting
+the stack. Prefix caching masks repeats of the same prompt — an interference
+test needs a fresh prompt per attempt.
+
+Mitigation not implemented: lowering `max_num_batched_tokens` would soften
+the starvation at some prefill-throughput cost; disaggregated prefill is
+not an option at TP=2 on two nodes. For now: benchmark on an idle server,
+and expect agent traffic (long prompts) to slow interactive streams.
