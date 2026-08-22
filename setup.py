@@ -473,12 +473,12 @@ def run_suite(io, base, model):
     fails = 0
     for t in sorted(glob.glob(os.path.join(HERE, "tests", "0*.sh"))):
         name = os.path.basename(t)
-        io.info(f"… {name} running")
+        io.begin(f"… {name} running")
         try:
             r = subprocess.run(["sh", t], env=env, capture_output=True,
                                text=True, timeout=600)
         except subprocess.TimeoutExpired:
-            io.err(f"✗ {name} — timed out after 600s")
+            io.end(f"✗ {name} — timed out after 600s", "err")
             fails += 1
             continue
         lines = (r.stdout + r.stderr).strip().splitlines()
@@ -486,11 +486,11 @@ def run_suite(io, base, model):
         verdict = next((l for l in lines if l.startswith(("PASS:", "FAIL:", "SKIP:"))),
                        lines[-1] if lines else "(no output)")
         if r.returncode == 0:
-            io.ok(f"✓ {name} — {verdict}")
+            io.end(f"✓ {name} — {verdict}", "ok")
         elif r.returncode == 2:
-            io.warn(f"~ {name} — {verdict}")
+            io.end(f"~ {name} — {verdict}", "warn")
         else:
-            io.err(f"✗ {name} — {verdict}")
+            io.end(f"✗ {name} — {verdict}", "err")
             for l in lines[:-1][-3:]:
                 io.err(f"    {l}")
             fails += 1
@@ -530,6 +530,14 @@ class CliIO:
 
     def err(self, msg):
         print(self._c("err", msg))
+
+    def begin(self, msg):
+        print(f"  {msg}", end="", flush=True)
+        self._begin_len = len(msg) + 2
+
+    def end(self, msg, kind="ok"):
+        pad = " " * max(0, self._begin_len - len(msg) - 2)
+        print(f"\r  {self._c(kind, msg)}{pad}")
 
     def _eof(self):
         # EOF on piped stdin must not silently take defaults — a menu that
@@ -695,6 +703,17 @@ class TuiIO:
         self.s.refresh()
         ch = self.s.get_wch()
         return ch.lower().startswith("y") if isinstance(ch, str) and ch.strip() else default
+
+    def begin(self, msg):
+        self._begin_row = self._next()
+        self._w(self._begin_row, 0, f"  {msg}")
+        self.s.refresh()
+
+    def end(self, msg, kind="ok"):
+        max_x = self.s.getmaxyx()[1]
+        self._w(self._begin_row, 0, " " * (max_x - 1))
+        self._w(self._begin_row, 0, f"  {msg}", self._attr(kind))
+        self.s.refresh()
 
     def animate_logo(self):
         """Rotate the feather's gradient one column to the left."""
