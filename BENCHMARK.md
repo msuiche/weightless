@@ -718,7 +718,7 @@ Ops notes:
   wired through compose env passthrough; off = empty `DSPARK_STEER_PATH`.
   The cyber variant is a one-line swap.
 - The start script syncs hotfixes and `.env.dspark` to the worker but **not**
-  `docker-compose.dspark.yml` — sync it manually when it changes.
+  `docker-compose.dsv4.yml` — sync it manually when it changes.
 - v027 stack stays parked as the fallback; its steering image is no longer
   needed for steering since this port, only for v027-specific experiments.
 

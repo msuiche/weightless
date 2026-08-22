@@ -101,7 +101,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | path | what it is |
 |---|---|
 | `setup.py` | full-chain setup wizard (TUI or prompts, stdlib-only): lane pick → env file → steering validation → ssh deploy → omp provider + tests, plus a diagnose chain (DNS → TCP → HTTP → remote docker/GPU status, optional boot) |
-| `recipe/anemll/` | **live**: compose / start script / `.env.dspark.example` for the MiaAI 2x clone, plus rebuild notes |
+| `recipe/anemll/` | **live**: compose / start script / `.env.dsv4.example` for the MiaAI 2x clone, plus rebuild notes |
 | `recipe/qwen/` | Qwen TP=1 lane: serve script + `.env.qwen.example`; `STEER_MODE=gguf\|lora`, both hardware-validated |
 | `patches/hotfix-dsv4-steering-projective.py` | **live**: steering as a fail-closed boot hotfix for the 0.25.2 image (embedded GGUF reader) |
 | `patches/hotfix-qwen38-steering-projective.py` | the same steering for the Qwen lane: patches `qwen3_next.py` + `qwen3_5.py`, steers `hidden_states + residual` |
@@ -117,7 +117,7 @@ Real `.env` files are gitignored — only `*.example` templates are tracked.
 ## Steering (live stack)
 
 Off unless `WEIGHTLESS_STEER_PATH` is set. The env vars pass through
-`recipe/anemll/docker-compose.dspark.yml` and the GGUF reader is embedded in
+`recipe/anemll/docker-compose.dsv4.yml` and the GGUF reader is embedded in
 the hotfix — nothing to build:
 
 ```sh

@@ -17,7 +17,7 @@ services:
 
     volumes:
       # Serve weights already on disk instead of downloading through the HF
-      # cache: set LOCAL_MODELS_DIR in .env.dspark (it reaches both nodes, since
+      # cache: set LOCAL_MODELS_DIR in .env.dsv4 (it reaches both nodes, since
       # the launcher passes the env file to worker and head) and point
       # WEIGHTLESS_MODEL at /models/<dir>. Defaults to the HF cache dir, so leaving
       # it unset mounts nothing new.

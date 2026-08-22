@@ -87,8 +87,8 @@ ANSI_RESET = "\033[0m"
 # lane -> (example env, target env, steering env key, structure test, vector repo)
 LANES = [
     dict(name="DSV4 TP=2 serving — 2x DGX Spark, Anemll recipe",
-         example="recipe/anemll/.env.dspark.example",
-         target="recipe/anemll/.env.dspark",
+         example="recipe/anemll/.env.dsv4.example",
+         target="recipe/anemll/.env.dsv4",
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="scripts/test-dsv4-hotfix-structure.py",
          vector_repo="msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29",
@@ -319,8 +319,8 @@ def deploy_commands(lane_idx, values, ssh_host=None):
             (f"prepare {head}:{remote}/",
              ["ssh", head, f"mkdir -p {remote}/patches"]),
             ("sync env + compose + start script",
-             ["scp", os.path.join(r, ".env.dspark"),
-              os.path.join(r, "docker-compose.dspark.yml"),
+             ["scp", os.path.join(r, ".env.dsv4"),
+              os.path.join(r, "docker-compose.dsv4.yml"),
               os.path.join(r, "start-deepseek-v4-flash-dspark.sh"),
               f"{head}:{remote}/"]),
             ("sync steering hotfix",
@@ -348,8 +348,8 @@ def deploy_commands(lane_idx, values, ssh_host=None):
 
 # remote files each lane deploys, paired with their local sources
 DEPLOY_MAP = {
-    0: [("recipe/anemll/.env.dspark", "dspark-miaai/.env.dspark"),
-        ("recipe/anemll/docker-compose.dspark.yml", "dspark-miaai/docker-compose.dspark.yml"),
+    0: [("recipe/anemll/.env.dsv4", "dspark-miaai/.env.dsv4"),
+        ("recipe/anemll/docker-compose.dsv4.yml", "dspark-miaai/docker-compose.dsv4.yml"),
         ("recipe/anemll/start-deepseek-v4-flash-dspark.sh", "dspark-miaai/start-deepseek-v4-flash-dspark.sh"),
         ("patches/hotfix-dsv4-steering-projective.py", "dspark-miaai/patches/hotfix-dsv4-steering-projective.py")],
     1: [("recipe/qwen/serve-qwen38.sh", "dspark-deploy/recipe/qwen/serve-qwen38.sh"),

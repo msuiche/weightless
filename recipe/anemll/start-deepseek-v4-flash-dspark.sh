@@ -2,8 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ENV_FILE="${ENV_FILE:-$SCRIPT_DIR/.env.dspark}"
-COMPOSE_FILE="${COMPOSE_FILE:-$SCRIPT_DIR/docker-compose.dspark.yml}"
+ENV_FILE="${ENV_FILE:-$SCRIPT_DIR/.env.dsv4}"
+COMPOSE_FILE="${COMPOSE_FILE:-$SCRIPT_DIR/docker-compose.dsv4.yml}"
 PROJECT_NAME="${PROJECT_NAME:-deepseek-v4-flash}"
 WAIT_ATTEMPTS="${WAIT_ATTEMPTS:-100}"
 WAIT_SECONDS="${WAIT_SECONDS:-15}"
@@ -65,7 +65,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ ! -f "$ENV_FILE" ]; then
-  echo "Missing $ENV_FILE. Copy .env.dspark.example to .env.dspark and edit node-specific values." >&2
+  echo "Missing $ENV_FILE. Copy .env.dsv4.example to .env.dsv4 and edit node-specific values." >&2
   exit 1
 fi
 
@@ -202,8 +202,8 @@ ENV_NCCL_IB_GID_INDEX="${NCCL_IB_GID_INDEX:-}"
 ENV_WORKER_NCCL_IB_GID_INDEX="${WORKER_NCCL_IB_GID_INDEX:-}"
 WORKER_NCCL_IB_GID_INDEX="${ENV_WORKER_NCCL_IB_GID_INDEX}"
 REMOTE_WORKER_DIR="$(printf '%q' "$WORKER_DIR")"
-REMOTE_COMPOSE_FILE="$REMOTE_WORKER_DIR/docker-compose.dspark.yml"
-REMOTE_ENV_FILE="$REMOTE_WORKER_DIR/.env.dspark"
+REMOTE_COMPOSE_FILE="$REMOTE_WORKER_DIR/docker-compose.dsv4.yml"
+REMOTE_ENV_FILE="$REMOTE_WORKER_DIR/.env.dsv4"
 REMOTE_VLLM_GB10_PATCH_DIR="$REMOTE_WORKER_DIR/vllm_patch_gb10"
 REMOTE_COMPOSE="cd $REMOTE_WORKER_DIR && env -u MASTER_ADDR -u MASTER_PORT -u NODE_RANK -u HEADLESS COMPOSE_DISABLE_ENV_FILE=1"
 STARTUP_LOG_SINCE=""
@@ -393,7 +393,7 @@ print_startup_logs() {
   local since="$1"
 
   compose_base 0 "" logs --since "$since" vllm-dspark || true
-  remote_compose "docker compose -p '$PROJECT_NAME' --env-file .env.dspark -f docker-compose.dspark.yml logs --since '$since' vllm-dspark" || true
+  remote_compose "docker compose -p '$PROJECT_NAME' --env-file .env.dsv4 -f docker-compose.dsv4.yml logs --since '$since' vllm-dspark" || true
 }
 
 wait_with_startup_logs() {
@@ -406,7 +406,7 @@ wait_with_startup_logs() {
 
 print_initial_startup_logs() {
   compose_base 0 "" logs --tail=100 vllm-dspark || true
-  remote_compose "docker compose -p '$PROJECT_NAME' --env-file .env.dspark -f docker-compose.dspark.yml logs --tail=100 vllm-dspark" || true
+  remote_compose "docker compose -p '$PROJECT_NAME' --env-file .env.dsv4 -f docker-compose.dsv4.yml logs --tail=100 vllm-dspark" || true
 }
 
 print_failure_logs() {
@@ -415,7 +415,7 @@ print_failure_logs() {
   echo "Startup failed. Recent head logs:" >&2
   compose_base 0 "" logs --since "$since" vllm-dspark >&2 || true
   echo "Recent worker logs:" >&2
-  remote_compose "docker compose -p '$PROJECT_NAME' --env-file .env.dspark -f docker-compose.dspark.yml logs --since '$since' vllm-dspark" >&2 || true
+  remote_compose "docker compose -p '$PROJECT_NAME' --env-file .env.dsv4 -f docker-compose.dsv4.yml logs --since '$since' vllm-dspark" >&2 || true
 }
 
 on_error() {
@@ -500,7 +500,7 @@ validate_compose() {
   echo "Validating head compose config..."
   compose_base 0 "" config --quiet
   echo "Validating worker compose config..."
-  remote_compose "NODE_RANK=1 HEADLESS=1 HF_CACHE='$WORKER_HF_CACHE' VLLM_HOST_IP='$WORKER_VLLM_HOST_IP' GPU_MEMORY_UTILIZATION='$GPU_MEMORY_UTILIZATION' WEIGHTLESS_MODEL='$WEIGHTLESS_MODEL' DSPARK_REVISION='${DSPARK_REVISION:-}' ENABLE_VLLM_GB10_PATCH='$ENABLE_VLLM_GB10_PATCH' VLLM_GB10_PATCH_DIR='./vllm_patch_gb10' GB10_HYBRID_NVFP4_M_THRESHOLD='${GB10_HYBRID_NVFP4_M_THRESHOLD:-128}' docker compose -p '$PROJECT_NAME' --env-file .env.dspark -f docker-compose.dspark.yml config --quiet"
+  remote_compose "NODE_RANK=1 HEADLESS=1 HF_CACHE='$WORKER_HF_CACHE' VLLM_HOST_IP='$WORKER_VLLM_HOST_IP' GPU_MEMORY_UTILIZATION='$GPU_MEMORY_UTILIZATION' WEIGHTLESS_MODEL='$WEIGHTLESS_MODEL' DSPARK_REVISION='${DSPARK_REVISION:-}' ENABLE_VLLM_GB10_PATCH='$ENABLE_VLLM_GB10_PATCH' VLLM_GB10_PATCH_DIR='./vllm_patch_gb10' GB10_HYBRID_NVFP4_M_THRESHOLD='${GB10_HYBRID_NVFP4_M_THRESHOLD:-128}' docker compose -p '$PROJECT_NAME' --env-file .env.dsv4 -f docker-compose.dsv4.yml config --quiet"
 }
 
 need_cmd docker
@@ -683,7 +683,7 @@ fi
 validate_compose
 
 echo "Starting DSpark worker on ${WORKER_HOST}..."
-remote_compose "NODE_RANK=1 HEADLESS=1 HF_CACHE='$WORKER_HF_CACHE' VLLM_HOST_IP='$WORKER_VLLM_HOST_IP' GPU_MEMORY_UTILIZATION='$GPU_MEMORY_UTILIZATION' WEIGHTLESS_MODEL='$WEIGHTLESS_MODEL' DSPARK_REVISION='${DSPARK_REVISION:-}' ENABLE_VLLM_GB10_PATCH='$ENABLE_VLLM_GB10_PATCH' VLLM_GB10_PATCH_DIR='./vllm_patch_gb10' GB10_HYBRID_NVFP4_M_THRESHOLD='${GB10_HYBRID_NVFP4_M_THRESHOLD:-128}' docker compose -p '$PROJECT_NAME' --env-file .env.dspark -f docker-compose.dspark.yml up -d"
+remote_compose "NODE_RANK=1 HEADLESS=1 HF_CACHE='$WORKER_HF_CACHE' VLLM_HOST_IP='$WORKER_VLLM_HOST_IP' GPU_MEMORY_UTILIZATION='$GPU_MEMORY_UTILIZATION' WEIGHTLESS_MODEL='$WEIGHTLESS_MODEL' DSPARK_REVISION='${DSPARK_REVISION:-}' ENABLE_VLLM_GB10_PATCH='$ENABLE_VLLM_GB10_PATCH' VLLM_GB10_PATCH_DIR='./vllm_patch_gb10' GB10_HYBRID_NVFP4_M_THRESHOLD='${GB10_HYBRID_NVFP4_M_THRESHOLD:-128}' docker compose -p '$PROJECT_NAME' --env-file .env.dsv4 -f docker-compose.dsv4.yml up -d"
 
 echo "Starting DSpark head..."
 compose_base 0 "" up -d
@@ -710,7 +710,7 @@ for _ in $(seq 1 "$WAIT_ATTEMPTS"); do
   if curl -fsS --max-time 5 "${AUTH_HEADER_ARGS[@]}" "$API_URL" >/dev/null 2>&1; then
     echo "DeepSeek V4 Flash DSpark is running: $API_URL"
     compose_base 0 "" ps
-    remote_compose "docker compose -p '$PROJECT_NAME' --env-file .env.dspark -f docker-compose.dspark.yml ps"
+    remote_compose "docker compose -p '$PROJECT_NAME' --env-file .env.dsv4 -f docker-compose.dsv4.yml ps"
     # VL sidecar TP=2 (Qwen3-VL): worker-first, then head API rank. 0731 stays
     # text-only; agents use ds4f-vision MCP. Same compose project as DeepSeek
     # so stop tears it down. Separate NCCL master port from DeepSeek.
@@ -718,7 +718,7 @@ for _ in $(seq 1 "$WAIT_ATTEMPTS"); do
       VL_MASTER_PORT="${VL_SIDECAR_MASTER_PORT:-25100}"
       echo "Starting VL sidecar TP=${VL_SIDECAR_TP_SIZE:-2} (${VL_SIDECAR_MODEL:-cyankiwi/Qwen3-VL-4B-Instruct-AWQ-4bit}, port ${VL_SIDECAR_PORT:-8889}, master-port ${VL_MASTER_PORT})..."
       echo "  VL worker first on ${WORKER_HOST}..."
-      remote_compose "MASTER_ADDR='$MASTER_ADDR' NODE_RANK=1 HEADLESS=1 HF_CACHE='$WORKER_HF_CACHE' docker compose -p '$PROJECT_NAME' --env-file .env.dspark -f docker-compose.vl-sidecar.yml up -d"
+      remote_compose "MASTER_ADDR='$MASTER_ADDR' NODE_RANK=1 HEADLESS=1 HF_CACHE='$WORKER_HF_CACHE' docker compose -p '$PROJECT_NAME' --env-file .env.dsv4 -f docker-compose.vl-sidecar.yml up -d"
       echo "  VL head (API rank)..."
       env -u NODE_RANK -u HEADLESS COMPOSE_DISABLE_ENV_FILE=1 \
         NODE_RANK=0 \
@@ -749,7 +749,7 @@ for _ in $(seq 1 "$WAIT_ATTEMPTS"); do
         echo "  Recent VL head logs:" >&2
         COMPOSE_DISABLE_ENV_FILE=1 docker compose -p "$PROJECT_NAME" --env-file "$COMPOSE_ENV_FILE" -f "$SIDECAR_COMPOSE_FILE" logs --tail=80 >&2 || true
         echo "  Recent VL worker logs:" >&2
-        remote_compose "docker compose -p '$PROJECT_NAME' --env-file .env.dspark -f docker-compose.vl-sidecar.yml logs --tail=80" >&2 || true
+        remote_compose "docker compose -p '$PROJECT_NAME' --env-file .env.dsv4 -f docker-compose.vl-sidecar.yml logs --tail=80" >&2 || true
       fi
     fi
     if [ "${DSPARK_ENABLE_ISSUE31_GPU_HOTFIX:-0}" = "1" ]; then
@@ -773,5 +773,5 @@ done
 echo "Timed out waiting for DSpark API. Recent head logs:" >&2
 compose_base 0 "" logs --tail=120 vllm-dspark >&2 || true
 echo "Recent worker logs:" >&2
-remote_compose "docker compose -p '$PROJECT_NAME' --env-file .env.dspark -f docker-compose.dspark.yml logs --tail=120 vllm-dspark" >&2 || true
+remote_compose "docker compose -p '$PROJECT_NAME' --env-file .env.dsv4 -f docker-compose.dsv4.yml logs --tail=120 vllm-dspark" >&2 || true
 exit 1
