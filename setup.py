@@ -68,8 +68,9 @@ LOGO = [
 
 # 256-color ramp per logo column. Source of truth: omp's brand gradient
 # (softened #c666d8 → #9b4dff → #5ad8e6 — the bright pink pulled toward violet), packages/collab-web tokens.css), interpolated
-# in RGB space and quantized to the nearest xterm-256 cube colors.
-LOGO_RAMP = [170, 134, 134, 135, 135, 135, 99, 99, 105, 105, 75, 74, 80]
+# in RGB space and quantized to the nearest xterm-256 cube colors; 69 bridges
+# the 105→75 quantization step so the animated cycle has no hard blue seam.
+LOGO_RAMP = [170, 134, 134, 135, 135, 135, 99, 99, 105, 69, 75, 74, 80]
 
 # exact brand RGBs per column for truecolor terminals (CLI path)
 _BRAND_STOPS = [(0.0, (198, 102, 216)), (0.5, (155, 77, 255)), (1.0, (90, 216, 230))]
