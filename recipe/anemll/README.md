@@ -23,11 +23,11 @@ The vector is a 478 KB GGUF control vector (spec:
 [`../../spec/CONTROL-VECTOR.md`](../../spec/CONTROL-VECTOR.md)), read by the
 hotfix from `/cache/huggingface` inside the container (= `$HF_CACHE` on the
 host, both nodes). Published artifact:
-[`msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec`](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec)
+[`msuiche/DeepSeek-V4-Flash-0731-cyber-GLP-29`](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-cyber-GLP-29)
 (gated — fetch with an HF token):
 
 ```sh
-huggingface-cli download msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec \
+huggingface-cli download msuiche/DeepSeek-V4-Flash-0731-cyber-GLP-29 \
   --local-dir ~/.cache/huggingface   # on BOTH nodes
 ```
 
