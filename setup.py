@@ -217,13 +217,14 @@ def read_lane_env():
     return vals
 
 
-def deploy_commands(lane_idx, values, qwen_host=None):
+def deploy_commands(lane_idx, values, ssh_host=None):
     """(description, argv) pairs to push the lane to its node(s) and boot it.
     DSV4 targets the MiaAI clone dir on the head (its start script syncs the
-    worker itself); Qwen targets a repo-shaped dir on the single node."""
+    worker itself); Qwen targets a repo-shaped dir on the single node.
+    ssh_host is the LAN-reachable name/IP — never the fabric address."""
     user = values.get("user", os.environ.get("USER", ""))
     if lane_idx == 0:
-        head = f"{user}@{values.get('head-ip', '<head-ip>')}"
+        head = f"{user}@{ssh_host or values.get('head-ip', '<head-ip>')}"
         remote = "dspark-miaai"
         r = os.path.join(HERE, "recipe", "anemll")
         return [
@@ -240,7 +241,7 @@ def deploy_commands(lane_idx, values, qwen_host=None):
             ("boot the stack (start script syncs the worker itself)",
              ["ssh", head, f"cd {remote} && bash start-deepseek-v4-flash-dspark.sh"]),
         ]
-    host = f"{user}@{qwen_host or '<node-host>'}"
+    host = f"{user}@{ssh_host or '<node-host>'}"
     remote = "dspark-deploy"
     return [
         (f"prepare {host}:{remote}/",
@@ -257,9 +258,9 @@ def deploy_commands(lane_idx, values, qwen_host=None):
     ]
 
 
-def boot_command(lane_idx, values, qwen_host=None):
+def boot_command(lane_idx, values, ssh_host=None):
     """Just the boot step of deploy_commands, for the diagnose flow."""
-    return deploy_commands(lane_idx, values, qwen_host)[-1]
+    return deploy_commands(lane_idx, values, ssh_host)[-1]
 
 
 def probe_models(base):
@@ -608,10 +609,16 @@ def lane_chain(io, lane_idx):
 
     # 5. deploy (confirm-gated remote actions)
     if io.confirm("Deploy to the node(s) over ssh now?", False):
-        qwen_host = None
-        if lane_idx == 1:
-            qwen_host = io.text("Node IP or hostname: ", values.get("head-ip", ""))
-        for desc, argv in deploy_commands(lane_idx, values, qwen_host):
+        # MASTER_ADDR/head-ip is the RoCE fabric address — not routable from
+        # the LAN. ssh needs a reachable host: the omp provider's by default.
+        omp_host = urllib.parse.urlparse(default_base()).hostname
+        if lane_idx == 0:
+            ssh_host = io.text("Head node ssh host (fabric IPs are not routable): ",
+                               omp_host or values.get("head-ip", ""))
+        else:
+            ssh_host = io.text("Node ssh host or IP: ",
+                               omp_host or values.get("head-ip", ""))
+        for desc, argv in deploy_commands(lane_idx, values, ssh_host):
             io.info(f"$ {' '.join(argv)}")
             if not io.confirm(f"run: {desc}?", True):
                 io.warn("skipped")
@@ -693,7 +700,7 @@ def remote_diagnose(io, host):
     if io.confirm("Boot the stack on that node?", False):
         lane_idx = io.menu("Which lane runs there?", [l["name"] for l in LANES])
         values = {"user": target.split("@")[0], "head-ip": host}
-        desc, argv = boot_command(lane_idx, values, qwen_host=host)
+        desc, argv = boot_command(lane_idx, values, ssh_host=host)
         io.info(f"$ {' '.join(argv)}")
         if io.confirm(f"run: {desc}?", True):
             rc = subprocess.call(argv)
