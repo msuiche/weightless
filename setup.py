@@ -571,11 +571,18 @@ def lane_chain(io, lane_idx):
     # 3. write env
     text = render_env(example, values, steer_mode=steer_mode,
                       steering=steering, steer_key=lane["steer_key"])
-    if os.path.exists(target) and not io.confirm(f"{target} exists — overwrite?", False):
-        return 1
-    with open(target, "w") as f:
-        f.write(text)
-    io.ok(f"wrote {target}")
+    if os.path.exists(target):
+        if io.confirm(f"{target} exists — overwrite?", False):
+            with open(target, "w") as f:
+                f.write(text)
+            io.ok(f"wrote {target}")
+        else:
+            # keep the existing file and continue the chain with it
+            io.info("keeping the existing env file")
+    else:
+        with open(target, "w") as f:
+            f.write(text)
+        io.ok(f"wrote {target}")
 
     # 4. validate the steering patch + point at the vector
     if steering:
