@@ -809,20 +809,21 @@ class TuiIO:
         self._draw_box(row, 2, width, title, lines, border, title_kind)
 
     def animate_logo(self):
-        """Swing the feather's gradient back and forth (1 2 3 4 3 2 1) — a
-        rotating wrap (1 2 3 4 1 …) jumps from cyan straight back to pink."""
+        """Slide the gradient continuously. The palette is the ramp followed by
+        itself reversed (pink→…→cyan→…→pink), so rotation never jumps: column
+        colors run 1 2 3 4 3 2 1 through the palette instead of 1 2 3 4 1."""
         if not self.logo_pos or not self.grad:
             return
         row0, col0 = self.logo_pos
         self._tick += 1
-        n = len(self.grad)
-        off = self._tick % (2 * (n - 1))
-        if off >= n:
-            off = 2 * (n - 1) - off
+        if not hasattr(self, "_grad_cycle"):
+            self._grad_cycle = self.grad + self.grad[-2:0:-1]
+        pal = self._grad_cycle
+        m = len(pal)
         for i, art in enumerate(LOGO):
             for j, ch in enumerate(art):
                 if ch != " ":
-                    self._w(row0 + i, col0 + j, ch, self.grad[(j + off) % n])
+                    self._w(row0 + i, col0 + j, ch, pal[(j + self._tick) % m])
         self.s.refresh()
 
     def menu(self, title, items, idle=None, preselect=0):
