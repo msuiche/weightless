@@ -45,19 +45,22 @@ COMPAT_BLOCK = """\
           requiresAssistantContentForToolCalls: true
 """
 
-# Launch splash: 4-point sparkle, yellow → pink gradient (256-color codes).
-SPARKLE = [
-    "     ▄     ",
-    "    ▄█▄    ",
-    "    ███    ",
-    " ▄▄▄███▄▄▄ ",
-    "▄█▀ ███ ▀█▄",
-    " ▀▀▀███▀▀▀ ",
-    "    ███    ",
-    "    ▀█▀    ",
-    "     ▀     ",
+# Launch splash: a feather (weightless), yellow → pink gradient (256-color).
+LOGO = [
+    "      ▄▄▄   ",
+    "    ▄██████ ",
+    "   ▄███▀████",
+    "  ▄███▀ ▄████",
+    "  ███▀ ▄███▀ ",
+    " ▄██▀ ▄███▀  ",
+    " ██▀ ▄███▀   ",
+    " ██ ▄███▀    ",
+    " █▌▄███▀     ",
+    " ████▀▀      ",
+    " ▀█▀         ",
+    "  ▀          ",
 ]
-GRADIENT_256 = [226, 226, 220, 214, 209, 213, 207, 198, 198]
+GRADIENT_256 = [226, 226, 220, 214, 209, 203, 213, 207, 205, 198, 198, 198]
 GRADIENT_ANSI = [f"\033[38;5;{c}m" for c in GRADIENT_256]
 ANSI_RESET = "\033[0m"
 
@@ -429,10 +432,11 @@ class TuiIO:
                     curses.init_pair(10 + i, fg, -1)
                 self.grad = [curses.color_pair(10 + i) for i in range(len(GRADIENT_256))]
             else:
-                for i, fg in enumerate([curses.COLOR_YELLOW] * 4
-                                       + [curses.COLOR_MAGENTA] * 5):
+                n = len(GRADIENT_256)
+                basic = [curses.COLOR_YELLOW] * (n // 2) + [curses.COLOR_MAGENTA] * (n - n // 2)
+                for i, fg in enumerate(basic):
                     curses.init_pair(10 + i, fg, -1)
-                self.grad = [curses.color_pair(10 + i) for i in range(9)]
+                self.grad = [curses.color_pair(10 + i) for i in range(n)]
 
     def _attr(self, kind):
         if not self.color:
@@ -725,9 +729,9 @@ def splash_tui(io):
     rows, cols = io.s.getmaxyx()
     lines = detect_state()
     content_w = max(len("local setup") + 2, *(len(l) for l in lines))
-    bcol = len(SPARKLE[0]) + 5
+    bcol = len(LOGO[0]) + 5
     side_by_side = cols >= bcol + min(content_w + 2, 56) + 2
-    brow = io.row if side_by_side else io.row + len(SPARKLE) + 1
+    brow = io.row if side_by_side else io.row + len(LOGO) + 1
     if not side_by_side:
         bcol = 0
     bw = min(content_w + 2, cols - bcol)  # outer width incl. borders
@@ -749,18 +753,18 @@ def splash_tui(io):
             pass
     win.refresh()
 
-    for i, art in enumerate(SPARKLE):
+    for i, art in enumerate(LOGO):
         attr = io.grad[i] if io.grad else curses.A_NORMAL
         try:
             io.s.addstr(io.row + i, 1, art, attr)
         except curses.error:
             pass
     io.s.refresh()
-    io.row = max(io.row + len(SPARKLE), brow + bh) + 1  # one blank line after
+    io.row = max(io.row + len(LOGO), brow + bh) + 1  # one blank line after
 
 
 def splash_cli(io):
-    for i, art in enumerate(SPARKLE):
+    for i, art in enumerate(LOGO):
         print((GRADIENT_ANSI[i] + art + ANSI_RESET) if io.color else art)
     box(io, "local setup", detect_state())
 
