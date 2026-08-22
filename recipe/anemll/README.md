@@ -56,3 +56,4 @@ Gotchas:
   assembly (the response carries nonstandard fields like `routed_experts`).
   `tests/03-tool-call.sh` retries once and reports byte offset + context
   when both attempts fail — during a burst both do, which is the signal.
+  Reported upstream: https://github.com/Anemll/dspark-vllm-gx10/issues/10
