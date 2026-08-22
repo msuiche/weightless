@@ -9,6 +9,33 @@ vLLM 0.25.2) driven by the MiaAI 2x recipe, with our state on top vendored in
 `recipe/anemll/`. The retired v027 stack's patch is kept for reference and as
 the fallback path.
 
+## What this is: lean abliteration steering as a patch
+
+The model weights are never redistributed — what this repo ships is the
+*intervention*, tested and self-contained:
+
+- **The steering file.** A spec-conformant control-vector GGUF
+  ([`spec/CONTROL-VECTOR.md`](spec/CONTROL-VECTOR.md)) with per-layer
+  directions, derived by us and published under
+  [`msuiche/`](https://huggingface.co/msuiche) (see
+  [Steering artifacts](#steering-artifacts-ours)). No model weights inside.
+- **The patch.** A fail-closed boot hotfix per lane
+  (`patches/hotfix-*.py`) that loads the extended GGUF and installs the
+  projective hook — no image build, no forked runtime. Structural guard
+  tests in `scripts/`, hardware-validated numbers in each lane's README.
+- **Quant-friendly.** The hook steers the residual stream at runtime, so it
+  works on quantized checkpoints (NVFP4 verified on both lanes,
+  bf16→NVFP4 transfer measured) as long as the base architecture is intact.
+  The one exception is REAP-pruned builds: deleting experts changes the
+  shape of the base model, the vector no longer matches the circuit, and
+  the lane is rejected on those grounds (see [Lanes](#lanes)).
+- **A no-patch option for Qwen.** The same intervention folded into a
+  rank-1 LoRA we reproduced — it loads in stock vLLM/peft with no hotfix at
+  all and matches the GGUF arm on hardware (both 24/32 refusal32).
+
+Internals write-up:
+[Abliteration without redistributing the model](https://www.msuiche.com/posts/autoresearch-abliteration-without-redistributing-the-model/).
+
 ## Lanes
 
 Two serving setups are relevant to us. This repo is the home of the first;
@@ -205,6 +232,7 @@ pinned checkpoint revisions.
 
 ## References & credits
 
+- [Abliteration without redistributing the model](https://www.msuiche.com/posts/autoresearch-abliteration-without-redistributing-the-model/) — our write-up of the steering internals (the method this repo packages)
 - [deepseek-ai/DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) — the model (MIT)
 - [tonyd2wild/DeepSeek-v4-Flash-0731-DSpark-1M-NVFP4-KV-2x-DGX-Spark](https://github.com/tonyd2wild/DeepSeek-v4-Flash-0731-DSpark-1M-NVFP4-KV-2x-DGX-Spark) — the original 2x DSpark NVFP4-KV recipe; its issue #18 is the spec-decode corruption we root-caused before migrating
 - [MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark) — the 2-node recipe we run (cloned at `~/dspark-miaai`, our state vendored in `recipe/anemll/`)
