@@ -2,7 +2,7 @@
 """Hotfix: projective activation steering for Qwen3.5/3.8 on vLLM 0.27.
 
 Same intervention as the DSV4 steering patch (spec in
-dspark-deploy/spec/CONTROL-VECTOR.md), ported to the Qwen3-Next-family model
+weightless/spec/CONTROL-VECTOR.md), ported to the Qwen3-Next-family model
 stack that Qwen3.8-27B loads as in the eugr/drowzeys GB10 images
 (``eugr/spark-vllm-b12x``, vLLM 0.27):
 
@@ -281,7 +281,7 @@ MODULE_BLOCK = (
     "# Projective activation steering (Qwen3.5/3.8). [steering-hotfix]\n"
     "#\n"
     "# h <- h - alpha * (h . d_hat) d_hat on the residual stream at chosen layers.\n"
-    "# Same intervention as the DSV4 lane; see dspark-deploy/spec/CONTROL-VECTOR.md.\n"
+    "# Same intervention as the DSV4 lane; see weightless/spec/CONTROL-VECTOR.md.\n"
     "#\n"
     "# Everything here is inert unless QWEN_STEER_PATH is set.\n"
     "# ---------------------------------------------------------------------------\n"

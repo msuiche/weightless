@@ -2,8 +2,8 @@
 """Hotfix: projective activation steering (DSpark) for DeepSeek-V4-Flash.
 
 Port of the v0.27 steering patch
-(dspark-deploy/patches/0001-dspark-projective-steering.patch, spec in
-dspark-deploy/spec/CONTROL-VECTOR.md) to the Anemll 0.1.1 image's vLLM
+(weightless/patches/0001-dspark-projective-steering.patch, spec in
+weightless/spec/CONTROL-VECTOR.md) to the Anemll 0.1.1 image's vLLM
 0.25.2.dev0 tree.
 
     h <- h - alpha * (h . d_hat) d_hat

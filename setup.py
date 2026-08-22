@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Full-chain setup for dspark-deploy.
+"""Full-chain setup for weightless.
 
 Pick a lane, fill in the site values (hosts, user), generate the real
 gitignored env file from the shipped example, validate the steering patch,
@@ -785,7 +785,7 @@ def run(io):
 
 def _tui_main(stdscr):
     io = TuiIO(stdscr)
-    io.header("  dspark-deploy setup")
+    io.header("  weightless setup")
     io._put(1, 0, "  lean abliteration steering, served", "dim")
     io.row = 3
     splash_tui(io)
@@ -804,7 +804,7 @@ def main():
         except Exception as e:
             print(f"(TUI failed: {e} — falling back to prompts)", file=sys.stderr)
     io = CliIO()
-    io.header("== dspark-deploy setup ==")
+    io.header("== weightless setup ==")
     io.info("")
     splash_cli(io)
     io.info("")
