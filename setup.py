@@ -177,13 +177,19 @@ def detect_state():
     return lines
 
 
-def box(io, title, lines):
-    """Draw a unicode info box."""
+def box(io, title, lines, border="dim", title_kind="head"):
+    """Draw an info box. TUI: a real bordered curses window (never misaligned).
+    CLI: unicode frame with a colored border and title."""
+    if isinstance(io, TuiIO):
+        io.tui_box(title, lines, border, title_kind)
+        return
     width = min(72, max(len(title) + 2, *(len(l) for l in lines)) + 2)
-    io.info("┌─ " + title + " " + "─" * (width - len(title) - 4) + "┐")
+    b = lambda s: io._c(border, s) if getattr(io, "color", False) else s
+    tt = io._c(title_kind, title) if getattr(io, "color", False) else title
+    io.info(b("┌─ ") + tt + b(" " + "─" * (width - len(title) - 4) + "┐"))
     for line in lines:
-        io.info("│ " + line[:width - 2].ljust(width - 2) + "│")
-    io.info("└" + "─" * width + "┘")
+        io.info(b("│ ") + line[:width - 2].ljust(width - 2) + b("│"))
+    io.info(b("└" + "─" * width + "┘"))
 
 
 _MDNS_CACHE = None
@@ -717,6 +723,24 @@ class TuiIO:
         self._w(self._begin_row, 0, f"  {msg}", self._attr(kind))
         self.s.refresh()
 
+    def tui_box(self, title, lines, border="dim", title_kind="head"):
+        """A bordered window box with colored frame and embedded title."""
+        max_y, max_x = self.s.getmaxyx()
+        width = min(max(len(title) + 2, *(len(l) for l in lines)) + 4, max_x - 4)
+        bh = len(lines) + 2
+        row = self._next(bh)
+        win = curses.newwin(bh, width, row, 2)
+        win.attron(self._attr(border))
+        win.box()
+        win.attroff(self._attr(border))
+        try:
+            win.addstr(0, 2, f" {title} ", self._attr(title_kind))
+            for i, l in enumerate(lines):
+                win.addstr(1 + i, 2, l[: width - 4])
+        except curses.error:
+            pass
+        win.refresh()
+
     def animate_logo(self):
         """Rotate the feather's gradient one column to the left."""
         if not self.logo_pos or not self.grad:
@@ -1074,10 +1098,10 @@ def completion(io, rc):
     """End-of-run summary. A boxed 'done' on success, a pointer on failure."""
     io.info("")
     if rc == 0:
-        box(io, "done", [
+        box(io, "Congratulations!", [
             "you're all set — steering validated, endpoint live,",
             "omp provider ready. Happy hacking.",
-        ])
+        ], border="ok", title_kind="head")
     else:
         io.warn("setup finished with errors — scroll up for the red rows")
 
