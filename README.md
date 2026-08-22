@@ -76,9 +76,10 @@ approximated model, and we do not serve it. The steering *contract* in
 
 Real `.env` files are gitignored — only `*.example` templates are tracked
 (`.env.dspark.example` under `recipe/anemll/` is the live one). The live
-values live on the cluster and in `../DSPARK-HANDOFF.md`. **2026-08-21: the
-git history was rewritten to purge previously-committed env files — old
-clones will not fast-forward; re-clone.**
+values live on the cluster and in `../DSPARK-HANDOFF.md`. **History was
+rewritten twice to purge site-specific material — 2026-08-21 (committed env
+files) and 2026-08-22 (internal hostnames/subnets, `.omc` tooling state) —
+old clones will not fast-forward; re-clone.**
 
 Maintenance home for the patch is the `dspark-steering-v027` branch of
 [`msuiche/vllm`](https://github.com/msuiche/vllm) (public), so upstream bumps get
