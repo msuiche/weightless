@@ -27,7 +27,8 @@ python3 setup.py   # Python 3.9+, stdlib only — TUI wizard with a prompt fallb
 ```
 
 Pick a lane and it walks the full chain: site values → env file → steering
-validation → confirm-gated ssh deploy → omp provider + endpoint smoke tests.
+validation → confirm-gated ssh deploy → omp provider (registered as omp's
+default model) + endpoint smoke tests.
 Endpoint down? The diagnose chain isolates DNS → TCP → HTTP and can check and
 boot the stack over ssh. Non-interactive alternative:
 `sh tests/install.sh && sh tests/run.sh` with `DSPARK_*` env overrides.

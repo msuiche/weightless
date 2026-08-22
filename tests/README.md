@@ -11,9 +11,10 @@ path — not just that it answers chat.
 ## Setup
 
 Interactive wizard — probes the endpoint, lists the models it actually
-serves, installs the omp provider, offers to run the suite (the root
-`setup.py` does this plus env generation, steering validation, and
-ssh deploy for the serving lanes):
+serves, installs the omp provider, registers it as omp's default model
+(`modelRoles.default` in `~/.omp/agent/config.yml`), offers to run the
+suite (the root `setup.py` does this plus env generation, steering
+validation, and ssh deploy for the serving lanes):
 
 ```sh
 python3 setup.py   # repo root
@@ -24,6 +25,7 @@ Non-interactive equivalent:
 ```sh
 curl -fsSL https://omp.sh/install | sh   # needs bun >= 1.3.14 (`bun upgrade`)
 sh tests/install.sh                       # merges the dspark provider into ~/.omp/agent/models.yml
+                                          # and sets it as omp's default model
 ```
 
 ## Run

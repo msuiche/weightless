@@ -27,6 +27,7 @@ except ImportError:  # non-POSIX / minimal builds — CLI fallback only
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OMP_MODELS = os.path.expanduser("~/.omp/agent/models.yml")
+OMP_CONFIG = os.path.expanduser("~/.omp/agent/config.yml")
 DEFAULT_BASE = "http://localhost:8888/v1"
 DEFAULT_MODEL = "deepseek-v4-flash-dspark"
 PROVIDER = "dspark"
@@ -503,6 +504,49 @@ def install_provider(base, model, deepseek_compat):
     with open(OMP_MODELS, "w") as f:
         f.write("providers:\n  " + block.replace("\n", "\n  ").rstrip() + "\n")
     return f"wrote {OMP_MODELS}"
+
+
+def read_omp_default_model():
+    """omp's modelRoles.default from ~/.omp/agent/config.yml, if set."""
+    try:
+        with open(OMP_CONFIG) as f:
+            text = f.read()
+    except OSError:
+        return None
+    block = re.search(r"(?m)^modelRoles:\s*\n(?:[ \t]+\S.*\n?)*", text)
+    if not block:
+        return None
+    m = re.search(r"(?m)^\s+default:\s*(\S+)", block.group(0))
+    return m.group(1) if m else None
+
+
+def set_omp_default_model(model):
+    """Set modelRoles.default in ~/.omp/agent/config.yml, preserving the
+    rest of the file (including sibling roles). Returns a status line."""
+    ref = f"{PROVIDER}/{model}"
+    try:
+        with open(OMP_CONFIG) as f:
+            text = f.read()
+    except OSError:
+        text = ""
+    block = re.search(r"(?m)^modelRoles:\s*\n(?:[ \t]+\S.*\n?)*", text)
+    if block and re.search(r"(?m)^\s+default:", block.group(0)):
+        new_block = re.sub(r"(?m)^(\s+)default:.*",
+                           lambda m: f"{m.group(1)}default: {ref}",
+                           block.group(0))
+        text = text[:block.start()] + new_block + text[block.end():]
+    elif block:
+        text = text[:block.end()] + f"  default: {ref}\n" + text[block.end():]
+    else:
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += f"modelRoles:\n  default: {ref}\n"
+    if os.path.exists(OMP_CONFIG):
+        shutil.copy(OMP_CONFIG, OMP_CONFIG + ".bak")
+    os.makedirs(os.path.dirname(OMP_CONFIG), exist_ok=True)
+    with open(OMP_CONFIG, "w") as f:
+        f.write(text)
+    return f"omp default model → '{ref}' ({OMP_CONFIG})"
 
 
 def prereqs():
@@ -1107,6 +1151,11 @@ def tests_chain(io):
     compat = io.confirm(f"DeepSeek V4 compat block for '{model}'?",
                         "deepseek" in model.lower())
     io.ok(install_provider(base, model, compat))
+    ref = f"{PROVIDER}/{model}"
+    if read_omp_default_model() == ref:
+        io.ok(f"omp default model already '{ref}'")
+    elif io.confirm(f"Make '{ref}' omp's default model?", True):
+        io.ok(set_omp_default_model(model))
     if io.confirm("Run the test suite now?", True):
         return run_suite(io, base, model)
     io.info(f"done — later: sh {os.path.join(HERE, 'tests', 'run.sh')}")
