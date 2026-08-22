@@ -85,7 +85,7 @@ memory utilization, so the Qwen lane is parked until DSV4 is down.
 | lane | hardware | model | steering | status |
 |---|---|---|---|---|
 | **DSV4 TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-0731, NVFP4 (166.9 GB) | projective cvec, live on 29 layers | **live** — `recipe/anemll/` |
-| **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | per-layer cvec, L10–58 at α=1.0 ([shipping artifact](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-GLP-49)) | **hardware-validated** — `recipe/qwen/`; stock 4/32, GGUF 24/32, LoRA 24/32 on refusal32 (2026-08-22) |
+| **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | per-layer cvec, L10–58 at α=1.0 ([shipping artifact](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49)) | **hardware-validated** — `recipe/qwen/`; stock 4/32, GGUF 24/32, LoRA 24/32 on refusal32 (2026-08-22) |
 
 **Single-Spark DSV4 (EXL3 3.0bpw + REAP-K216): evaluated and rejected.**
 The full NVFP4 checkpoint (166.9 GB) cannot fit one Spark, so single-node
@@ -152,7 +152,7 @@ published under `msuiche/` on Hugging Face (gated — fetch with an HF token),
 spec-conformant per [`spec/CONTROL-VECTOR.md`](spec/CONTROL-VECTOR.md) and
 verified against their pinned checkpoint revisions.
 
-- [`msuiche/DeepSeek-V4-Flash-0731-cyber-GLP-29`](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-cyber-GLP-29)
+- [`msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29`](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29)
   — **DSV4 lane, GLP-29 (GGUF).** Cyber-contrast vector: 29 per-layer
   directions over
   L10–38, n_embd 4096, α=4.0. The live config currently serves the
@@ -160,7 +160,7 @@ verified against their pinned checkpoint revisions.
   direction we reformatted, re-measured and repackaged (attribution in the
   file metadata); swapping is one `DSPARK_STEER_PATH` line. Wiring:
   `recipe/anemll/README.md`.
-- [`msuiche/Qwen3.8-27B-abliterated-GLP-49`](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-GLP-49)
+- [`msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49`](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49)
   — **Qwen lane, GLP-49 (GGUF + LoRA).** The GGUF is canonical: per-layer
   diff of
   means, 49 directions over L10–58, n_embd 5120, α=1.0 (α=4 measurably

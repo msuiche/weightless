@@ -68,7 +68,7 @@ LANES = [
          target="recipe/anemll/.env.dspark",
          steer_key="DSPARK_STEER_PATH",
          structure_test="scripts/test-dsv4-hotfix-structure.py",
-         vector_repo="msuiche/DeepSeek-V4-Flash-0731-cyber-GLP-29",
+         vector_repo="msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29",
          steer_modes=None,
          port=8888),
     dict(name="Qwen TP=1 serving — single DGX Spark",
@@ -76,7 +76,7 @@ LANES = [
          target="recipe/qwen/.env.qwen",
          steer_key="QWEN_STEER_PATH",
          structure_test="scripts/test-qwen-steering-structure.py",
-         vector_repo="msuiche/Qwen3.8-27B-abliterated-GLP-49",
+         vector_repo="msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49",
          steer_modes=[
              ("gguf", "gguf — hotfix-patched vLLM, fail-closed (default, validated)"),
              ("lora", "lora — stock vLLM --enable-lora, no patch (validated)")],
