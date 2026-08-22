@@ -574,6 +574,7 @@ class CliIO:
 class TuiIO:
     def __init__(self, stdscr):
         self.s = stdscr
+        self.s.scrollok(True)
         self.row = 0
         self.color = False
         self.grad = []
@@ -619,6 +620,15 @@ class TuiIO:
                 "dim": curses.A_DIM}.get(kind, curses.A_NORMAL)
 
     def _next(self, n=1):
+        max_y = self.s.getmaxyx()[0]
+        if self.row + n > max_y - 1:  # overflow: scroll up, pin to bottom
+            k = self.row + n - (max_y - 1)
+            try:
+                self.s.scroll(k)
+            except curses.error:
+                pass
+            self.row -= k
+            self.logo_pos = None  # the logo scrolled off — stop animating
         self.row += n
         return self.row - n
 
