@@ -17,7 +17,7 @@ the second is vendored under `recipe/qwen/`.
 | lane | hardware | model | steering | status |
 |---|---|---|---|---|
 | **DSV4 TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-0731, NVFP4 (166.9 GB) | projective cvec, live on 29 layers | **live** — this repo |
-| **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | per-layer cvec, L10–58 at α=1.0 ([shipping artifact](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cvec)) | **profile added** — `recipe/qwen/`; structurally tested, not yet booted on hardware |
+| **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | per-layer cvec, L10–58 at α=1.0 ([shipping artifact](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cvec)) | **hardware-validated** — `recipe/qwen/`; stock 4/32, GGUF 24/32, LoRA 24/32 on refusal32 (2026-08-22) |
 
 **Single-Spark DSV4 (EXL3 3.0bpw + REAP-K216): evaluated and rejected.**
 The full NVFP4 checkpoint (166.9 GB) cannot fit one Spark, so single-node
@@ -38,7 +38,7 @@ approximated model, and we do not serve it. The steering *contract* in
 | `recipe/anemll/` | **live**: canonical copies of our compose / start script / `.env.dspark.example` for the MiaAI 2x clone, plus rebuild notes (the real `.env.dspark` is gitignored) |
 | `recipe/qwen/` | **Qwen TP=1 lane**: serve script + `.env.qwen.example` for the drowzeys single-Spark recipe, with the steering hotfix wired in fail-closed |
 | `patches/hotfix-dsv4-steering-projective.py` | **live**: steering as a fail-closed boot hotfix for the 0.25.2 image (embedded GGUF reader; no image build) |
-| `patches/hotfix-qwen38-steering-projective.py` | the same steering for the Qwen lane: patches `qwen3_next.py` in the eugr/drowzeys vLLM 0.27 image (steers `hidden_states + residual` — vLLM's decomposed convention) |
+| `patches/hotfix-qwen38-steering-projective.py` | the same steering for the Qwen lane: patches `qwen3_next.py` + `qwen3_5.py` in the eugr/drowzeys vLLM 0.27 image (steers `hidden_states + residual` — vLLM's decomposed convention) |
 | `patches/0001-dspark-projective-steering.patch` | the same hook as a git patch against vLLM v0.27.0 (fallback stack) |
 | `patches/0002-dspark-steering-test.patch` | vLLM-side test that extracts and exercises the real GGUF loader (pairs with 0001) |
 | `recipe/` (top level) | retired v027 stack: `Dockerfile.gguf-dep`, `Dockerfile.steering-overlay`, `docker-compose.v027.yml` |
@@ -189,8 +189,9 @@ pinned checkpoint revisions.
   means, 49 directions over L10–58, n_embd 5120, α=1.0 (α=4 measurably
   over-refuses on this model). The rank-1 LoRA (`mlp.down_proj`, L1–63,
   α=1.0 baked) is the same intervention folded into weights — it loads in
-  stock vLLM/peft/llama.cpp with no hotfix, but is unscored on the cyber
-  holdout and is valid only for checkpoint revision `1d4bf0f2ff60`
+  stock vLLM/peft/llama.cpp with no hotfix, matches the GGUF on NVFP4
+  hardware (both 24/32 refusal32, 2026-08-22), but is still unscored on the
+  cyber holdout and is valid only for checkpoint revision `1d4bf0f2ff60`
   (`lora_A` embeds `W`). Wiring: `recipe/qwen/README.md`.
 
 ## Roadmap

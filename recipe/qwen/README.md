@@ -10,9 +10,43 @@ fill in the `<...>` placeholders, and run `serve-qwen38.sh`.
 
 | file | what it is |
 |---|---|
-| `serve-qwen38.sh` | drowzeys Profile A (throughput) with the steering hotfix applied fail-closed before `vllm serve` |
+| `serve-qwen38.sh` | drowzeys Profile A (throughput) with steering; `STEER_MODE=gguf\|lora` selects the mechanism |
 | `.env.qwen.example` | full config with site values as `<...>` placeholders (the real `.env.qwen` is gitignored) |
-| `../../patches/hotfix-qwen38-steering-projective.py` | the steering hook; patches the container's `qwen3_next.py` at boot |
+| `../../patches/hotfix-qwen38-steering-projective.py` | the GGUF-mode hook; patches the container's `qwen3_next.py` **and** `qwen3_5.py` at boot |
+
+## Steering modes (both hardware-validated 2026-08-22, NVFP4)
+
+Measured on one DGX Spark against this exact stack, refusal32 suite,
+heuristic classifier (full JSONs on the node; suites/results stay outside
+this repo):
+
+| arm | refusal32 delivery | mechanism |
+|---|---:|---|
+| stock | 4/32 (12.5%) | — |
+| **GGUF cvec** | **24/32 (75.0%)** | hotfix, `layers=49 [10..58]` confirmed in the boot log |
+| **LoRA** | **24/32 (75.0%)** | stock vLLM `--enable-lora`, coexists with MTP-3 |
+
+Both match their bf16 eval measurements (62.5% CI [45.3, 77.1] and 71.9%
+respectively) — the bf16→NVFP4 transfer holds for both formats.
+
+- **`STEER_MODE=gguf`** (default): fail-closed hotfix, spec-enforced loader,
+  steers the full residual stream. The boot log must read
+  `Qwen refusal steering active: hook=post_layer alpha=1.000 ... layers=49`.
+- **`STEER_MODE=lora`**: no patch, no anchor fragility on image bumps; the
+  steered model is served as the `qwen-abliterated` module next to the stock
+  base model (so one boot gives you both arms). vLLM needs the **peft
+  directory layout**, not the bare safetensors:
+
+  ```sh
+  mkdir -p "$MODELS/lora/qwen-abliterated"
+  cp Qwen3.8-27B-refusal-abliterated-lora-r1-down_proj-L1-63-a1.safetensors \
+     "$MODELS/lora/qwen-abliterated/adapter_model.safetensors"
+  # adapter_config.json: peft_type=LORA, r=1, lora_alpha=1, bias=none,
+  # task_type=CAUSAL_LM, target_modules=["mlp.down_proj"]
+  ```
+
+  Do not scale the adapter above 1.0 — α=1 removes the component, above
+  that it reflects (α=2 measured refusing 37.5% of harmless prompts).
 
 ## Steering vector
 
@@ -42,9 +76,11 @@ import the DSV4 lane's 4.0 — α is checkpoint-specific.
   layernorm), and the derivation measured the *full* post-layer stream, so
   the apply reconstructs it per layer. Steering `hidden_states` alone would
   remove the component from only part of the stream.
-- **The patch target is `qwen3_next.py`, not `qwen3_5.py`** — `Qwen3_5Model`
-  inherits its forward from `Qwen3NextModel`. Inert unless `QWEN_STEER_PATH`
-  is set, so Qwen3-Next models sharing the file are unaffected.
+- **The patch targets `qwen3_next.py` AND `qwen3_5.py`** — `Qwen3_5Model`
+  inherits its forward from `Qwen3NextModel` but overrides `__init__` and
+  skips the parent's, so the steering buffers must be registered in both
+  (the first hardware boot proved it: missing the qwen3_5 half crashes at
+  torch.compile). Inert unless `QWEN_STEER_PATH` is set.
 - **`QWEN_STEERING_MODEL_PY` may need setting.** The default assumes a
   dist-packages install; if the image has a source install the default
   silently patches a file nobody imports. Discover the real path (command in
