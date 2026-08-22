@@ -555,8 +555,9 @@ class CliIO:
 
     def confirm(self, prompt, default=True):
         hint = "Y/n" if default else "y/N"
+        enter = "Enter = yes" if default else "Enter = no"
         try:
-            s = input(f"{prompt} [{hint}]: ").strip().lower()
+            s = input(f"{prompt} [{hint} — {enter}]: ").strip().lower()
         except EOFError:
             self._eof()
         return s.startswith("y") if s else default
@@ -698,8 +699,9 @@ class TuiIO:
     def confirm(self, prompt, default=True):
         r = self._next()
         hint = "Y/n" if default else "y/N"
+        enter = "Enter = yes" if default else "Enter = no"
         self._w(r, 0, f"{prompt} ", self._attr("head"))
-        self._w(r, len(prompt) + 1, f"[{hint}] ", self._attr("dim"))
+        self._w(r, len(prompt) + 1, f"[{hint} — {enter}] ", self._attr("dim"))
         self.s.refresh()
         ch = self.s.get_wch()
         return ch.lower().startswith("y") if isinstance(ch, str) and ch.strip() else default
@@ -842,7 +844,7 @@ def lane_chain(io, lane_idx):
                 f"huggingface-cli download {lane['vector_repo']} --include '*.gguf'")
 
     # 5. deploy (confirm-gated remote actions, preflight first)
-    if io.confirm("Deploy to the node(s) over ssh now?", False):
+    if io.confirm("Deploy to the node(s) over ssh now?", True):
         # MASTER_ADDR/head-ip is the RoCE fabric address — not routable from
         # the LAN. ssh needs a reachable host: the omp provider's by default.
         omp_host = urllib.parse.urlparse(default_base()).hostname
