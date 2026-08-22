@@ -823,7 +823,8 @@ def lane_chain(io, lane_idx):
                 io.err(f"FAILED ({rc}) — fix and re-run; aborting deploy")
                 return rc
     else:
-        io.info("deploy skipped — commands are in the lane README when you're ready")
+        io.info("deploy skipped (declined) — nothing was checked remotely. Answer y to "
+                "preflight first: checksums + container status before anything is touched.")
 
     # 6. omp provider + endpoint tests
     return tests_chain(io)
