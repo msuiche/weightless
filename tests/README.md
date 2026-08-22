@@ -10,6 +10,15 @@ path — not just that it answers chat.
 
 ## Setup
 
+Interactive wizard (probes the endpoint, lists the models it actually
+serves, installs the omp provider, offers to run the suite):
+
+```sh
+python3 tests/setup.py
+```
+
+Non-interactive equivalent:
+
 ```sh
 curl -fsSL https://omp.sh/install | sh   # needs bun >= 1.3.14 (`bun upgrade`)
 sh tests/install.sh                       # merges the dspark provider into ~/.omp/agent/models.yml
