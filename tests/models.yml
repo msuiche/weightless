@@ -1,0 +1,23 @@
+# omp provider config for the dspark cluster endpoint.
+# Install with tests/install.sh (merges into ~/.omp/agent/models.yml).
+providers:
+  dspark:
+    baseUrl: http://localhost:8888/v1
+    auth: none
+    api: openai-completions
+    models:
+      - id: deepseek-v4-flash-dspark
+        name: DeepSeek V4 Flash (dspark TP=2)
+        reasoning: true
+        input: [text]
+        contextWindow: 1048576
+        maxTokens: 32768
+        compat:
+          # DeepSeek V4 request shaping (mirrors the official DeepSeek
+          # guidance for omp): system role, max_tokens, and no tool_choice.
+          supportsDeveloperRole: false
+          supportsReasoningEffort: true
+          maxTokensField: max_tokens
+          supportsToolChoice: false
+          requiresReasoningContentForToolCalls: true
+          requiresAssistantContentForToolCalls: true
