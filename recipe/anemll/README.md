@@ -46,3 +46,10 @@ Gotchas:
   empty-to-unset normalization, `DRAFT_SAMPLE_METHOD` probabilistic|greedy
   gate — the k=7/greedy A/B lever is now one env line). Contract tests
   29/29 + 7/7 green; takes effect at next boot, no restart was needed.
+- Known flake (observed once, 2026-08-22): the serving layer can emit invalid
+  JSON on the tool-call path — raw control characters (literal newlines)
+  inside a string, failing strict JSON parsers client-side. Rare
+  (0/12 on retry), nothing in the server logs; the response carries
+  nonstandard fields (`routed_experts`), so the suspect is the recipe's
+  custom response path. `tests/03-tool-call.sh` reports the byte offset and
+  context if it recurs — capture it before assuming client-side breakage.
