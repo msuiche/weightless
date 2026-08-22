@@ -1,6 +1,7 @@
-# Projective control vectors — format and apply path
+# GLP — GGUF Layer Projection: format and apply path
 
-A **control vector** here is a few hundred KB of per-layer directions that change
+A **GLP vector** (GGUF Layer Projection — put your model on GLP and it comes
+back weightless) is a few hundred KB of per-layer directions that change
 a model's behaviour at inference time without touching its weights. This document
 specifies the container we write, the one metadata key that makes it safe to
 share, and the two reader implementations.

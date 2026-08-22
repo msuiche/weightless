@@ -1,8 +1,9 @@
-# dspark-deploy
+# weightless
 
-Serving DeepSeek V4 Flash 0731 on 2x DGX Spark (GB10, SM121, TP=2 over RoCE)
-with projective refusal steering — the self-contained recipe: serving config,
-boot hotfixes, the steering patch, and the control-vector spec.
+**Abliteration without the weights — put your model on GLP.** Serving
+DeepSeek V4 Flash 0731 on 2x DGX Spark (GB10, SM121, TP=2 over RoCE) with
+projective refusal steering: serving config, boot hotfixes, the steering
+patch, and the GLP (GGUF Layer Projection) format spec.
 
 The live stack is the Anemll image (`ghcr.io/anemll/dspark-vllm-gx10:0.1.1`,
 vLLM 0.25.2) driven by the MiaAI 2x recipe, with our state on top vendored in
@@ -28,13 +29,13 @@ boot the stack over ssh. Non-interactive alternative:
 The model weights are never redistributed — what this repo ships is the
 *intervention*, tested and self-contained:
 
-- **The steering file.** A spec-conformant control-vector GGUF
-  ([`spec/CONTROL-VECTOR.md`](spec/CONTROL-VECTOR.md)) with per-layer
+- **The steering file.** A GLP vector — a spec-conformant control-vector
+  GGUF ([`spec/CONTROL-VECTOR.md`](spec/CONTROL-VECTOR.md)) with per-layer
   directions, derived by us and published under
   [`msuiche/`](https://huggingface.co/msuiche) (see
   [Steering artifacts](#steering-artifacts-ours)). No model weights inside.
 - **The patch.** A fail-closed boot hotfix per lane
-  (`patches/hotfix-*.py`) that loads the extended GGUF and installs the
+  (`patches/hotfix-*.py`) that loads the GLP file and installs the
   projective hook — no image build, no forked runtime. Structural guard
   tests in `scripts/`, hardware-validated numbers in each lane's README.
 - **Quant-friendly.** The hook steers the residual stream at runtime, so it
@@ -70,8 +71,8 @@ flowchart LR
     WIZ -->|probe / diagnose / boot| EP
     EP --> DSV4[DSV4 lane — TP=2<br/>2x DGX Spark over RoCE<br/>DeepSeek-V4-Flash-0731 NVFP4]
     EP --> QWEN[Qwen lane — TP=1<br/>single DGX Spark<br/>Qwen3.8-27B NVFP4]
-    CV[GGUF control vector<br/>fail-closed boot hotfix] -.->|optional| DSV4
-    CV2[GGUF control vector hotfix<br/>or rank-1 LoRA, no patch] -.->|optional| QWEN
+    CV[GLP vector (GGUF)<br/>fail-closed boot hotfix] -.->|optional| DSV4
+    CV2[GLP vector hotfix<br/>or rank-1 LoRA, no patch] -.->|optional| QWEN
 ```
 
 The two lanes never run at once: DSV4 TP=2 already holds both GPUs at 0.80
@@ -108,7 +109,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `recipe/` (top level) | retired v027 stack: Dockerfiles + compose |
 | `scripts/` | structural guard tests for the steering patches: `test-dsv4-hotfix-structure.py`, `test-qwen-steering-structure.py`, `test-steering-structure.py` (retired v027 overlay) |
 | `tests/` | endpoint smoke tests: endpoint / chat / tool-call / headless omp agent loop — `tests/README.md` |
-| `spec/CONTROL-VECTOR.md` | the control-vector GGUF format: the `dspark.mode` contract, layer-id mapping, why an additive reader must refuse the file |
+| `spec/CONTROL-VECTOR.md` | the GLP format spec: the `dspark.mode` contract, layer-id mapping, why an additive reader must refuse the file |
 | `BENCHMARK.md` | every serving measurement, with shapes stated |
 
 Real `.env` files are gitignored — only `*.example` templates are tracked.
