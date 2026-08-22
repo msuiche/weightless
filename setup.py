@@ -45,6 +45,22 @@ COMPAT_BLOCK = """\
           requiresAssistantContentForToolCalls: true
 """
 
+# Launch splash: 4-point sparkle, yellow → pink gradient (256-color codes).
+SPARKLE = [
+    "     ▄     ",
+    "    ▄█▄    ",
+    "    ███    ",
+    " ▄▄▄███▄▄▄ ",
+    "███████████",
+    " ▀▀▀███▀▀▀ ",
+    "    ███    ",
+    "    ▀█▀    ",
+    "     ▀     ",
+]
+GRADIENT_256 = [226, 226, 220, 214, 209, 213, 207, 198, 198]
+GRADIENT_ANSI = [f"\033[38;5;{c}m" for c in GRADIENT_256]
+ANSI_RESET = "\033[0m"
+
 # lane -> (example env, target env, steering env key, structure test, vector repo)
 LANES = [
     dict(name="DSV4 TP=2 serving — 2x DGX Spark, Anemll recipe",
@@ -74,6 +90,20 @@ PLACEHOLDER_HINTS = {
 
 
 # ---------------------------------------------------------------- core logic
+
+def omp_provider_base():
+    """The dspark provider's baseUrl from ~/.omp/agent/models.yml, if set."""
+    if not os.path.exists(OMP_MODELS):
+        return None
+    with open(OMP_MODELS) as f:
+        m = re.search(rf"(?ms)^  {PROVIDER}:.*?baseUrl: (\S+)", f.read())
+    return m.group(1) if m else None
+
+
+def default_base():
+    """Best default endpoint: the configured omp provider's, else localhost."""
+    return omp_provider_base() or DEFAULT_BASE
+
 
 def detect_state():
     """Summarize existing local setup: per-lane env presence + key values,
@@ -111,12 +141,9 @@ def detect_state():
         if steer_line:
             lines.append(f"  ↳ {steer_line} — {os.path.basename(steer)}")
     if os.path.exists(OMP_MODELS):
-        with open(OMP_MODELS) as f:
-            content = f.read()
-        if re.search(rf"(?m)^  {PROVIDER}:", content):
-            m = re.search(rf"(?ms)^  {PROVIDER}:.*?baseUrl: (\S+)", content)
-            lines.append(f"omp provider '{PROVIDER}': installed"
-                         + (f" ({m.group(1)})" if m else ""))
+        base = omp_provider_base()
+        if base:
+            lines.append(f"omp provider '{PROVIDER}': installed ({base})")
         else:
             lines.append(f"omp provider '{PROVIDER}': config exists, provider missing")
     else:
@@ -351,6 +378,7 @@ class TuiIO:
         self.s = stdscr
         self.row = 0
         self.color = False
+        self.grad = []
         if curses.has_colors():
             curses.start_color()
             curses.use_default_colors()
@@ -358,6 +386,15 @@ class TuiIO:
                                     curses.COLOR_RED, curses.COLOR_YELLOW), 1):
                 curses.init_pair(i, fg, -1)
             self.color = True
+            if curses.COLORS >= 256:
+                for i, fg in enumerate(GRADIENT_256):
+                    curses.init_pair(10 + i, fg, -1)
+                self.grad = [curses.color_pair(10 + i) for i in range(len(GRADIENT_256))]
+            else:
+                for i, fg in enumerate([curses.COLOR_YELLOW] * 4
+                                       + [curses.COLOR_MAGENTA] * 5):
+                    curses.init_pair(10 + i, fg, -1)
+                self.grad = [curses.color_pair(10 + i) for i in range(9)]
 
     def _attr(self, kind):
         if not self.color:
@@ -528,7 +565,7 @@ def lane_chain(io, lane_idx):
 def diagnose_chain(io, base=None):
     """Layered failure isolation for an endpoint that won't answer, with an
     optional remote check/boot over ssh."""
-    base = base or io.text("Base URL to diagnose: ", DEFAULT_BASE)
+    base = base or io.text("Base URL to diagnose: ", default_base())
     u = urllib.parse.urlparse(base if "://" in base else "http://" + base)
     host = u.hostname or base
     port = u.port or (443 if u.scheme == "https" else 80)
@@ -568,7 +605,13 @@ def diagnose_chain(io, base=None):
 def remote_diagnose(io, host):
     """ssh to the serving node: container status, GPU, offer to boot."""
     saved = read_lane_env()
-    default_target = f"{saved.get('user', os.environ.get('USER', ''))}@{saved.get('host', host)}"
+    # The env's MASTER_ADDR is the RoCE fabric IP — no sshd there. Prefer the
+    # host actually being diagnosed; when that's loopback (stack runs remote
+    # but we're testing locally), fall back to the omp provider's host.
+    loopback = host in ("localhost", "127.0.0.1", "::1")
+    omp_host = urllib.parse.urlparse(default_base()).hostname
+    ssh_host = host if not loopback else (omp_host or saved.get("host", host))
+    default_target = f"{saved.get('user', os.environ.get('USER', ''))}@{ssh_host}"
     if not io.confirm("Check the node over ssh (docker ps, GPU)?", True):
         return
     target = io.text("ssh target (user@host): ", default_target)
@@ -600,7 +643,7 @@ def tests_chain(io):
     if not omp:
         io.err("omp not found — install: curl -fsSL https://omp.sh/install | sh")
         return 1
-    base = io.text("Base URL of the OpenAI-compatible server: ", DEFAULT_BASE)
+    base = io.text("Base URL of the OpenAI-compatible server: ", default_base())
     io.info(f"probing {base}/models ...")
     ids, err = probe_models(base)
     while ids is None:
@@ -639,12 +682,45 @@ def tests_chain(io):
 
 # ---------------------------------------------------------------- entry
 
+def splash_tui(io):
+    """Gradient sparkle left, local-setup box right (stacked if narrow)."""
+    _, cols = io.s.getmaxyx()
+    lines = detect_state()
+    width = min(max(len("local setup") + 2, *(len(l) for l in lines)) + 2,
+                cols - 2)
+    side_by_side = cols >= len(SPARKLE[0]) + width + 8
+    for i, art in enumerate(SPARKLE):
+        attr = io.grad[i] if io.grad else curses.A_NORMAL
+        try:
+            io.s.addstr(io.row + i, 1, art, attr)
+        except curses.error:
+            pass
+    brow, bcol = io.row, (len(SPARKLE[0]) + 6) if side_by_side else 0
+    if not side_by_side:
+        brow = io.row + len(SPARKLE) + 1
+    border_attr = io._attr("dim")
+    top = "┌─ local setup " + "─" * (width - len("local setup") - 4) + "┐"
+    for j, bline in enumerate([top]
+                              + ["│ " + l[:width - 2].ljust(width - 2) + "│" for l in lines]
+                              + ["└" + "─" * width + "┘"]):
+        try:
+            io.s.addstr(brow + j, bcol, bline, border_attr)
+        except curses.error:
+            pass
+    io.s.refresh()
+    io.row = brow + len(lines) + 3
+
+
+def splash_cli(io):
+    for i, art in enumerate(SPARKLE):
+        print((GRADIENT_ANSI[i] + art + ANSI_RESET) if io.color else art)
+    box(io, "local setup", detect_state())
+
+
 def run(io):
     bun, omp = prereqs()
     io.info(f"bun: {bun or 'not found (only needed for omp/tests)'}")
     io.info(f"omp:  {omp or 'not found (only needed for tests)'}")
-    io.info("")
-    box(io, "local setup", detect_state())
     io.info("")
     choice = io.menu("What to set up:", [
         "DSV4 TP=2 serving — full chain (env → steering → deploy → omp/tests)",
@@ -663,8 +739,8 @@ def _tui_main(stdscr):
     io = TuiIO(stdscr)
     io.header("  dspark-deploy setup")
     io._put(1, 0, "  lean abliteration steering, served", "dim")
-    io.info("  " + "─" * 56)
-    io.row = 4
+    io.row = 3
+    splash_tui(io)
     rc = run(io)
     if not curses.isendwin():
         io.info("")
@@ -681,6 +757,8 @@ def main():
             print(f"(TUI failed: {e} — falling back to prompts)", file=sys.stderr)
     io = CliIO()
     io.header("== dspark-deploy setup ==")
+    io.info("")
+    splash_cli(io)
     io.info("")
     return run(io)
 
