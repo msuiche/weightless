@@ -31,6 +31,10 @@ DEFAULT_BASE = "http://localhost:8888/v1"
 DEFAULT_MODEL = "deepseek-v4-flash-dspark"
 PROVIDER = "dspark"
 
+# DEMO_MODE=1: no network, no real tests — the probe and test suite replay
+# canned output against whatever base URL is configured. For screenshots.
+DEMO = os.environ.get("DEMO_MODE") == "1"
+
 COMPAT_BLOCK = """\
         compat:
           # DeepSeek V4 request shaping: system role, max_tokens, no
@@ -131,6 +135,13 @@ def default_base():
 def detect_state():
     """Summarize existing local setup: per-lane env presence + key values,
     and whether the omp provider is installed."""
+    if DEMO:
+        return [
+            "DSV4 TP=2 serving: head node-a.local, worker node-b.local, port 8888",
+            "  ↳ steering on (α=4.0, 29 layers) — …cyber-GLP-29-L10-38-a4.gguf",
+            "Qwen TP=1 serving: not configured",
+            f"omp provider '{PROVIDER}': installed (http://node-a.local:8888/v1)",
+        ]
     lines = []
     for lane in LANES:
         path = os.path.join(HERE, lane["target"])
@@ -446,6 +457,8 @@ def boot_command(lane_idx, values, ssh_host=None):
 
 
 def probe_models(base):
+    if DEMO:
+        return [DEFAULT_MODEL], None
     try:
         with urllib.request.urlopen(base.rstrip("/") + "/models", timeout=10) as r:
             data = json.load(r)
@@ -499,13 +512,28 @@ def run_suite(io, base, model):
     """Run tests/0*.sh one by one, inside the wizard UI: each test's verdict
     line lands as a colored ✓/~/✗ row instead of dropping out to a shell."""
     import glob
-    env = dict(os.environ, WEIGHTLESS_BASE_URL=base, WEIGHTLESS_MODEL=model,
-               WEIGHTLESS_OMP_MODEL=f"{PROVIDER}/{model}")
+    tests = sorted(glob.glob(os.path.join(HERE, "tests", "0*.sh")))
     io.info("")
     io.header("endpoint test suite")
     io.info("─" * 40)
+    if DEMO:
+        canned = {
+            "01-endpoint.sh": f"PASS: {model} listed at {base}",
+            "02-chat.sh": "PASS: chat completion returned: pong",
+            "03-tool-call.sh": 'PASS: tool call get_weather({"city": "Paris"})',
+            "04-omp-headless.sh": f"PASS: omp agent loop created omp_probe.txt via {PROVIDER}/{model}",
+        }
+        for t in tests:
+            name = os.path.basename(t)
+            io.begin(f"… {name} running")
+            io.end(f"✓ {name} — {canned.get(name, 'PASS: demo')}", "ok")
+        io.info("─" * 40)
+        io.ok("all endpoint tests passed")
+        return 0
+    env = dict(os.environ, WEIGHTLESS_BASE_URL=base, WEIGHTLESS_MODEL=model,
+               WEIGHTLESS_OMP_MODEL=f"{PROVIDER}/{model}")
     fails = 0
-    for t in sorted(glob.glob(os.path.join(HERE, "tests", "0*.sh"))):
+    for t in tests:
         name = os.path.basename(t)
         io.begin(f"… {name} running")
         try:
