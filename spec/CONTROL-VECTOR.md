@@ -56,7 +56,7 @@ pre-GLP internal build: re-export or re-download rather than reading it.
 
 ```mermaid
 flowchart LR
-    F["DeepSeek-V4-Flash-0731-cyber-abliterated-cvec-L10-38-a4.gguf<br/>478 KB"] --> R{"reader knows<br/>glp.mode?"}
+    F["DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf<br/>478 KB"] --> R{"reader knows<br/>glp.mode?"}
     R -- "no" --> W["applies additively<br/>silently wrong"]
     R -- "yes, project" --> P["h -= a(h.d)d<br/>0% refusal"]
     R -- "yes, unknown value" --> E["hard failure<br/>refuse the file"]

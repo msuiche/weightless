@@ -51,7 +51,7 @@ respectively) — the bf16→NVFP4 transfer holds for both formats.
 ## Steering vector
 
 The shipping artifact is
-**`Qwen3.8-27B-refusal-cvec-per_layer-L10-58-a1.gguf`** — per-layer diff of
+**`Qwen3.8-27B-abliterated-cyber-GLP-49-L10-58-a1.gguf`** — per-layer diff of
 means, 49 directions over layers 10–58, n_embd 5120, spec-conformant per
 [`../../spec/CONTROL-VECTOR.md`](../../spec/CONTROL-VECTOR.md). Published at
 [`msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49`](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49)
@@ -94,7 +94,7 @@ import the DSV4 lane's 4.0 — α is checkpoint-specific.
 python3 ../../scripts/test-qwen-steering-structure.py
 
 # the exact injected loader against the real vector (needs torch)
-WEIGHTLESS_STEER_PATH=$MODELS/cvec/Qwen3.8-27B-refusal-cvec-per_layer-L10-58-a1.gguf \
+WEIGHTLESS_STEER_PATH=$MODELS/cvec/Qwen3.8-27B-abliterated-cyber-GLP-49-L10-58-a1.gguf \
   python3 ../../patches/hotfix-qwen38-steering-projective.py --check
 ```
 

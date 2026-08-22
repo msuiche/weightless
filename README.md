@@ -122,7 +122,7 @@ the hotfix — nothing to build:
 
 ```sh
 # the general/broad direction; the cyber-derived alternative
-# (...-cyber-abliterated-cvec-L10-38-a4.gguf) is a one-line swap
+# (...-abliterated-cyber-GLP-29-L10-38-a4.gguf) is a one-line swap
 WEIGHTLESS_STEER_PATH=/cache/huggingface/DeepSeek-V4-Flash-0731-general-abliterated-cvec-L10-38-a4-keysdir.gguf
 WEIGHTLESS_STEER_ALPHA=4.0
 WEIGHTLESS_STEER_LAYERS=$(seq -s, 10 38)
