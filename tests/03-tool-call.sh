@@ -26,7 +26,14 @@ resp=$(curl -sf -m 180 -H 'Content-Type: application/json' -d '{
 
 echo "$resp" | python3 -c '
 import json, sys
-d = json.load(sys.stdin)
+raw = sys.stdin.read()
+try:
+    d = json.loads(raw)
+except json.JSONDecodeError as e:
+    # observed flake: this image sometimes emits raw control characters
+    # (literal newlines) inside JSON strings on the tool-call path
+    print(f"server emitted invalid JSON at byte {e.pos}: {raw[max(0, e.pos-40):e.pos+20]!r}")
+    sys.exit(1)
 m = d["choices"][0]["message"]
 calls = m.get("tool_calls") or []
 assert calls, "no tool_calls in response: %s" % json.dumps(m)[:400]
