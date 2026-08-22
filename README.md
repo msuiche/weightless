@@ -9,6 +9,8 @@ vLLM 0.25.2) driven by the MiaAI 2x recipe, with our state on top vendored in
 `recipe/anemll/`. The retired v027 stack's patch is kept for reference and as
 the fallback path.
 
+![setup wizard — splash, local-state box, main menu](imgs/01-home.png)
+
 ## What this is: lean abliteration steering as a patch
 
 The model weights are never redistributed — what this repo ships is the
@@ -62,6 +64,8 @@ flowchart LR
 
 The two lanes never run at once: DSV4 TP=2 already holds both GPUs at 0.80
 memory utilization, so the Qwen lane is parked until DSV4 is down.
+
+![endpoint smoke tests running inside the wizard](imgs/02-omp-smoke-tests.png)
 
 ## Lanes
 
