@@ -62,10 +62,10 @@ LOGO = [
     "  ▀          ",
 ]
 
-# 256-color ramp per logo column, sampled from omp's π: pink → magenta →
-# violet → blue → cyan. Hand-picked: the 256 cube is not perceptually
-# linear, so interpolating palette indices wanders through green.
-LOGO_RAMP = [219, 213, 207, 183, 177, 153, 147, 111, 105, 75, 69, 45, 51]
+# 256-color ramp per logo column. Source of truth: omp's brand gradient
+# (#ed4abf → #9b4dff → #5ad8e6, packages/collab-web tokens.css), interpolated
+# in RGB space and quantized to the nearest xterm-256 cube colors.
+LOGO_RAMP = [205, 170, 170, 170, 134, 135, 99, 99, 105, 105, 75, 74, 80]
 LOGO_ANSI = [f"\033[38;5;{c}m" for c in LOGO_RAMP]
 ANSI_RESET = "\033[0m"
 
