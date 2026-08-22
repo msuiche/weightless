@@ -66,7 +66,22 @@ LOGO = [
 # (#ed4abf → #9b4dff → #5ad8e6, packages/collab-web tokens.css), interpolated
 # in RGB space and quantized to the nearest xterm-256 cube colors.
 LOGO_RAMP = [205, 170, 170, 170, 134, 135, 99, 99, 105, 105, 75, 74, 80]
+
+# exact brand RGBs per column for truecolor terminals (CLI path)
+_BRAND_STOPS = [(0.0, (237, 74, 191)), (0.5, (155, 77, 255)), (1.0, (90, 216, 230))]
+
+
+def _lerp_rgb(pos):
+    for (p0, c0), (p1, c1) in zip(_BRAND_STOPS, _BRAND_STOPS[1:]):
+        if p0 <= pos <= p1:
+            f = (pos - p0) / (p1 - p0)
+            return tuple(round(a + (b - a) * f) for a, b in zip(c0, c1))
+    return _BRAND_STOPS[-1][1]
+
+
+LOGO_RGB = [_lerp_rgb(i / (len(LOGO[0]) - 1)) for i in range(len(LOGO[0]))]
 LOGO_ANSI = [f"\033[38;5;{c}m" for c in LOGO_RAMP]
+LOGO_TRUECOLOR = [f"\033[38;2;{r};{g};{b}m" for r, g, b in LOGO_RGB]
 ANSI_RESET = "\033[0m"
 
 # lane -> (example env, target env, steering env key, structure test, vector repo)
@@ -977,7 +992,7 @@ def splash_cli(io):
         row = "  " + art  # same left margin as the TUI (block-glyph overhang)
         if io.color:
             row = "  " + "".join(
-                (LOGO_ANSI[j] + ch + ANSI_RESET) if ch != " " else ch
+                (LOGO_TRUECOLOR[j] + ch + ANSI_RESET) if ch != " " else ch
                 for j, ch in enumerate(art))
         print(row)
     box(io, "local setup", detect_state())
