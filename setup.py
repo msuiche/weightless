@@ -1163,7 +1163,8 @@ def _tui_main(stdscr):
     io = TuiIO(stdscr)
     io.header("  weightless setup")
     io._put(1, 0, "  lean abliteration steering, served", "dim")
-    io.row = 3
+    io._put(2, 0, "  by Matt Suiche (@msuiche)", "dim")
+    io.row = 4
     splash_tui(io)
     rc = run(io)
     if not curses.isendwin():
@@ -1185,6 +1186,7 @@ def main():
             print(f"(TUI failed: {e} — falling back to prompts)", file=sys.stderr)
     io = CliIO()
     io.header("== weightless setup ==")
+    io.info("by Matt Suiche (@msuiche)")
     io.info("")
     splash_cli(io)
     io.info("")
