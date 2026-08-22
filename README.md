@@ -4,15 +4,17 @@
 
 # weightless
 
-**Abliteration without the weights — put your model on GLP.** Serving
-DeepSeek V4 Flash 0731 on 2x DGX Spark (GB10, SM121, TP=2 over RoCE) with
-projective refusal steering: serving config, boot hotfixes, the steering
-patch, and the GLP (GGUF Layer Projection) format spec.
+**Abliteration without the weights — put your model on GLP.** Projective
+refusal steering for open-weight models: serving config, boot hotfixes, the
+steering patch, and the GLP (GGUF Layer Projection) format spec. The goal is
+most good open models; the first two lanes are DeepSeek V4 Flash 0731 on 2x
+DGX Spark (GB10, SM121, TP=2 over RoCE) and Qwen3.8-27B on a single Spark.
 
-The live stack is the Anemll image (`ghcr.io/anemll/dspark-vllm-gx10:0.1.1`,
+The live DSV4 stack is the Anemll image (`ghcr.io/anemll/dspark-vllm-gx10:0.1.1`,
 vLLM 0.25.2) driven by the MiaAI 2x recipe, with our state on top vendored in
-`recipe/anemll/`. The retired v027 stack's patch is kept for reference and as
-the fallback path.
+`recipe/anemll/`; the Qwen lane (stock vLLM 0.27 image, GGUF or LoRA steering)
+lives in `recipe/qwen/`. The retired v027 stack's patch is kept for reference
+and as the fallback path.
 
 ![setup wizard — splash, local-state box, main menu](imgs/01-home.png)
 
@@ -177,6 +179,10 @@ verified against their pinned checkpoint revisions.
 
 ## Roadmap
 
+- **More model lanes.** The GLP spec and the fail-closed hotfix pattern are
+  model-agnostic — DSV4 and Qwen3.8 are the starting lanes, not the scope.
+  The target is most good open models, one `recipe/` lane and one published
+  GLP vector each.
 - **k=7/greedy draft A/B** (upstream issue #84): now one env line
   (`DRAFT_SAMPLE_METHOD=greedy MTP_NUM_TOKENS=7`) after the 2026-08-21
   upstream merge.
