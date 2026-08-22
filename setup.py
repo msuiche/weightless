@@ -47,9 +47,9 @@ COMPAT_BLOCK = """\
 
 # Launch splash: a feather (weightless), yellow → pink gradient (256-color).
 LOGO = [
-    "      ▄▄▄   ",
-    "    ▄██████ ",
-    "   ▄███▀████",
+    "      ▄▄▄    ",
+    "    ▄██████  ",
+    "   ▄███▀████ ",
     "  ▄███▀ ▄████",
     "  ███▀ ▄███▀ ",
     " ▄██▀ ▄███▀  ",
@@ -723,19 +723,22 @@ def tests_chain(io):
 # ---------------------------------------------------------------- entry
 
 def splash_tui(io):
-    """Gradient sparkle left, local-setup box right (stacked if narrow).
-    The box is a real bordered curses window so the frame renders correctly
-    at any terminal width."""
+    """Gradient feather left, local-setup box right (stacked if narrow),
+    box vertically centered against the logo. The box is a real bordered
+    curses window so the frame renders correctly at any terminal width."""
     rows, cols = io.s.getmaxyx()
     lines = detect_state()
     content_w = max(len("local setup") + 2, *(len(l) for l in lines))
-    bcol = len(LOGO[0]) + 5
+    logo_col = 2                      # left margin; col 1 crops on some terminals
+    bcol = logo_col + len(LOGO[0]) + 4
     side_by_side = cols >= bcol + min(content_w + 2, 56) + 2
-    brow = io.row if side_by_side else io.row + len(LOGO) + 1
-    if not side_by_side:
+    bh = len(lines) + 2
+    if side_by_side:
+        brow = io.row + max(0, (len(LOGO) - bh) // 2)
+    else:
+        brow = io.row + len(LOGO) + 1
         bcol = 0
     bw = min(content_w + 2, cols - bcol)  # outer width incl. borders
-    bh = len(lines) + 2
 
     win = curses.newwin(bh, bw, brow, bcol)
     if io.color:
@@ -756,7 +759,7 @@ def splash_tui(io):
     for i, art in enumerate(LOGO):
         attr = io.grad[i] if io.grad else curses.A_NORMAL
         try:
-            io.s.addstr(io.row + i, 1, art, attr)
+            io.s.addstr(io.row + i, logo_col, art, attr)
         except curses.error:
             pass
     io.s.refresh()
