@@ -101,19 +101,23 @@ def render_env(example, values, steer_mode=None, steering=True, steer_key=None):
 
 
 def read_lane_env():
-    """Best-effort site values from an existing (gitignored) lane env."""
+    """Best-effort site values from existing (gitignored) lane env files —
+    used to prefill wizard prompts and the diagnose ssh target."""
     vals = {}
     for lane in LANES:
         path = os.path.join(HERE, lane["target"])
         if not os.path.exists(path):
             continue
         with open(path) as f:
-            for line in f:
-                m = re.match(r"^(MASTER_ADDR|WORKER_HOST|MODELS)=(\S+)", line)
-                if m:
-                    vals.setdefault("host", m.group(2))
-                if m and m.group(1) == "MASTER_ADDR":
-                    vals.setdefault("head-ip", m.group(2))
+            env = dict(re.findall(r"(?m)^([A-Z_]+)=(\S+)", f.read()))
+        if env.get("MASTER_ADDR"):
+            vals.setdefault("head-ip", env["MASTER_ADDR"])
+            vals.setdefault("host", env["MASTER_ADDR"])
+        if env.get("WORKER_HOST"):
+            vals.setdefault("worker-ip", env["WORKER_HOST"])
+        m = re.search(r"/home/([^/]+)/", env.get("HF_CACHE", "") or env.get("MODELS", ""))
+        if m:
+            vals.setdefault("user", m.group(1))
     return vals
 
 
@@ -399,11 +403,12 @@ def lane_chain(io, lane_idx):
     io.header(lane["name"])
     io.info("─" * 60)
 
-    # 1. site values
+    # 1. site values (prefilled from the existing env file when present)
+    saved = read_lane_env()
     values = {}
     for p in placeholders(example):
         prompt, default = PLACEHOLDER_HINTS.get(p, (p.replace("-", " "), ""))
-        values[p] = io.text(f"{prompt} ({p}): ", default)
+        values[p] = io.text(f"{prompt} ({p}): ", saved.get(p, default))
 
     # 2. steering (default on)
     steering = io.confirm("Enable refusal steering (control-vector patch)?", True)
@@ -505,7 +510,7 @@ def diagnose_chain(io, base=None):
 def remote_diagnose(io, host):
     """ssh to the serving node: container status, GPU, offer to boot."""
     saved = read_lane_env()
-    default_target = f"{os.environ.get('USER', '')}@{saved.get('host', host)}"
+    default_target = f"{saved.get('user', os.environ.get('USER', ''))}@{saved.get('host', host)}"
     if not io.confirm("Check the node over ssh (docker ps, GPU)?", True):
         return
     target = io.text("ssh target (user@host): ", default_target)
