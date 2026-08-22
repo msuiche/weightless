@@ -4,16 +4,20 @@
 Pick a lane, fill in the site values (hosts, user), generate the real
 gitignored env file from the shipped example, validate the steering patch,
 deploy to the node(s) over ssh (confirm-gated), then install the omp
-provider and run the endpoint smoke tests. Stdlib only: a light curses TUI
-on a terminal, plain prompts otherwise. Non-interactive alternative:
+provider and run the endpoint smoke tests. If the endpoint is down, the
+diagnose chain walks the layers (DNS → TCP → HTTP) and can check/boot the
+stack over ssh. Stdlib only: a light curses TUI with colors on a terminal,
+ANSI-colored prompts otherwise. Non-interactive alternative:
 `sh tests/install.sh && sh tests/run.sh` with DSPARK_* env overrides.
 """
 import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
+import urllib.parse
 import urllib.request
 
 try:
@@ -49,7 +53,8 @@ LANES = [
          steer_key="DSPARK_STEER_PATH",
          structure_test="scripts/test-dsv4-hotfix-structure.py",
          vector_repo="msuiche/DeepSeek-V4-Flash-0731-cyber-abliterated-cvec",
-         steer_modes=None),
+         steer_modes=None,
+         port=8888),
     dict(name="Qwen TP=1 serving — single DGX Spark",
          example="recipe/qwen/.env.qwen.example",
          target="recipe/qwen/.env.qwen",
@@ -58,7 +63,8 @@ LANES = [
          vector_repo="msuiche/Qwen3.8-27B-abliterated-cvec",
          steer_modes=[
              ("gguf", "gguf — hotfix-patched vLLM, fail-closed (default, validated)"),
-             ("lora", "lora — stock vLLM --enable-lora, no patch (validated)")]),
+             ("lora", "lora — stock vLLM --enable-lora, no patch (validated)")],
+         port=8078),
 ]
 PLACEHOLDER_HINTS = {
     "head-ip": ("Head node IP or hostname", ""),
@@ -92,6 +98,23 @@ def render_env(example, values, steer_mode=None, steering=True, steer_key=None):
     if not steering and steer_key:
         text = re.sub(rf"^{steer_key}=.*$", f"{steer_key}=", text, flags=re.M)
     return text
+
+
+def read_lane_env():
+    """Best-effort site values from an existing (gitignored) lane env."""
+    vals = {}
+    for lane in LANES:
+        path = os.path.join(HERE, lane["target"])
+        if not os.path.exists(path):
+            continue
+        with open(path) as f:
+            for line in f:
+                m = re.match(r"^(MASTER_ADDR|WORKER_HOST|MODELS)=(\S+)", line)
+                if m:
+                    vals.setdefault("host", m.group(2))
+                if m and m.group(1) == "MASTER_ADDR":
+                    vals.setdefault("head-ip", m.group(2))
+    return vals
 
 
 def deploy_commands(lane_idx, values, qwen_host=None):
@@ -132,6 +155,11 @@ def deploy_commands(lane_idx, values, qwen_host=None):
         ("boot the container",
          ["ssh", host, f"bash {remote}/recipe/qwen/serve-qwen38.sh"]),
     ]
+
+
+def boot_command(lane_idx, values, qwen_host=None):
+    """Just the boot step of deploy_commands, for the diagnose flow."""
+    return deploy_commands(lane_idx, values, qwen_host)[-1]
 
 
 def probe_models(base):
@@ -193,15 +221,44 @@ def run_suite(base, model):
 # ---------------------------------------------------------------- IO adapters
 
 class CliIO:
+    C = {"head": "\033[1;36m", "ok": "\033[32m", "err": "\033[31m",
+         "warn": "\033[33m", "dim": "\033[2m", "reset": "\033[0m"}
+
+    def __init__(self):
+        self.color = sys.stdout.isatty()
+
+    def _c(self, kind, msg):
+        if self.color:
+            return f"{self.C[kind]}{msg}{self.C['reset']}"
+        return msg
+
     def info(self, msg):
         print(msg)
+
+    def header(self, msg):
+        print(self._c("head", msg))
+
+    def ok(self, msg):
+        print(self._c("ok", msg))
+
+    def warn(self, msg):
+        print(self._c("warn", msg))
+
+    def err(self, msg):
+        print(self._c("err", msg))
+
+    def _eof(self):
+        # EOF on piped stdin must not silently take defaults — a menu that
+        # defaults to 0 can loop forever (diagnose → re-prompt → EOF → ...).
+        print("\n(stdin closed — aborting)", file=sys.stderr)
+        raise SystemExit(1)
 
     def text(self, prompt, default=""):
         try:
             s = input(f"{prompt} [{default}]: ").strip() if default \
                 else input(f"{prompt}: ").strip()
         except EOFError:
-            s = ""
+            self._eof()
         return s or default
 
     def confirm(self, prompt, default=True):
@@ -209,19 +266,19 @@ class CliIO:
         try:
             s = input(f"{prompt} [{hint}]: ").strip().lower()
         except EOFError:
-            return default
+            self._eof()
         return s.startswith("y") if s else default
 
     def menu(self, title, items):
-        print(title)
+        print(self._c("head", title))
         for i, it in enumerate(items):
             label = it[1] if isinstance(it, tuple) else it
-            print(f"  {i + 1}) {label}")
+            print(f"  {self._c('head', str(i + 1) + ')')} {label}")
         while True:
             try:
                 s = input("> ").strip()
             except EOFError:
-                return 0
+                self._eof()
             if s.isdigit() and 1 <= int(s) <= len(items):
                 return int(s) - 1
             print("  enter a number from the list")
@@ -231,30 +288,61 @@ class TuiIO:
     def __init__(self, stdscr):
         self.s = stdscr
         self.row = 0
+        self.color = False
+        if curses.has_colors():
+            curses.start_color()
+            curses.use_default_colors()
+            for i, fg in enumerate((curses.COLOR_CYAN, curses.COLOR_GREEN,
+                                    curses.COLOR_RED, curses.COLOR_YELLOW), 1):
+                curses.init_pair(i, fg, -1)
+            self.color = True
+
+    def _attr(self, kind):
+        if not self.color:
+            return {"head": curses.A_BOLD}.get(kind, curses.A_NORMAL)
+        return {"head": curses.color_pair(1) | curses.A_BOLD,
+                "ok": curses.color_pair(2),
+                "err": curses.color_pair(3),
+                "warn": curses.color_pair(4),
+                "dim": curses.A_DIM}.get(kind, curses.A_NORMAL)
 
     def _next(self, n=1):
         self.row += n
         return self.row - n
 
-    def _clear(self):
-        self.s.clear()
-        self.row = 0
-
-    def info(self, msg):
-        r = self._next()
+    def _put(self, row, col, msg, kind=None):
         try:
-            self.s.addstr(r, 0, str(msg)[:78])
+            self.s.addstr(row, col, str(msg)[:78], self._attr(kind) if kind else curses.A_NORMAL)
         except curses.error:
             pass
         self.s.refresh()
+
+    def info(self, msg):
+        self._put(self._next(), 0, msg)
+
+    def header(self, msg):
+        self._put(self._next(), 0, msg, "head")
+
+    def ok(self, msg):
+        self._put(self._next(), 0, msg, "ok")
+
+    def warn(self, msg):
+        self._put(self._next(), 0, msg, "warn")
+
+    def err(self, msg):
+        self._put(self._next(), 0, msg, "err")
 
     def text(self, prompt, default=""):
         r = self._next()
         buf, fresh = default, True
         while True:
             self.s.addstr(r, 0, " " * 79)
+            self._put(r, 0, prompt, "head")
             shown = buf[-(76 - len(prompt)):]
-            self.s.addstr(r, 0, prompt + shown)
+            try:
+                self.s.addstr(r, len(prompt), shown)
+            except curses.error:
+                pass
             self.s.refresh()
             ch = self.s.get_wch()
             if ch in ("\n", "\r"):
@@ -271,20 +359,27 @@ class TuiIO:
     def confirm(self, prompt, default=True):
         r = self._next()
         hint = "Y/n" if default else "y/N"
-        self.s.addstr(r, 0, f"{prompt} [{hint}] ")
+        self.s.addstr(r, 0, f"{prompt} ", self._attr("head"))
+        self.s.addstr(f"[{hint}] ", self._attr("dim"))
         self.s.refresh()
         ch = self.s.get_wch()
         return ch.lower().startswith("y") if isinstance(ch, str) and ch.strip() else default
 
     def menu(self, title, items):
         r = self._next(len(items) + 1)
-        self.s.addstr(r, 0, title)
+        self.s.addstr(r, 0, title, self._attr("head"))
         sel = 0
         while True:
             for i, it in enumerate(items):
                 label = it[1] if isinstance(it, tuple) else it
-                attr = curses.A_REVERSE if i == sel else curses.A_NORMAL
-                self.s.addstr(r + 1 + i, 2, ("› " if i == sel else "  ") + label[:72], attr)
+                if i == sel:
+                    attr = self._attr("head") | curses.A_REVERSE
+                else:
+                    attr = curses.A_NORMAL
+                try:
+                    self.s.addstr(r + 1 + i, 2, ("› " if i == sel else "  ") + label[:72], attr)
+                except curses.error:
+                    pass
             self.s.refresh()
             ch = self.s.getch()
             if ch in (curses.KEY_UP, ord("k")):
@@ -301,7 +396,7 @@ def lane_chain(io, lane_idx):
     lane = LANES[lane_idx]
     example = os.path.join(HERE, lane["example"])
     target = os.path.join(HERE, lane["target"])
-    io.info(lane["name"])
+    io.header(lane["name"])
     io.info("─" * 60)
 
     # 1. site values
@@ -325,14 +420,18 @@ def lane_chain(io, lane_idx):
         return 1
     with open(target, "w") as f:
         f.write(text)
-    io.info(f"wrote {target}")
+    io.ok(f"wrote {target}")
 
     # 4. validate the steering patch + point at the vector
     if steering:
         rc = subprocess.call([sys.executable, os.path.join(HERE, lane["structure_test"])],
                              stdout=subprocess.DEVNULL)
-        verdict = {0: "PASS", 2: "PASS (apply tier skipped — no reference model.py)"}.get(rc, "FAIL")
-        io.info(f"steering patch structural test: {verdict}")
+        if rc == 0:
+            io.ok("steering patch structural test: PASS")
+        elif rc == 2:
+            io.ok("steering patch structural test: PASS (apply tier skipped — no reference model)")
+        else:
+            io.err("steering patch structural test: FAIL")
         io.info(f"vector (gated, needs HF token): "
                 f"huggingface-cli download {lane['vector_repo']} --include '*.gguf'")
 
@@ -344,11 +443,11 @@ def lane_chain(io, lane_idx):
         for desc, argv in deploy_commands(lane_idx, values, qwen_host):
             io.info(f"$ {' '.join(argv)}")
             if not io.confirm(f"run: {desc}?", True):
-                io.info("skipped")
+                io.warn("skipped")
                 continue
             rc = subprocess.call(argv)
             if rc != 0:
-                io.info(f"FAILED ({rc}) — fix and re-run; aborting deploy")
+                io.err(f"FAILED ({rc}) — fix and re-run; aborting deploy")
                 return rc
     else:
         io.info("deploy skipped — commands are in the lane README when you're ready")
@@ -357,25 +456,110 @@ def lane_chain(io, lane_idx):
     return tests_chain(io)
 
 
+def diagnose_chain(io, base=None):
+    """Layered failure isolation for an endpoint that won't answer, with an
+    optional remote check/boot over ssh."""
+    base = base or io.text("Base URL to diagnose: ", DEFAULT_BASE)
+    u = urllib.parse.urlparse(base if "://" in base else "http://" + base)
+    host = u.hostname or base
+    port = u.port or (443 if u.scheme == "https" else 80)
+    io.header(f"diagnosing {host}:{port}")
+    io.info("─" * 60)
+
+    # layer 1: DNS
+    try:
+        ip = socket.gethostbyname(host)
+        io.ok(f"DNS: {host} → {ip}")
+    except socket.gaierror as e:
+        io.err(f"DNS: cannot resolve {host} ({e})")
+        io.info("fix the name first — /etc/hosts, mDNS (is the node on?), or use an IP")
+        return 1
+
+    # layer 2: TCP
+    try:
+        with socket.create_connection((host, port), timeout=5):
+            io.ok(f"TCP: {host}:{port} accepts connections")
+    except OSError as e:
+        io.err(f"TCP: {host}:{port} unreachable ({e})")
+        io.info("the node is up but nothing serves the port — the stack is down")
+        remote_diagnose(io, host)
+        return 1
+
+    # layer 3: HTTP /models
+    ids, err = probe_models(f"{u.scheme or 'http'}://{host}:{port}/v1")
+    if ids is None:
+        io.err(f"HTTP: /v1/models failed ({err})")
+        io.info("something listens but it is not a healthy OpenAI server — check container logs")
+        remote_diagnose(io, host)
+        return 1
+    io.ok(f"HTTP: /v1/models answers — serving: {', '.join(ids)}")
+    return 0
+
+
+def remote_diagnose(io, host):
+    """ssh to the serving node: container status, GPU, offer to boot."""
+    saved = read_lane_env()
+    default_target = f"{os.environ.get('USER', '')}@{saved.get('host', host)}"
+    if not io.confirm("Check the node over ssh (docker ps, GPU)?", True):
+        return
+    target = io.text("ssh target (user@host): ", default_target)
+    probe = ("docker ps -a --format '{{.Names}} {{.Status}}' "
+             "| grep -i -E 'deepseek|qwen|vllm' || echo '(no serving container)'; "
+             "nvidia-smi --query-gpu=clocks.sm,power.draw,utilization.gpu "
+             "--format=csv,noheader 2>/dev/null || echo '(no GPU?)'")
+    io.info(f"$ ssh {target} '<container + GPU status>'")
+    rc = subprocess.call(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6",
+                          target, probe])
+    if rc != 0:
+        io.err(f"ssh failed ({rc}) — node off, or keys/password not set up")
+        return
+    if io.confirm("Boot the stack on that node?", False):
+        lane_idx = io.menu("Which lane runs there?", [l["name"] for l in LANES])
+        values = {"user": target.split("@")[0], "head-ip": host}
+        desc, argv = boot_command(lane_idx, values, qwen_host=host)
+        io.info(f"$ {' '.join(argv)}")
+        if io.confirm(f"run: {desc}?", True):
+            rc = subprocess.call(argv)
+            if rc == 0:
+                io.ok("boot issued — give it a few minutes to load the model")
+            else:
+                io.err(f"boot FAILED ({rc})")
+
+
 def tests_chain(io):
     bun, omp = prereqs()
     if not omp:
-        io.info("omp not found — install: curl -fsSL https://omp.sh/install | sh")
+        io.err("omp not found — install: curl -fsSL https://omp.sh/install | sh")
         return 1
     base = io.text("Base URL of the OpenAI-compatible server: ", DEFAULT_BASE)
     io.info(f"probing {base}/models ...")
     ids, err = probe_models(base)
-    if ids is None:
-        io.info(f"probe failed: {err}")
-        if not io.confirm("Continue anyway?", False):
-            return 1
-        model = io.text("Model id: ", DEFAULT_MODEL)
-    else:
+    while ids is None:
+        io.err(f"probe failed: {err}")
+        choice = io.menu("endpoint not answering:", [
+            "Diagnose the connection (DNS → TCP → HTTP → ssh)",
+            "Enter a different URL",
+            "Continue anyway (provider will fail until the server is up)",
+        ])
+        if choice == 0:
+            diagnose_chain(io, base)
+            io.info(f"re-probing {base}/models ...")
+            ids, err = probe_models(base)
+            if ids is not None:
+                io.ok("endpoint is up now")
+        elif choice == 1:
+            base = io.text("Base URL: ", base)
+            io.info(f"probing {base}/models ...")
+            ids, err = probe_models(base)
+        else:
+            model = io.text("Model id: ", DEFAULT_MODEL)
+            break
+    if ids is not None:
         model = ids[io.menu("Model to test:", ids)] if len(ids) > 1 else ids[0]
-        io.info(f"model: {model}")
+        io.ok(f"model: {model}")
     compat = io.confirm(f"DeepSeek V4 compat block for '{model}'?",
                         "deepseek" in model.lower())
-    io.info(install_provider(base, model, compat))
+    io.ok(install_provider(base, model, compat))
     if io.confirm("Run the test suite now?", True):
         if isinstance(io, TuiIO):
             curses.endwin()
@@ -389,23 +573,30 @@ def tests_chain(io):
 def run(io):
     bun, omp = prereqs()
     io.info(f"bun: {bun or 'not found (only needed for omp/tests)'}")
-    io.info(f"omp: {omp or 'not found (only needed for tests)'}")
+    io.info(f"omp:  {omp or 'not found (only needed for tests)'}")
+    io.info("")
     choice = io.menu("What to set up:", [
         "DSV4 TP=2 serving — full chain (env → steering → deploy → omp/tests)",
         "Qwen TP=1 serving — full chain (env → steering → deploy → omp/tests)",
-        "Endpoint tests only — omp provider + smoke suite",
+        "Endpoint tests — omp provider + smoke suite",
+        "Diagnose endpoint — layered checks + remote container status",
     ])
     if choice in (0, 1):
         return lane_chain(io, choice)
-    return tests_chain(io)
+    if choice == 2:
+        return tests_chain(io)
+    return diagnose_chain(io)
 
 
 def _tui_main(stdscr):
     io = TuiIO(stdscr)
-    stdscr.addstr(0, 0, "dspark-deploy setup", curses.A_BOLD)
-    io.row = 2
+    io.header("  dspark-deploy setup")
+    io._put(1, 0, "  lean abliteration steering, served", "dim")
+    io.info("  " + "─" * 56)
+    io.row = 4
     rc = run(io)
     if not curses.isendwin():
+        io.info("")
         io.info("press any key to exit")
         stdscr.getch()
     return rc
@@ -418,7 +609,8 @@ def main():
         except Exception as e:
             print(f"(TUI failed: {e} — falling back to prompts)", file=sys.stderr)
     io = CliIO()
-    io.info("== dspark-deploy setup ==")
+    io.header("== dspark-deploy setup ==")
+    io.info("")
     return run(io)
 
 
