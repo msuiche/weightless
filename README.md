@@ -68,15 +68,15 @@ empty:
 ```mermaid
 flowchart LR
     subgraph client[client]
-        OMP[omp<br/>agent harness]
-        WIZ[setup.py<br/>wizard + tests/]
+        OMP["omp<br/>agent harness"]
+        WIZ["setup.py<br/>wizard + tests/"]
     end
-    OMP -->|OpenAI-compatible /v1| EP[vLLM endpoint<br/>:8888 or :8078]
+    OMP -->|OpenAI-compatible /v1| EP["vLLM endpoint<br/>:8888 or :8078"]
     WIZ -->|probe / diagnose / boot| EP
-    EP --> DSV4[DSV4 lane — TP=2<br/>2x DGX Spark over RoCE<br/>DeepSeek-V4-Flash-0731 NVFP4]
-    EP --> QWEN[Qwen lane — TP=1<br/>single DGX Spark<br/>Qwen3.8-27B NVFP4]
-    CV[GLP vector (GGUF)<br/>fail-closed boot hotfix] -.->|optional| DSV4
-    CV2[GLP vector hotfix<br/>or rank-1 LoRA, no patch] -.->|optional| QWEN
+    EP --> DSV4["DSV4 lane — TP=2<br/>2x DGX Spark over RoCE<br/>DeepSeek-V4-Flash-0731 NVFP4"]
+    EP --> QWEN["Qwen lane — TP=1<br/>single DGX Spark<br/>Qwen3.8-27B NVFP4"]
+    CV["GLP vector (GGUF)<br/>fail-closed boot hotfix"] -.->|optional| DSV4
+    CV2["GLP vector hotfix<br/>or rank-1 LoRA, no patch"] -.->|optional| QWEN
 ```
 
 The two lanes never run at once: DSV4 TP=2 already holds both GPUs at 0.80
