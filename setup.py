@@ -464,11 +464,21 @@ class TuiIO:
         self.row += n
         return self.row - n
 
-    def _put(self, row, col, msg, kind=None):
+    def _w(self, row, col, s, attr=curses.A_NORMAL):
+        """Bounds-safe write: clamp to the window, never raise addwstr ERR."""
+        max_y, max_x = self.s.getmaxyx()
+        if row < 0 or row >= max_y or col < 0 or col >= max_x:
+            return
+        s = str(s)[: max_x - col]
+        if not s:
+            return
         try:
-            self.s.addstr(row, col, str(msg)[:78], self._attr(kind) if kind else curses.A_NORMAL)
+            self.s.addstr(row, col, s, attr)
         except curses.error:
             pass
+
+    def _put(self, row, col, msg, kind=None):
+        self._w(row, col, msg, self._attr(kind) if kind else curses.A_NORMAL)
         self.s.refresh()
 
     def info(self, msg):
@@ -490,13 +500,12 @@ class TuiIO:
         r = self._next()
         buf, fresh = default, True
         while True:
-            self.s.addstr(r, 0, " " * 79)
-            self._put(r, 0, prompt, "head")
-            shown = buf[-(76 - len(prompt)):]
-            try:
-                self.s.addstr(r, len(prompt), shown)
-            except curses.error:
-                pass
+            max_x = self.s.getmaxyx()[1]
+            self._w(r, 0, " " * (max_x - 1))
+            self._w(r, 0, prompt, self._attr("head"))
+            room = max_x - len(prompt) - 2
+            shown = buf[-room:] if room > 0 else ""
+            self._w(r, len(prompt), shown)
             self.s.refresh()
             ch = self.s.get_wch()
             if ch in ("\n", "\r"):
@@ -513,27 +522,21 @@ class TuiIO:
     def confirm(self, prompt, default=True):
         r = self._next()
         hint = "Y/n" if default else "y/N"
-        self.s.addstr(r, 0, f"{prompt} ", self._attr("head"))
-        self.s.addstr(f"[{hint}] ", self._attr("dim"))
+        self._w(r, 0, f"{prompt} ", self._attr("head"))
+        self._w(r, len(prompt) + 1, f"[{hint}] ", self._attr("dim"))
         self.s.refresh()
         ch = self.s.get_wch()
         return ch.lower().startswith("y") if isinstance(ch, str) and ch.strip() else default
 
     def menu(self, title, items):
         r = self._next(len(items) + 1)
-        self.s.addstr(r, 0, title, self._attr("head"))
+        self._w(r, 0, title, self._attr("head"))
         sel = 0
         while True:
             for i, it in enumerate(items):
                 label = it[1] if isinstance(it, tuple) else it
-                if i == sel:
-                    attr = self._attr("sel")
-                else:
-                    attr = curses.A_NORMAL
-                try:
-                    self.s.addstr(r + 1 + i, 2, ("› " if i == sel else "  ") + label[:72], attr)
-                except curses.error:
-                    pass
+                attr = self._attr("sel") if i == sel else curses.A_NORMAL
+                self._w(r + 1 + i, 2, ("› " if i == sel else "  ") + label, attr)
             self.s.refresh()
             ch = self.s.getch()
             if ch in (curses.KEY_UP, ord("k")):
