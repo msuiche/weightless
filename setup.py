@@ -729,7 +729,7 @@ def splash_tui(io):
     rows, cols = io.s.getmaxyx()
     lines = detect_state()
     content_w = max(len("local setup") + 2, *(len(l) for l in lines))
-    logo_col = 2                      # left margin; col 1 crops on some terminals
+    logo_col = 4                      # left margin; small cols crop on terminals whose block glyphs overhang
     bcol = logo_col + len(LOGO[0]) + 4
     side_by_side = cols >= bcol + min(content_w + 2, 56) + 2
     bh = len(lines) + 2
@@ -768,7 +768,8 @@ def splash_tui(io):
 
 def splash_cli(io):
     for i, art in enumerate(LOGO):
-        print((GRADIENT_ANSI[i] + art + ANSI_RESET) if io.color else art)
+        row = "  " + art  # same left margin as the TUI (block-glyph overhang)
+        print((GRADIENT_ANSI[i] + row + ANSI_RESET) if io.color else row)
     box(io, "local setup", detect_state())
 
 
