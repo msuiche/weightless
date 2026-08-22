@@ -19,7 +19,7 @@ Differences from the v0.27 patch:
 
 - The Anemll image does NOT ship the ``gguf`` package, so the GGUF reader
   is a small embedded parser (GGUF v3, F32 1-D tensors only) instead of
-  ``gguf.GGUFReader``. All spec checks are unchanged: glp.mode (legacy alias dspark.mode) is
+  ``gguf.GGUFReader``. All spec checks are unchanged: glp.mode is
   enforced (missing or non-"project" is fatal), glp.hook_point must be
   residual_stream_post_layer, direction.0 is rejected, and
   glp.layer_ids_zero_based is cross-checked against the tensor names.
@@ -161,7 +161,7 @@ def _load_gguf_control_vector(path: str) -> dict:
     refusal directions have cosine 0.83-0.91, so a stack shifted by one
     layer still produces plausible output. Layer 0 cannot be expressed.
 
-    `glp.mode` (legacy alias `dspark.mode`) is enforced, not advisory. llama.cpp ADDS a control
+    `glp.mode` is enforced, not advisory. llama.cpp ADDS a control
     vector; we PROJECT one out. The same file under the wrong operation
     produces no error, just wrong output -- an additive apply pushes every
     token along the refusal axis instead of removing the component. So an
@@ -171,15 +171,10 @@ def _load_gguf_control_vector(path: str) -> dict:
 
     meta, tensors = _read_gguf_cvec(path)
 
-    # glp.* is canonical; dspark.* is the legacy alias for the same
-    # contract (spec_version 1). Transition files carry both.
-    def _mget(key, default=None):
-        return meta.get("glp." + key, meta.get("dspark." + key, default))
-
-    mode = _mget("mode")
+    mode = meta.get("glp.mode")
     if mode is None:
         raise ValueError(
-            f"{path}: no glp.mode/dspark.mode. Refusing to guess: an additive "
+            f"{path}: no glp.mode. Refusing to guess: an additive "
             f"control vector and a projective one are different operations."
         )
     if mode != "project":
@@ -189,7 +184,7 @@ def _load_gguf_control_vector(path: str) -> dict:
             f"Refusing to apply."
         )
 
-    hook = _mget("hook_point")
+    hook = meta.get("glp.hook_point")
     if hook is not None and hook != "residual_stream_post_layer":
         raise ValueError(
             f"{path}: glp.hook_point={hook!r} does not match this hook "
@@ -200,10 +195,10 @@ def _load_gguf_control_vector(path: str) -> dict:
     logger.info(
         "DSpark GGUF control vector: mode=%s spec_version=%s base_model=%s rev=%s",
         mode,
-        _mget("spec_version", "?"),
-        meta.get("general.base_model.0.name") or _mget("base_model"),
+        meta.get("glp.spec_version", "?"),
+        meta.get("general.base_model.0.name") or meta.get("glp.base_model"),
         str(meta.get("general.base_model.0.version")
-            or _mget("base_revision") or "?")[:12],
+            or meta.get("glp.base_revision") or "?")[:12],
     )
 
     out = {}
@@ -240,7 +235,7 @@ def _load_gguf_control_vector(path: str) -> dict:
     # layer, and a one-layer shift degrades rather than fails (adjacent-
     # layer cosine 0.83-0.91). The file carried the evidence and nothing
     # looked at it. Now something does.
-    declared = _mget("layer_ids_zero_based")
+    declared = meta.get("glp.layer_ids_zero_based")
     if declared:
         try:
             want = sorted(int(x) for x in declared.split(",") if x.strip())

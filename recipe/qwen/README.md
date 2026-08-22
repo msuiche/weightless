@@ -65,7 +65,7 @@ huggingface-cli download msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49 \
 
 **Alpha is 1.0 here.** The evals found α=4 drives 37.5% over-refusal on
 harmless prompts on this model ("alpha=4 destroys this model", evals §5.0.5),
-so the shipping vector is a re-export whose `dspark.alpha_default` is the
+so the shipping vector is a re-export whose `glp.alpha_default` is the
 measured 1.0 — the direction itself is unchanged (same content hash). Do not
 import the DSV4 lane's 4.0 — α is checkpoint-specific.
 

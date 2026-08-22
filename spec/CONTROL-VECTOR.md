@@ -49,13 +49,10 @@ glp.mode = "project" | "add"
 Absent key means `add`, which is what every control vector written before this
 key existed is. This is the one field a reader may not ignore.
 
-**Legacy alias: `dspark.*`.** The spec predates the GLP name; files written
-before 2026-08-22 carry `dspark.mode`, `dspark.hook_point`, etc. A conforming
-reader must treat `dspark.X` as `glp.X` (canonical wins when both are present,
-which is what transition files write). A writer must emit **both** namespaces
-until the installed base has moved — an old reader that sees only `glp.mode`
-would treat a projective file as additive, the exact failure this key exists
-to prevent.
+**Renamed, not aliased.** Pre-2026-08-22 internal files used the `dspark.*`
+namespace; the GLP rebrand renamed the keys to `glp.*` with no compatibility
+alias (no external files existed). A file carrying only `dspark.*` keys is a
+pre-GLP internal build: re-export or re-download rather than reading it.
 
 ```mermaid
 flowchart LR

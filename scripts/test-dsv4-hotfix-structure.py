@@ -46,7 +46,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 HOTFIX = REPO / "patches/hotfix-dsv4-steering-projective.py"
 
 PER_LAYER_TARGETS = ("self._steer_dirs[layer_id]", "_DSPARK_HOOK_DIRS[layer_id]")
-SPEC_TOKENS = ("glp.mode", "dspark.mode", "residual_stream_post_layer", "direction.0")
+SPEC_TOKENS = ("glp.mode", "residual_stream_post_layer", "direction.0")
 
 
 def extract_strings(tree: ast.AST) -> dict:

@@ -1,5 +1,5 @@
 diff --git a/vllm/models/deepseek_v4/nvidia/model.py b/vllm/models/deepseek_v4/nvidia/model.py
-index 8925890..b8f5181 100644
+index 8925890..790aeba 100644
 --- a/vllm/models/deepseek_v4/nvidia/model.py
 +++ b/vllm/models/deepseek_v4/nvidia/model.py
 @@ -1,5 +1,6 @@
@@ -63,7 +63,7 @@ index 8925890..b8f5181 100644
 +    refusal directions have cosine 0.83-0.91, so a stack shifted by one layer
 +    still produces plausible output. Layer 0 cannot be expressed.
 +
-+    `dspark.mode` is enforced, not advisory. llama.cpp ADDS a control vector;
++    `glp.mode` is enforced, not advisory. llama.cpp ADDS a control vector;
 +    we PROJECT one out. The same file under the wrong operation produces no
 +    error, just wrong output -- an additive apply pushes every token along the
 +    refusal axis instead of removing the component. So an unrecognised mode is
@@ -83,22 +83,22 @@ index 8925890..b8f5181 100644
 +        except Exception:
 +            return None
 +
-+    mode = _str_field("dspark.mode")
++    mode = _str_field("glp.mode")
 +    if mode is None:
 +        raise ValueError(
-+            f"{path}: no dspark.mode. Refusing to guess: an additive control "
++            f"{path}: no glp.mode. Refusing to guess: an additive control "
 +            f"vector and a projective one are different operations."
 +        )
 +    if mode != "project":
 +        raise ValueError(
-+            f"{path}: dspark.mode={mode!r}, but this runtime only implements "
++            f"{path}: glp.mode={mode!r}, but this runtime only implements "
 +            f"projective ablation (h -= alpha*(h.d)d). Refusing to apply."
 +        )
 +
-+    hook = _str_field("dspark.hook_point")
++    hook = _str_field("glp.hook_point")
 +    if hook is not None and hook != "residual_stream_post_layer":
 +        raise ValueError(
-+            f"{path}: dspark.hook_point={hook!r} does not match this hook "
++            f"{path}: glp.hook_point={hook!r} does not match this hook "
 +            f"(residual_stream_post_layer). The same vector at the wrong hook "
 +            f"point measured ~9x weaker; refusing to apply."
 +        )
@@ -106,11 +106,11 @@ index 8925890..b8f5181 100644
 +    logger.info(
 +        "DSpark GGUF control vector: mode=%s spec_version=%s base_model=%s rev=%s",
 +        mode,
-+        (reader.fields.get("dspark.spec_version").parts[-1][0]
-+         if "dspark.spec_version" in reader.fields else "?"),
-+        _str_field("general.base_model.0.name") or _str_field("dspark.base_model"),
++        (reader.fields.get("glp.spec_version").parts[-1][0]
++         if "glp.spec_version" in reader.fields else "?"),
++        _str_field("general.base_model.0.name") or _str_field("glp.base_model"),
 +        (_str_field("general.base_model.0.version")
-+         or _str_field("dspark.base_revision") or "?")[:12],
++         or _str_field("glp.base_revision") or "?")[:12],
 +    )
 +
 +    out = {}
@@ -143,7 +143,7 @@ index 8925890..b8f5181 100644
 +    # mismatch shifted the whole stack one layer, and a one-layer shift degrades
 +    # rather than fails (adjacent-layer cosine 0.83-0.91). The file carried the
 +    # evidence and nothing looked at it. Now something does.
-+    declared = _str_field("dspark.layer_ids_zero_based")
++    declared = _str_field("glp.layer_ids_zero_based")
 +    if declared:
 +        try:
 +            want = sorted(int(x) for x in declared.split(",") if x.strip())
@@ -151,7 +151,7 @@ index 8925890..b8f5181 100644
 +            want = None
 +        if want and want != sorted(out):
 +            raise ValueError(
-+                f"{path}: dspark.layer_ids_zero_based declares layers "
++                f"{path}: glp.layer_ids_zero_based declares layers "
 +                f"{want[0]}..{want[-1]} ({len(want)} entries) but the direction "
 +                f"tensors resolve to {sorted(out)[0]}..{sorted(out)[-1]} "
 +                f"({len(out)} entries). The tensor names are what get applied, so "
