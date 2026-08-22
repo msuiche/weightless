@@ -1168,7 +1168,7 @@ def run(io):
     choice = io.menu("What to set up:", idle=getattr(io, "animate_logo", None), items=[
         "DSV4 TP=2 serving — full chain (env → steering → deploy → omp/tests)",
         "Qwen TP=1 serving — full chain (env → steering → deploy → omp/tests)",
-        "Endpoint tests — omp provider + smoke suite",
+        "Endpoint tests — register provider in omp + smoke suite",
         "Diagnose endpoint — layered checks + remote container status",
     ])
     if choice in (0, 1):
