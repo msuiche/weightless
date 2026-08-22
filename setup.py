@@ -492,10 +492,14 @@ class TuiIO:
             curses.start_color()
             curses.use_default_colors()
             # semantic palette on the brand gradient: pink headers, cyan ok,
-            # red err, yellow warn, violet selection
-            brand = (205, 80, curses.COLOR_RED, curses.COLOR_YELLOW, 99)
+            # red err, yellow warn, white-on-violet selection
+            brand = (205, 80, curses.COLOR_RED, curses.COLOR_YELLOW)
             for i, fg in enumerate(brand, 1):
                 curses.init_pair(i, fg, -1)
+            try:
+                curses.init_pair(5, curses.COLOR_WHITE, 99)  # violet bg
+            except curses.error:  # basic terminal: magenta bg
+                curses.init_pair(5, curses.COLOR_WHITE, curses.COLOR_MAGENTA)
             self.color = True
             if curses.COLORS >= 256:
                 seen = {}
@@ -520,7 +524,7 @@ class TuiIO:
                 "ok": curses.color_pair(2),
                 "err": curses.color_pair(3),
                 "warn": curses.color_pair(4),
-                "sel": curses.color_pair(5) | curses.A_REVERSE,
+                "sel": curses.color_pair(5),  # white on violet; bg carries the highlight
                 "dim": curses.A_DIM}.get(kind, curses.A_NORMAL)
 
     def _next(self, n=1):
