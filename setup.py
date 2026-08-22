@@ -405,7 +405,7 @@ class CliIO:
             self._eof()
         return s.startswith("y") if s else default
 
-    def menu(self, title, items):
+    def menu(self, title, items, idle=None):  # idle is TUI-only (animation)
         print(self._c("head", title))
         for i, it in enumerate(items):
             label = it[1] if isinstance(it, tuple) else it
@@ -426,6 +426,8 @@ class TuiIO:
         self.row = 0
         self.color = False
         self.grad = []
+        self.logo_pos = None
+        self._tick = 0
         if curses.has_colors():
             curses.start_color()
             curses.use_default_colors()
@@ -529,23 +531,45 @@ class TuiIO:
         ch = self.s.get_wch()
         return ch.lower().startswith("y") if isinstance(ch, str) and ch.strip() else default
 
-    def menu(self, title, items):
+    def animate_logo(self):
+        """Rotate the feather's gradient one column to the left."""
+        if not self.logo_pos or not self.grad:
+            return
+        row0, col0 = self.logo_pos
+        self._tick += 1
+        n = len(self.grad)
+        for i, art in enumerate(LOGO):
+            for j, ch in enumerate(art):
+                if ch != " ":
+                    self._w(row0 + i, col0 + j, ch, self.grad[(j + self._tick) % n])
+        self.s.refresh()
+
+    def menu(self, title, items, idle=None):
         r = self._next(len(items) + 1)
         self._w(r, 0, title, self._attr("head"))
         sel = 0
-        while True:
-            for i, it in enumerate(items):
-                label = it[1] if isinstance(it, tuple) else it
-                attr = self._attr("sel") if i == sel else curses.A_NORMAL
-                self._w(r + 1 + i, 2, ("› " if i == sel else "  ") + label, attr)
-            self.s.refresh()
-            ch = self.s.getch()
-            if ch in (curses.KEY_UP, ord("k")):
-                sel = (sel - 1) % len(items)
-            elif ch in (curses.KEY_DOWN, ord("j")):
-                sel = (sel + 1) % len(items)
-            elif ch in (10, 13):
-                return sel
+        if idle:
+            self.s.timeout(150)
+        try:
+            while True:
+                for i, it in enumerate(items):
+                    label = it[1] if isinstance(it, tuple) else it
+                    attr = self._attr("sel") if i == sel else curses.A_NORMAL
+                    self._w(r + 1 + i, 2, ("› " if i == sel else "  ") + label, attr)
+                self.s.refresh()
+                ch = self.s.getch()
+                if ch == -1:  # timeout tick — animate, keep waiting
+                    idle()
+                    continue
+                if ch in (curses.KEY_UP, ord("k")):
+                    sel = (sel - 1) % len(items)
+                elif ch in (curses.KEY_DOWN, ord("j")):
+                    sel = (sel + 1) % len(items)
+                elif ch in (10, 13):
+                    return sel
+        finally:
+            if idle:
+                self.s.timeout(-1)
 
 
 # ---------------------------------------------------------------- chains
@@ -786,6 +810,7 @@ def splash_tui(io):
             pass
     win.refresh()
 
+    io.logo_pos = (io.row, logo_col)
     for i, art in enumerate(LOGO):
         for j, ch in enumerate(art):
             if ch == " ":
@@ -815,7 +840,7 @@ def run(io):
     io.info(f"bun: {bun or 'not found (only needed for omp/tests)'}")
     io.info(f"omp:  {omp or 'not found (only needed for tests)'}")
     io.info("")
-    choice = io.menu("What to set up:", [
+    choice = io.menu("What to set up:", idle=getattr(io, "animate_logo", None), items=[
         "DSV4 TP=2 serving — full chain (env → steering → deploy → omp/tests)",
         "Qwen TP=1 serving — full chain (env → steering → deploy → omp/tests)",
         "Endpoint tests — omp provider + smoke suite",
