@@ -45,7 +45,8 @@ COMPAT_BLOCK = """\
           requiresAssistantContentForToolCalls: true
 """
 
-# Launch splash: a feather (weightless), yellow → pink gradient (256-color).
+# Launch splash: a feather (weightless) with omp's pink → cyan gradient,
+# applied per column (horizontal), like the omp π logo.
 LOGO = [
     "      ▄▄▄    ",
     "    ▄██████  ",
@@ -60,8 +61,26 @@ LOGO = [
     " ▀█▀         ",
     "  ▀          ",
 ]
-GRADIENT_256 = [226, 226, 220, 214, 209, 203, 213, 207, 205, 198, 198, 198]
-GRADIENT_ANSI = [f"\033[38;5;{c}m" for c in GRADIENT_256]
+
+# 256-color ramp stops sampled from omp's π: pink → lavender → violet → cyan.
+RAMP_STOPS = [219, 213, 183, 141, 105, 63, 51]
+
+
+def column_ramp(n):
+    """n 256-color codes interpolated across RAMP_STOPS, left to right."""
+    if n <= 1:
+        return RAMP_STOPS[:1]
+    out = []
+    for i in range(n):
+        pos = i / (n - 1) * (len(RAMP_STOPS) - 1)
+        a, b = int(pos), min(int(pos) + 1, len(RAMP_STOPS) - 1)
+        f = pos - a
+        out.append(round(RAMP_STOPS[a] + (RAMP_STOPS[b] - RAMP_STOPS[a]) * f))
+    return out
+
+
+LOGO_RAMP = column_ramp(len(LOGO[0]))
+LOGO_ANSI = [f"\033[38;5;{c}m" for c in LOGO_RAMP]
 ANSI_RESET = "\033[0m"
 
 # lane -> (example env, target env, steering env key, structure test, vector repo)
@@ -428,15 +447,20 @@ class TuiIO:
                 curses.init_pair(i, fg, -1)
             self.color = True
             if curses.COLORS >= 256:
-                for i, fg in enumerate(GRADIENT_256):
-                    curses.init_pair(10 + i, fg, -1)
-                self.grad = [curses.color_pair(10 + i) for i in range(len(GRADIENT_256))]
+                seen = {}
+                for i, fg in enumerate(LOGO_RAMP):
+                    if fg not in seen:
+                        curses.init_pair(20 + len(seen), fg, -1)
+                        seen[fg] = len(seen)
+                self.grad = [curses.color_pair(20 + seen[fg]) for fg in LOGO_RAMP]
             else:
-                n = len(GRADIENT_256)
-                basic = [curses.COLOR_YELLOW] * (n // 2) + [curses.COLOR_MAGENTA] * (n - n // 2)
-                for i, fg in enumerate(basic):
-                    curses.init_pair(10 + i, fg, -1)
-                self.grad = [curses.color_pair(10 + i) for i in range(n)]
+                # basic terminals: magenta left half, cyan right half
+                n = len(LOGO[0])
+                basic = [curses.COLOR_MAGENTA] * (n // 2) + [curses.COLOR_CYAN] * (n - n // 2)
+                for i, fg in enumerate(dict.fromkeys(basic)):
+                    curses.init_pair(20 + i, fg, -1)
+                idx = {curses.COLOR_MAGENTA: 0, curses.COLOR_CYAN: 1}
+                self.grad = [curses.color_pair(20 + idx[fg]) for fg in basic]
 
     def _attr(self, kind):
         if not self.color:
@@ -757,19 +781,26 @@ def splash_tui(io):
     win.refresh()
 
     for i, art in enumerate(LOGO):
-        attr = io.grad[i] if io.grad else curses.A_NORMAL
-        try:
-            io.s.addstr(io.row + i, logo_col, art, attr)
-        except curses.error:
-            pass
+        for j, ch in enumerate(art):
+            if ch == " ":
+                continue
+            attr = io.grad[j] if io.grad else curses.A_NORMAL
+            try:
+                io.s.addstr(io.row + i, logo_col + j, ch, attr)
+            except curses.error:
+                pass
     io.s.refresh()
     io.row = max(io.row + len(LOGO), brow + bh) + 1  # one blank line after
 
 
 def splash_cli(io):
-    for i, art in enumerate(LOGO):
+    for art in LOGO:
         row = "  " + art  # same left margin as the TUI (block-glyph overhang)
-        print((GRADIENT_ANSI[i] + row + ANSI_RESET) if io.color else row)
+        if io.color:
+            row = "  " + "".join(
+                (LOGO_ANSI[j] + ch + ANSI_RESET) if ch != " " else ch
+                for j, ch in enumerate(art))
+        print(row)
     box(io, "local setup", detect_state())
 
 
