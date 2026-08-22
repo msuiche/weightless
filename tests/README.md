@@ -14,7 +14,7 @@ Interactive wizard (probes the endpoint, lists the models it actually
 serves, installs the omp provider, offers to run the suite):
 
 ```sh
-python3 tests/setup.py
+python3 install.py   # repo root
 ```
 
 Non-interactive equivalent:

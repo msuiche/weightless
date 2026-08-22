@@ -70,6 +70,8 @@ approximated model, and we do not serve it. The steering *contract* in
 | `patches/0002-dspark-steering-test.patch` | vLLM-side test that extracts and exercises the real GGUF loader (pairs with 0001) |
 | `recipe/` (top level) | retired v027 stack: `Dockerfile.gguf-dep`, `Dockerfile.steering-overlay`, `docker-compose.v027.yml` |
 | `scripts/` | structural guard tests for the steering patches (DSV4 + Qwen lanes) |
+| `install.py` | interactive setup wizard: prereqs, endpoint probe, omp provider install, then the test suite |
+| `tests/` | endpoint smoke tests for the deployed stack (endpoint/chat/tool-call/headless omp agent loop); `tests/README.md` |
 | `spec/CONTROL-VECTOR.md` | the projective control-vector GGUF format: the `dspark.mode` contract, layer-id mapping, and why an additive reader must refuse the file |
 | `BENCHMARK.md` | every serving measurement, with shapes stated (Runs 001–007) |
 | `.env.v027.working.example` | env template for the fallback v027 stack |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive setup wizard for the omp endpoint tests.
+"""Interactive setup wizard for the dspark-deploy endpoint tests.
 
 Walks through: prerequisites (bun/omp), endpoint URL + model selection
 (probed live from /v1/models), omp provider install, and optionally runs
@@ -127,8 +127,8 @@ def main():
     if yn("\n5. Run the test suite now?"):
         env = dict(os.environ, DSPARK_BASE_URL=base, DSPARK_MODEL=model,
                    DSPARK_OMP_MODEL=f"{PROVIDER}/{model}")
-        sys.exit(subprocess.call(["sh", os.path.join(HERE, "run.sh")], env=env))
-    print(f"\nDone. Later: sh {os.path.join(HERE, 'run.sh')}")
+        sys.exit(subprocess.call(["sh", os.path.join(HERE, "tests", "run.sh")], env=env))
+    print(f"\nDone. Later: sh {os.path.join(HERE, 'tests', 'run.sh')}")
 
 
 if __name__ == "__main__":
