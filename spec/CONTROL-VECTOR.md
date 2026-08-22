@@ -257,7 +257,7 @@ baked in as a graph constant (alpha=1/2/4 produced byte-identical output);
 becomes a `KeyError` from a stale AOT artifact. All three failure modes look like
 "steering does nothing" rather than an error.
 
-**llama.cpp fork** — `github.com/msuiche/llama.cpp`, on top of the existing
+**llama.cpp fork** — `github.com/msuiche/llama.cpp` (currently private), on top of the existing
 control vector path:
 
 | file | change |

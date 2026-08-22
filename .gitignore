@@ -15,3 +15,6 @@ probe-*.json
 __pycache__/
 
 .DS_Store
+
+# staged GLP vector downloads
+.vectors/

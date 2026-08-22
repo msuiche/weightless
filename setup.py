@@ -352,6 +352,30 @@ def deploy_commands(lane_idx, values, ssh_host=None):
     ]
 
 
+def vector_paths(lane_idx):
+    """(local_path, remote_home_relative_path) for the lane's GLP vector,
+    derived from the lane env. None when steering isn't configured."""
+    env_path = os.path.join(HERE, LANES[lane_idx]["target"])
+    if not os.path.exists(env_path):
+        return None
+    with open(env_path) as f:
+        env = dict(re.findall(r"(?m)^([A-Z_]+)=(\S+)", f.read()))
+    steer = env.get("WEIGHTLESS_STEER_PATH", "")
+    if not steer:
+        return None
+    fname = os.path.basename(steer)
+    local = os.path.join(HERE, ".vectors", fname)  # staging dir (gitignored)
+    if lane_idx == 0:
+        hf = env.get("HF_CACHE", "~/.cache/huggingface")
+        home_rel = hf.split("/", 3)[3] if hf.startswith("/home/") else ".cache/huggingface"
+        return (local, f"{home_rel}/{fname}")
+    models = env.get("MODELS", "")
+    if not models:
+        return None
+    base = os.path.basename(models.rstrip("/"))  # remote dir mirrors local name
+    return (local, f"{base}/cvec/{fname}")
+
+
 # remote files each lane deploys, paired with their local sources
 DEPLOY_MAP = {
     0: [("recipe/anemll/.env.dsv4", "dspark-miaai/.env.dsv4"),
@@ -392,9 +416,13 @@ def remote_preflight(io, lane_idx, values, ssh_host):
             remote_md5[parts[1]] = None
         elif len(parts) == 2 and len(parts[0]) == 32:
             remote_md5[parts[1]] = parts[0]
+    deploy_map = list(DEPLOY_MAP[lane_idx])
+    vp = vector_paths(lane_idx)
+    if vp and os.path.exists(vp[0]):
+        deploy_map.append((vp[0], vp[1]))
     all_match = True
-    for local, remote in DEPLOY_MAP[lane_idx]:
-        lp = os.path.join(HERE, local)
+    for local, remote in deploy_map:
+        lp = local if os.path.isabs(local) else os.path.join(HERE, local)
         lm = hashlib.md5(open(lp, "rb").read()).hexdigest() if os.path.exists(lp) else None
         rm = remote_md5.get(remote)
         if rm is None:
@@ -864,8 +892,20 @@ def lane_chain(io, lane_idx):
                 io.info("  " + line.strip())
         if r.returncode not in (0, 2):
             io.err("steering validation failed — do not deploy until this is green")
-        io.info(f"vector (gated, needs HF token): "
-                f"huggingface-cli download {lane['vector_repo']} --include '*.gguf'")
+        vp = vector_paths(lane_idx)
+        if vp and os.path.exists(vp[0]):
+            io.ok(f"vector present: {vp[0]}")
+        else:
+            io.info(f"vector (gated, needs HF token): "
+                    f"hf download {lane['vector_repo']} --include '*.gguf'")
+            if vp and shutil.which("hf") and io.confirm("Download the vector now?", True):
+                rc = subprocess.call(["hf", "download", lane["vector_repo"],
+                                      "--include", "*.gguf",
+                                      "--local-dir", os.path.dirname(vp[0])])
+                if rc == 0:
+                    io.ok(f"downloaded to {os.path.dirname(vp[0])}")
+                else:
+                    io.err("download failed (gated repo — is your HF token accepted?)")
 
     # 5. deploy (confirm-gated remote actions, preflight first)
     if io.confirm("Deploy to the node(s) over ssh now?", True):
@@ -880,7 +920,20 @@ def lane_chain(io, lane_idx):
             if not io.confirm("Redeploy and restart anyway?", False):
                 io.info("deploy skipped")
                 return tests_chain(io)
-        for desc, argv in deploy_commands(lane_idx, values, ssh_host):
+        cmds = deploy_commands(lane_idx, values, ssh_host)
+        vp = vector_paths(lane_idx)
+        if vp and os.path.exists(vp[0]):
+            user = values.get("user", os.environ.get("USER", ""))
+            target = f"{user}@{ssh_host}"
+            vlocal, vremote = vp
+            cmds.insert(-1, ("sync GLP vector",
+                             ["scp", vlocal, f"{target}:{vremote}"]))
+            if lane_idx == 0:  # the worker needs its own copy
+                worker = values.get("worker-ip", "<worker-ip>")
+                cmds.insert(-1, ("sync GLP vector to the worker",
+                                 ["ssh", target,
+                                  f"scp -o BatchMode=yes {vremote} {user}@{worker}:{vremote}"]))
+        for desc, argv in cmds:
             io.info(f"$ {' '.join(argv)}")
             if not io.confirm(f"run: {desc}?", True):
                 io.warn("skipped")
