@@ -304,10 +304,45 @@ def prereqs():
     return shutil.which("bun"), shutil.which("omp")
 
 
-def run_suite(base, model):
+def run_suite(io, base, model):
+    """Run tests/0*.sh one by one, inside the wizard UI: each test's verdict
+    line lands as a colored ✓/~/✗ row instead of dropping out to a shell."""
+    import glob
     env = dict(os.environ, DSPARK_BASE_URL=base, DSPARK_MODEL=model,
                DSPARK_OMP_MODEL=f"{PROVIDER}/{model}")
-    return subprocess.call(["sh", os.path.join(HERE, "tests", "run.sh")], env=env)
+    io.info("")
+    io.header("endpoint test suite")
+    io.info("─" * 40)
+    fails = 0
+    for t in sorted(glob.glob(os.path.join(HERE, "tests", "0*.sh"))):
+        name = os.path.basename(t)
+        io.info(f"… {name} running")
+        try:
+            r = subprocess.run(["sh", t], env=env, capture_output=True,
+                               text=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            io.err(f"✗ {name} — timed out after 600s")
+            fails += 1
+            continue
+        lines = (r.stdout + r.stderr).strip().splitlines()
+        # the test's own verdict line, not tool chatter interleaved on stdout
+        verdict = next((l for l in lines if l.startswith(("PASS:", "FAIL:", "SKIP:"))),
+                       lines[-1] if lines else "(no output)")
+        if r.returncode == 0:
+            io.ok(f"✓ {name} — {verdict}")
+        elif r.returncode == 2:
+            io.warn(f"~ {name} — {verdict}")
+        else:
+            io.err(f"✗ {name} — {verdict}")
+            for l in lines[:-1][-3:]:
+                io.err(f"    {l}")
+            fails += 1
+    io.info("─" * 40)
+    if fails:
+        io.err(f"{fails} test(s) failed")
+        return 1
+    io.ok("all endpoint tests passed")
+    return 0
 
 
 # ---------------------------------------------------------------- IO adapters
@@ -676,9 +711,7 @@ def tests_chain(io):
                         "deepseek" in model.lower())
     io.ok(install_provider(base, model, compat))
     if io.confirm("Run the test suite now?", True):
-        if isinstance(io, TuiIO):
-            curses.endwin()
-        return run_suite(base, model)
+        return run_suite(io, base, model)
     io.info(f"done — later: sh {os.path.join(HERE, 'tests', 'run.sh')}")
     return 0
 
