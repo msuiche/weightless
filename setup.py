@@ -139,7 +139,10 @@ def detect_state():
             bits.append("steering off")
         lines.append(f"{label}: " + (", ".join(bits) if bits else "configured"))
         if steer_line:
-            lines.append(f"  ↳ {steer_line} — {os.path.basename(steer)}")
+            fname = os.path.basename(steer)
+            if len(fname) > 44:
+                fname = "…" + fname[-43:]
+            lines.append(f"  ↳ {steer_line} — {fname}")
     if os.path.exists(OMP_MODELS):
         base = omp_provider_base()
         if base:
@@ -683,32 +686,44 @@ def tests_chain(io):
 # ---------------------------------------------------------------- entry
 
 def splash_tui(io):
-    """Gradient sparkle left, local-setup box right (stacked if narrow)."""
-    _, cols = io.s.getmaxyx()
+    """Gradient sparkle left, local-setup box right (stacked if narrow).
+    The box is a real bordered curses window so the frame renders correctly
+    at any terminal width."""
+    rows, cols = io.s.getmaxyx()
     lines = detect_state()
-    width = min(max(len("local setup") + 2, *(len(l) for l in lines)) + 2,
-                cols - 2)
-    side_by_side = cols >= len(SPARKLE[0]) + width + 8
+    content_w = max(len("local setup") + 2, *(len(l) for l in lines))
+    bcol = len(SPARKLE[0]) + 5
+    side_by_side = cols >= bcol + min(content_w + 2, 56) + 2
+    brow = io.row if side_by_side else io.row + len(SPARKLE) + 1
+    if not side_by_side:
+        bcol = 0
+    bw = min(content_w + 2, cols - bcol)  # outer width incl. borders
+    bh = len(lines) + 2
+
+    win = curses.newwin(bh, bw, brow, bcol)
+    if io.color:
+        win.attron(io._attr("dim"))
+    win.box()
+    win.addstr(0, 2, " local setup ")
+    if io.color:
+        win.attroff(io._attr("dim"))
+    for i, l in enumerate(lines):
+        room = bw - 4
+        shown = l if len(l) <= room else l[:room - 1] + "…"
+        try:
+            win.addstr(1 + i, 2, shown)
+        except curses.error:
+            pass
+    win.refresh()
+
     for i, art in enumerate(SPARKLE):
         attr = io.grad[i] if io.grad else curses.A_NORMAL
         try:
             io.s.addstr(io.row + i, 1, art, attr)
         except curses.error:
             pass
-    brow, bcol = io.row, (len(SPARKLE[0]) + 6) if side_by_side else 0
-    if not side_by_side:
-        brow = io.row + len(SPARKLE) + 1
-    border_attr = io._attr("dim")
-    top = "┌─ local setup " + "─" * (width - len("local setup") - 4) + "┐"
-    for j, bline in enumerate([top]
-                              + ["│ " + l[:width - 2].ljust(width - 2) + "│" for l in lines]
-                              + ["└" + "─" * width + "┘"]):
-        try:
-            io.s.addstr(brow + j, bcol, bline, border_attr)
-        except curses.error:
-            pass
     io.s.refresh()
-    io.row = brow + len(lines) + 3
+    io.row = max(io.row + len(SPARKLE), brow + bh) + 1  # one blank line after
 
 
 def splash_cli(io):
