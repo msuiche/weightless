@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="weightless feather logo" width="160">
+</p>
+
 # weightless
 
 **Abliteration without the weights — put your model on GLP.** Serving
