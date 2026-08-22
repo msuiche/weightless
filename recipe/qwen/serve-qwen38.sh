@@ -32,12 +32,12 @@ ENTRY='exec vllm serve /models/Qwen3.8-27B-NVFP4'
 if [ "$STEER_MODE" = "gguf" ]; then
   HOTFIX="$(cd ../../patches && pwd)/hotfix-qwen38-steering-projective.py"
   DOCKER_EXTRA+=(-v "$HOTFIX":/patches/hotfix-qwen38-steering-projective.py:ro)
-  if [ -n "${QWEN_STEER_PATH:-}" ]; then
-    DOCKER_EXTRA+=(-e "QWEN_STEER_PATH=$QWEN_STEER_PATH"
-                   -e "QWEN_STEER_ALPHA=${QWEN_STEER_ALPHA:-1.0}")
-    [ -n "${QWEN_STEER_LAYERS:-}" ] && DOCKER_EXTRA+=(-e "QWEN_STEER_LAYERS=$QWEN_STEER_LAYERS")
+  if [ -n "${WEIGHTLESS_STEER_PATH:-}" ]; then
+    DOCKER_EXTRA+=(-e "WEIGHTLESS_STEER_PATH=$WEIGHTLESS_STEER_PATH"
+                   -e "WEIGHTLESS_STEER_ALPHA=${WEIGHTLESS_STEER_ALPHA:-1.0}")
+    [ -n "${WEIGHTLESS_STEER_LAYERS:-}" ] && DOCKER_EXTRA+=(-e "WEIGHTLESS_STEER_LAYERS=$WEIGHTLESS_STEER_LAYERS")
   fi
-  [ -n "${QWEN_STEERING_MODEL_PY:-}" ] && DOCKER_EXTRA+=(-e "QWEN_STEERING_MODEL_PY=$QWEN_STEERING_MODEL_PY")
+  [ -n "${WEIGHTLESS_STEERING_MODEL_PY:-}" ] && DOCKER_EXTRA+=(-e "WEIGHTLESS_STEERING_MODEL_PY=$WEIGHTLESS_STEERING_MODEL_PY")
   ENTRY='python3 /patches/hotfix-qwen38-steering-projective.py && '"$ENTRY"
 elif [ "$STEER_MODE" = "lora" ]; then
   ENTRY="$ENTRY"' --enable-lora --lora_modules qwen-abliterated='"${QWEN_LORA_DIR:-/models/lora/qwen-abliterated}"
@@ -66,7 +66,7 @@ docker run -d --restart unless-stopped --name qwen38 --gpus all --ipc=host --net
 
 echo "qwen38 up: http://localhost:${VLLM_PORT}/v1 (model id ${SERVED_MODEL_NAME})"
 if [ "$STEER_MODE" = "gguf" ]; then
-  echo "Confirm steering in the boot log: 'Qwen refusal steering active ... layers=49'"
+  echo "Confirm steering in the boot log: 'weightless GLP steering active ... layers=49'"
   echo "(layers=1 means the per-layer-loop regression; layers=0 means unsteered.)"
 else
   echo "Steered model id: qwen-abliterated (base ${SERVED_MODEL_NAME} serves stock)"

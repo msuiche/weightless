@@ -8,7 +8,7 @@ builds it:
     for _lid in range(config.num_hidden_layers):
         ...
         _v = _q.T[: _v.shape[0]]
-    _DSPARK_HOOK_DIRS[_lid] = ...      # <-- outside the loop
+    _GLP_HOOK_DIRS[_lid] = ...      # <-- outside the loop
     self._steer_dirs[_lid] = ...       # <-- outside the loop
 
 The loop still ran, still orthonormalised every layer's direction, and then threw
@@ -34,10 +34,10 @@ DEFAULT = (
 )
 
 # Assignments that are per-layer and must therefore live inside the per-layer loop.
-PER_LAYER_TARGETS = ("_steer_dirs[_lid]", "_DSPARK_HOOK_DIRS[_lid]")
+PER_LAYER_TARGETS = ("_steer_dirs[_lid]", "_GLP_HOOK_DIRS[_lid]")
 
 # Module-level entry points the overlay guard also asserts on.
-REQUIRED_SYMBOLS = ("_load_gguf_control_vector", "_DSPARK_STEER_HOOK")
+REQUIRED_SYMBOLS = ("_load_gguf_control_vector", "_WEIGHTLESS_STEER_HOOK")
 
 
 def find_layer_loop(tree: ast.AST) -> ast.For | None:

@@ -3,7 +3,7 @@
 #
 # The steering patch stays bind-mounted (see README) so it can be iterated
 # without a rebuild. This image exists only because the base has no `gguf`
-# module, which makes DSPARK_STEER_PATH refuse a .gguf and fall back to
+# module, which makes WEIGHTLESS_STEER_PATH refuse a .gguf and fall back to
 # unsteered. Loading a converted .pt instead works, but it goes through
 # torch.load and bypasses every check the GGUF reader performs: the
 # dspark.mode=project enforcement, the layer-id cross-check against tensor

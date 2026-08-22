@@ -44,9 +44,9 @@ fails the suite on real failures.
 
 ## Configuration
 
-- `DSPARK_BASE_URL` — default `http://localhost:8888/v1`
-- `DSPARK_MODEL` — default `deepseek-v4-flash-dspark`
-- `DSPARK_OMP_MODEL` — omp selector for test 04, default `dspark/deepseek-v4-flash-dspark`
+- `WEIGHTLESS_BASE_URL` — default `http://localhost:8888/v1`
+- `WEIGHTLESS_MODEL` — default `deepseek-v4-flash-dspark`
+- `WEIGHTLESS_OMP_MODEL` — omp selector for test 04, default `dspark/deepseek-v4-flash-dspark`
 
 `tests/models.yml` is the omp provider definition. The `compat` block mirrors
 the official DeepSeek guidance for omp (system role, `max_tokens`, no

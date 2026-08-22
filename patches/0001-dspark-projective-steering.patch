@@ -1,5 +1,5 @@
 diff --git a/vllm/models/deepseek_v4/nvidia/model.py b/vllm/models/deepseek_v4/nvidia/model.py
-index 8925890..790aeba 100644
+index 8925890..d9b6ff7 100644
 --- a/vllm/models/deepseek_v4/nvidia/model.py
 +++ b/vllm/models/deepseek_v4/nvidia/model.py
 @@ -1,5 +1,6 @@
@@ -25,23 +25,23 @@ index 8925890..790aeba 100644
 +# fp8 requantisation floor is ~39% of a lambda=3.5 weight edit, so small
 +# coefficients are not representable in the weights at all.
 +#
-+# Everything here is inert unless DSPARK_STEER_PATH is set.
++# Everything here is inert unless WEIGHTLESS_STEER_PATH is set.
 +# ---------------------------------------------------------------------------
 +
 +# Recorded for provenance in the startup log. Only "post_layer" is implemented
 +# here, which is the shipped setting and the one every measurement was taken at.
 +# On this architecture the site matters about 9x: the same direction applied to
 +# the attention writer alone left 34.0% refusal, against 3.8% post-layer.
-+_DSPARK_STEER_HOOK = (os.environ.get("DSPARK_STEER_HOOK") or "post_layer").strip()
-+_DSPARK_HOOK_ALPHA = float(os.environ.get("DSPARK_STEER_ALPHA", "1.0") or 1.0)
++_WEIGHTLESS_STEER_HOOK = (os.environ.get("WEIGHTLESS_STEER_HOOK") or "post_layer").strip()
++_GLP_HOOK_ALPHA = float(os.environ.get("WEIGHTLESS_STEER_ALPHA", "1.0") or 1.0)
 +# layer id -> (k, hidden) orthonormal rows. Populated for inspection and for
 +# offline tooling; NOT read by the forward path. The pre-fold writer-isolation
 +# hooks that used it are deliberately not ported: they branch on
-+# _DSPARK_STEER_HOOK inside the traced region, and that choice is not part of
++# _WEIGHTLESS_STEER_HOOK inside the traced region, and that choice is not part of
 +# vLLM's compile cache key, so a cached artifact would silently ignore a changed
 +# hook site. Reintroduce them behind a separate image if that experiment is
 +# re-run, and clear the compile cache when doing so.
-+_DSPARK_HOOK_DIRS: dict[int, torch.Tensor] = {}
++_GLP_HOOK_DIRS: dict[int, torch.Tensor] = {}
 +
 +
 +def _load_gguf_control_vector(path: str) -> dict:
@@ -104,7 +104,7 @@ index 8925890..790aeba 100644
 +        )
 +
 +    logger.info(
-+        "DSpark GGUF control vector: mode=%s spec_version=%s base_model=%s rev=%s",
++        "weightless GLP vector: mode=%s spec_version=%s base_model=%s rev=%s",
 +        mode,
 +        (reader.fields.get("glp.spec_version").parts[-1][0]
 +         if "glp.spec_version" in reader.fields else "?"),
@@ -158,7 +158,7 @@ index 8925890..790aeba 100644
 +                f"this file would steer the wrong layers. Re-export it."
 +            )
 +    logger.info(
-+        "DSpark GGUF control vector: %d directions, n_embd=%d, layers %s",
++        "weightless GLP vector: %d directions, n_embd=%d, layers %s",
 +        len(out), next(iter(widths)), sorted(out),
 +    )
 +    return out
@@ -170,7 +170,7 @@ index 8925890..790aeba 100644
              self._mtp_hidden_buffer = None
  
 +        # ---- projective activation steering ---------------------------------
-+        self._steer_alpha_val = float(os.environ.get("DSPARK_STEER_ALPHA", "1.0") or 1.0)
++        self._steer_alpha_val = float(os.environ.get("WEIGHTLESS_STEER_ALPHA", "1.0") or 1.0)
 +        self._steer_dirs: dict[int, torch.Tensor] = {}
 +        _dev = current_platform.device_type
 +        _dtype = vllm_config.model_config.dtype
@@ -205,13 +205,13 @@ index 8925890..790aeba 100644
 +        self._load_steering(config, _dev, _dtype)
 +
 +    def _load_steering(self, config, device, dtype) -> None:
-+        """Fill _steer_stack from DSPARK_STEER_PATH. No-op when unset.
++        """Fill _steer_stack from WEIGHTLESS_STEER_PATH. No-op when unset.
 +
 +        Loaded on every rank and indexed by GLOBAL layer id, so this is correct
 +        under pipeline parallelism: each rank's forward loop only visits its own
 +        layers and looks them up by the same global index.
 +        """
-+        path = os.environ.get("DSPARK_STEER_PATH", "").strip()
++        path = os.environ.get("WEIGHTLESS_STEER_PATH", "").strip()
 +        if not path:
 +            return
 +        try:
@@ -219,7 +219,7 @@ index 8925890..790aeba 100644
 +                raw = _load_gguf_control_vector(path)
 +            else:
 +                raw = torch.load(path, map_location="cpu")
-+            want = os.environ.get("DSPARK_STEER_LAYERS", "").strip()
++            want = os.environ.get("WEIGHTLESS_STEER_LAYERS", "").strip()
 +            selected = (
 +                {int(t) for t in want.replace(" ", "").split(",") if t} if want else None
 +            )
@@ -246,13 +246,13 @@ index 8925890..790aeba 100644
 +                # A previous revision dedented them out, which kept only the
 +                # final iteration and silently steered one layer instead of 29.
 +                self._steer_dirs[layer_id] = vec.to(device=device, dtype=dtype)
-+                _DSPARK_HOOK_DIRS[layer_id] = vec.to(
++                _GLP_HOOK_DIRS[layer_id] = vec.to(
 +                    device=device, dtype=torch.bfloat16
 +                )
 +
 +            if not self._steer_dirs:
 +                logger.warning(
-+                    "DSPARK_STEER_PATH=%s matched no layers; serving unsteered", path
++                    "WEIGHTLESS_STEER_PATH=%s matched no layers; serving unsteered", path
 +                )
 +                return
 +
@@ -268,9 +268,9 @@ index 8925890..790aeba 100644
 +                self._steer_alpha_val, device=device, dtype=dtype
 +            )
 +            logger.info(
-+                "DSpark refusal steering active: hook=%s alpha=%.3f rank=%s "
++                "weightless GLP steering active: hook=%s alpha=%.3f rank=%s "
 +                "layers=%d %s",
-+                _DSPARK_STEER_HOOK,
++                _WEIGHTLESS_STEER_HOOK,
 +                self._steer_alpha_val,
 +                {k_: int(v.shape[0]) for k_, v in sorted(self._steer_dirs.items())},
 +                len(self._steer_dirs),

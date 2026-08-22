@@ -2,8 +2,8 @@
 # 02-chat: a basic chat completion returns non-empty content.
 # (Generous max_tokens: a thinking model can burn tokens on reasoning first.)
 set -u
-BASE="${DSPARK_BASE_URL:-http://localhost:8888/v1}"
-MODEL="${DSPARK_MODEL:-deepseek-v4-flash-dspark}"
+BASE="${WEIGHTLESS_BASE_URL:-http://localhost:8888/v1}"
+MODEL="${WEIGHTLESS_MODEL:-deepseek-v4-flash-dspark}"
 
 resp=$(curl -sf -m 180 -H 'Content-Type: application/json' -d '{
   "model": "'"$MODEL"'",

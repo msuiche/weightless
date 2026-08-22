@@ -108,21 +108,21 @@ fi
 export GPU_MEMORY_UTILIZATION ENABLE_VL_SIDECAR DSPARK_SERVE_MODE
 
 # Checkpoint flag: official 0731 vs Keys abliterated weights.
-#   ABLITERATED=0 → DSPARK_MODEL_OFFICIAL
-#   ABLITERATED=1 → DSPARK_MODEL_ABLITERATED
-DSPARK_MODEL_OFFICIAL="${DSPARK_MODEL_OFFICIAL:-deepseek-ai/DeepSeek-V4-Flash-0731}"
-DSPARK_MODEL_ABLITERATED="${DSPARK_MODEL_ABLITERATED:-drowzeys/keys-DeepSeekV4-Flash-GA-0731-Dspark-Abliterated-32-32}"
+#   ABLITERATED=0 → WEIGHTLESS_MODEL_OFFICIAL
+#   ABLITERATED=1 → WEIGHTLESS_MODEL_ABLITERATED
+WEIGHTLESS_MODEL_OFFICIAL="${WEIGHTLESS_MODEL_OFFICIAL:-deepseek-ai/DeepSeek-V4-Flash-0731}"
+WEIGHTLESS_MODEL_ABLITERATED="${WEIGHTLESS_MODEL_ABLITERATED:-drowzeys/keys-DeepSeekV4-Flash-GA-0731-Dspark-Abliterated-32-32}"
 DEFAULT_OFFICIAL_REVISION="9e165c30e2704aec5d9d593cce3eebd58bbef1cb"
 if [ "${ABLITERATED:-0}" = "1" ]; then
-  DSPARK_MODEL="$DSPARK_MODEL_ABLITERATED"
+  WEIGHTLESS_MODEL="$WEIGHTLESS_MODEL_ABLITERATED"
   DSPARK_REVISION="${DSPARK_REVISION_ABLITERATED:-}"
 else
-  DSPARK_MODEL="$DSPARK_MODEL_OFFICIAL"
+  WEIGHTLESS_MODEL="$WEIGHTLESS_MODEL_OFFICIAL"
   if [ -z "${DSPARK_REVISION+x}" ]; then
     DSPARK_REVISION="$DEFAULT_OFFICIAL_REVISION"
   fi
 fi
-export ABLITERATED DSPARK_MODEL DSPARK_MODEL_OFFICIAL DSPARK_MODEL_ABLITERATED DSPARK_REVISION
+export ABLITERATED WEIGHTLESS_MODEL WEIGHTLESS_MODEL_OFFICIAL WEIGHTLESS_MODEL_ABLITERATED DSPARK_REVISION
 
 # CLI values have highest precedence; the env file remains the persistent
 # configuration source when no command-line override is provided.
@@ -371,7 +371,7 @@ compose_base() {
     VLLM_PORT="$VLLM_PORT" \
     VLLM_HOST_IP="$VLLM_HOST_IP" \
     GPU_MEMORY_UTILIZATION="$GPU_MEMORY_UTILIZATION" \
-    DSPARK_MODEL="$DSPARK_MODEL" \
+    WEIGHTLESS_MODEL="$WEIGHTLESS_MODEL" \
     DSPARK_REVISION="${DSPARK_REVISION:-}" \
     ENABLE_VLLM_GB10_PATCH="$ENABLE_VLLM_GB10_PATCH" \
     VLLM_GB10_PATCH_DIR="$VLLM_GB10_PATCH_DIR" \
@@ -429,14 +429,14 @@ print_resolved_profile() {
   echo "Resolved DSpark profile:"
   echo "  project: $PROJECT_NAME"
   echo "  serve mode: $DSPARK_SERVE_MODE (ENABLE_VL_SIDECAR=${ENABLE_VL_SIDECAR:-0})"
-  echo "  checkpoint: $DSPARK_MODEL (ABLITERATED=${ABLITERATED:-0})"
+  echo "  checkpoint: $WEIGHTLESS_MODEL (ABLITERATED=${ABLITERATED:-0})"
   if [ -n "${DSPARK_REVISION:-}" ]; then
     echo "  revision: $DSPARK_REVISION"
   else
     echo "  revision: (default branch tip / unpinned)"
   fi
   echo "  image: $DSPARK_VLLM_IMAGE"
-  echo "  model: ${DSPARK_MODEL:-deepseek-ai/DeepSeek-V4-Flash-DSpark}"
+  echo "  model: ${WEIGHTLESS_MODEL:-deepseek-ai/DeepSeek-V4-Flash-DSpark}"
   echo "  served model: ${SERVED_MODEL_NAME:-deepseek-v4-flash-dspark}"
   echo "  max model len: ${MAX_MODEL_LEN:-1000000}"
   echo "  max num seqs: ${MAX_NUM_SEQS:-6}"
@@ -500,7 +500,7 @@ validate_compose() {
   echo "Validating head compose config..."
   compose_base 0 "" config --quiet
   echo "Validating worker compose config..."
-  remote_compose "NODE_RANK=1 HEADLESS=1 HF_CACHE='$WORKER_HF_CACHE' VLLM_HOST_IP='$WORKER_VLLM_HOST_IP' GPU_MEMORY_UTILIZATION='$GPU_MEMORY_UTILIZATION' DSPARK_MODEL='$DSPARK_MODEL' DSPARK_REVISION='${DSPARK_REVISION:-}' ENABLE_VLLM_GB10_PATCH='$ENABLE_VLLM_GB10_PATCH' VLLM_GB10_PATCH_DIR='./vllm_patch_gb10' GB10_HYBRID_NVFP4_M_THRESHOLD='${GB10_HYBRID_NVFP4_M_THRESHOLD:-128}' docker compose -p '$PROJECT_NAME' --env-file .env.dspark -f docker-compose.dspark.yml config --quiet"
+  remote_compose "NODE_RANK=1 HEADLESS=1 HF_CACHE='$WORKER_HF_CACHE' VLLM_HOST_IP='$WORKER_VLLM_HOST_IP' GPU_MEMORY_UTILIZATION='$GPU_MEMORY_UTILIZATION' WEIGHTLESS_MODEL='$WEIGHTLESS_MODEL' DSPARK_REVISION='${DSPARK_REVISION:-}' ENABLE_VLLM_GB10_PATCH='$ENABLE_VLLM_GB10_PATCH' VLLM_GB10_PATCH_DIR='./vllm_patch_gb10' GB10_HYBRID_NVFP4_M_THRESHOLD='${GB10_HYBRID_NVFP4_M_THRESHOLD:-128}' docker compose -p '$PROJECT_NAME' --env-file .env.dspark -f docker-compose.dspark.yml config --quiet"
 }
 
 need_cmd docker
@@ -652,11 +652,11 @@ if [ -f "$DSPARK_ISSUE26_HOTFIX" ]; then
   ssh "$WORKER_HOST" "mkdir -p '${REMOTE_WORKER_DIR}/patches'"
   scp "$DSPARK_ISSUE26_HOTFIX" "${WORKER_HOST}:${REMOTE_WORKER_DIR}/patches/hotfix-dsv4-issue26-hybrid-swa-min.py"
 fi
-DSPARK_STEERING_HOTFIX="${DSPARK_STEERING_HOTFIX:-$SCRIPT_DIR/patches/hotfix-dsv4-steering-projective.py}"
-if [ -f "$DSPARK_STEERING_HOTFIX" ]; then
+WEIGHTLESS_STEERING_HOTFIX="${WEIGHTLESS_STEERING_HOTFIX:-$SCRIPT_DIR/patches/hotfix-dsv4-steering-projective.py}"
+if [ -f "$WEIGHTLESS_STEERING_HOTFIX" ]; then
   echo "Syncing projective-steering hotfix to ${WORKER_HOST}:${WORKER_DIR}/patches/"
   ssh "$WORKER_HOST" "mkdir -p '${REMOTE_WORKER_DIR}/patches'"
-  scp "$DSPARK_STEERING_HOTFIX" "${WORKER_HOST}:${REMOTE_WORKER_DIR}/patches/hotfix-dsv4-steering-projective.py"
+  scp "$WEIGHTLESS_STEERING_HOTFIX" "${WORKER_HOST}:${REMOTE_WORKER_DIR}/patches/hotfix-dsv4-steering-projective.py"
 fi
 DSPARK_SUPPRESS_STOPS_HOTFIX="${DSPARK_SUPPRESS_STOPS_HOTFIX:-$SCRIPT_DIR/patches/hotfix-dsv4-suppress-stops-in-reasoning.py}"
 if [ -f "$DSPARK_SUPPRESS_STOPS_HOTFIX" ]; then
@@ -683,7 +683,7 @@ fi
 validate_compose
 
 echo "Starting DSpark worker on ${WORKER_HOST}..."
-remote_compose "NODE_RANK=1 HEADLESS=1 HF_CACHE='$WORKER_HF_CACHE' VLLM_HOST_IP='$WORKER_VLLM_HOST_IP' GPU_MEMORY_UTILIZATION='$GPU_MEMORY_UTILIZATION' DSPARK_MODEL='$DSPARK_MODEL' DSPARK_REVISION='${DSPARK_REVISION:-}' ENABLE_VLLM_GB10_PATCH='$ENABLE_VLLM_GB10_PATCH' VLLM_GB10_PATCH_DIR='./vllm_patch_gb10' GB10_HYBRID_NVFP4_M_THRESHOLD='${GB10_HYBRID_NVFP4_M_THRESHOLD:-128}' docker compose -p '$PROJECT_NAME' --env-file .env.dspark -f docker-compose.dspark.yml up -d"
+remote_compose "NODE_RANK=1 HEADLESS=1 HF_CACHE='$WORKER_HF_CACHE' VLLM_HOST_IP='$WORKER_VLLM_HOST_IP' GPU_MEMORY_UTILIZATION='$GPU_MEMORY_UTILIZATION' WEIGHTLESS_MODEL='$WEIGHTLESS_MODEL' DSPARK_REVISION='${DSPARK_REVISION:-}' ENABLE_VLLM_GB10_PATCH='$ENABLE_VLLM_GB10_PATCH' VLLM_GB10_PATCH_DIR='./vllm_patch_gb10' GB10_HYBRID_NVFP4_M_THRESHOLD='${GB10_HYBRID_NVFP4_M_THRESHOLD:-128}' docker compose -p '$PROJECT_NAME' --env-file .env.dspark -f docker-compose.dspark.yml up -d"
 
 echo "Starting DSpark head..."
 compose_base 0 "" up -d

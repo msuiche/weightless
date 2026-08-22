@@ -16,11 +16,11 @@ Always-on checks (no reference sources needed):
      rejection) — an additive reader must refuse our files;
   3. the per-layer assignments in the injected INIT_BLOCK are INSIDE the
      per-layer loop (the dedent regression guard);
-  4. fail-closed surface: anchors-missing + DSPARK_STEER_PATH set exits 1,
+  4. fail-closed surface: anchors-missing + WEIGHTLESS_STEER_PATH set exits 1,
      and re-apply is a no-op.
 
 With a reference model.py from the 0.25.2 image (arg or
-DSPARK_STEERING_MODEL_PY), it also applies the hotfix to a SCRATCH COPY
+WEIGHTLESS_STEERING_MODEL_PY), it also applies the hotfix to a SCRATCH COPY
 (never the original) and AST-checks the result. Without one it exits 2
 (SKIP) after the always-on checks.
 
@@ -45,7 +45,7 @@ import tempfile
 REPO = pathlib.Path(__file__).resolve().parent.parent
 HOTFIX = REPO / "patches/hotfix-dsv4-steering-projective.py"
 
-PER_LAYER_TARGETS = ("self._steer_dirs[layer_id]", "_DSPARK_HOOK_DIRS[layer_id]")
+PER_LAYER_TARGETS = ("self._steer_dirs[layer_id]", "_GLP_HOOK_DIRS[layer_id]")
 SPEC_TOKENS = ("glp.mode", "residual_stream_post_layer", "direction.0")
 
 
@@ -147,7 +147,7 @@ def main(ref_model: pathlib.Path | None) -> int:
 
     # 4. fail-closed / idempotency surface
     check("failing closed" in src and "steer_requested" in src,
-          "anchors-missing + DSPARK_STEER_PATH fails closed")
+          "anchors-missing + WEIGHTLESS_STEER_PATH fails closed")
     check("already applied" in src, "re-apply is a no-op marker")
 
     # 5. optional: apply to a scratch copy of the real 0.25.2 model.py
@@ -160,8 +160,8 @@ def main(ref_model: pathlib.Path | None) -> int:
         with tempfile.TemporaryDirectory() as td:
             scratch = pathlib.Path(td) / "model.py"
             shutil.copy(ref_model, scratch)
-            env = dict(os.environ, DSPARK_STEERING_MODEL_PY=str(scratch))
-            env.pop("DSPARK_STEER_PATH", None)
+            env = dict(os.environ, WEIGHTLESS_STEERING_MODEL_PY=str(scratch))
+            env.pop("WEIGHTLESS_STEER_PATH", None)
             r = subprocess.run([sys.executable, str(HOTFIX)], env=env,
                                capture_output=True, text=True)
             check(r.returncode == 0 and "applied to" in r.stdout,
@@ -179,12 +179,12 @@ def main(ref_model: pathlib.Path | None) -> int:
                       "re-apply is a no-op", r2.stdout + r2.stderr)
             bogus = pathlib.Path(td) / "bogus.py"
             bogus.write_text("# not a model file\n")
-            env2 = dict(env, DSPARK_STEERING_MODEL_PY=str(bogus),
-                        DSPARK_STEER_PATH="/nonexistent.gguf")
+            env2 = dict(env, WEIGHTLESS_STEERING_MODEL_PY=str(bogus),
+                        WEIGHTLESS_STEER_PATH="/nonexistent.gguf")
             r3 = subprocess.run([sys.executable, str(HOTFIX)], env=env2,
                                 capture_output=True, text=True)
             check(r3.returncode == 1,
-                  "anchors missing + DSPARK_STEER_PATH set fails closed")
+                  "anchors missing + WEIGHTLESS_STEER_PATH set fails closed")
 
     print()
     print("dsv4 hotfix structure: "

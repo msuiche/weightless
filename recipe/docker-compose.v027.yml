@@ -19,10 +19,10 @@ services:
       # Serve weights already on disk instead of downloading through the HF
       # cache: set LOCAL_MODELS_DIR in .env.dspark (it reaches both nodes, since
       # the launcher passes the env file to worker and head) and point
-      # DSPARK_MODEL at /models/<dir>. Defaults to the HF cache dir, so leaving
+      # WEIGHTLESS_MODEL at /models/<dir>. Defaults to the HF cache dir, so leaving
       # it unset mounts nothing new.
       #
-      # DSPARK_MODEL must name a real directory inside the mount — a symlink
+      # WEIGHTLESS_MODEL must name a real directory inside the mount — a symlink
       # whose target lies outside it resolves to a host path the container
       # cannot see, and vLLM then treats the value as an HF repo id
       # (HFValidationError: Repo id must be in the form ...).
@@ -42,7 +42,7 @@ services:
       # Target resolved from the image: vllm is a source install at /opt/vllm-src.
       # Generated from msuiche/vllm branch dspark-steering-v027 against the same
       # v0.27.0 commit this image was built from, so it is version-matched.
-      - ${DSPARK_MODEL_PY:?DSPARK_MODEL_PY must point at the patched model.py}:/opt/vllm-src/vllm/models/deepseek_v4/nvidia/model.py:ro
+      - ${WEIGHTLESS_MODEL_PY:?WEIGHTLESS_MODEL_PY must point at the patched model.py}:/opt/vllm-src/vllm/models/deepseek_v4/nvidia/model.py:ro
       # DSpark source patches are baked into the image from recipe/overlay/
       # (see README "vLLM version note"); do not bind-mount a proposer copy
       # here — a copy from one vLLM version crashes another.
@@ -79,9 +79,9 @@ services:
       # and the last real prompt token cannot be located from inside forward().
       DSPARK_EXTRA_SERVE_ARGS: "${DSPARK_EXTRA_SERVE_ARGS:-}"
       # Activation steering (F-3). Empty path = inert.
-      DSPARK_STEER_PATH: "${DSPARK_STEER_PATH:-}"
-      DSPARK_STEER_ALPHA: "${DSPARK_STEER_ALPHA:-1.0}"
-      DSPARK_STEER_LAYERS: "${DSPARK_STEER_LAYERS:-}"
+      WEIGHTLESS_STEER_PATH: "${WEIGHTLESS_STEER_PATH:-}"
+      WEIGHTLESS_STEER_ALPHA: "${WEIGHTLESS_STEER_ALPHA:-1.0}"
+      WEIGHTLESS_STEER_LAYERS: "${WEIGHTLESS_STEER_LAYERS:-}"
       # Arm B: bake the direction into attn.wo_b at load time (abliteration-style).
       # Must be identical on both ranks or the TP halves diverge.
       DSPARK_WEDIT_PATH: "${DSPARK_WEDIT_PATH:-}"
@@ -156,8 +156,8 @@ services:
         echo "dspark: vllm=$(command -v vllm) python=$(command -v python3)";
         SPEC_ARGS=""; if [ "${DSPARK_SPEC:-0}" = "1" ]; then SPEC_ARGS="--speculative-config $${SPECULATIVE_CONFIG}"; fi;
         echo "dspark: spec=${DSPARK_SPEC:-0} args=$${SPEC_ARGS}";
-        python3 -c "import importlib.util,pathlib;p=pathlib.Path(importlib.util.find_spec(\"vllm.models.deepseek_v4.nvidia.model\").origin);import sys;src=p.read_text();print(\"dspark: model.py\",p,len(src.splitlines()),\"lines steering=\",\"_DSPARK_STEER_HOOK\" in src)";
-        exec vllm serve ${DSPARK_MODEL:-deepseek-ai/DeepSeek-V4-Flash-DSpark}
+        python3 -c "import importlib.util,pathlib;p=pathlib.Path(importlib.util.find_spec(\"vllm.models.deepseek_v4.nvidia.model\").origin);import sys;src=p.read_text();print(\"dspark: model.py\",p,len(src.splitlines()),\"lines steering=\",\"_WEIGHTLESS_STEER_HOOK\" in src)";
+        exec vllm serve ${WEIGHTLESS_MODEL:-deepseek-ai/DeepSeek-V4-Flash-DSpark}
         --served-model-name ${SERVED_MODEL_NAME:-deepseek-v4-flash-dspark}
         --host ${VLLM_HOST:-127.0.0.1}
         --port ${VLLM_PORT:-8888}

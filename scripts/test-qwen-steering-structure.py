@@ -23,7 +23,7 @@ AST-checks the result:
   4. Qwen3_5Model.__init__ registers the steering buffers (the lesson-2
      regression guard);
   5. re-applying is a no-op, and anchors-missing fails closed when
-     QWEN_STEER_PATH is set.
+     WEIGHTLESS_STEER_PATH is set.
 
 Run: python3 scripts/test-qwen-steering-structure.py [models_dir]
 Default is the vllm checkout beside this repo in the spark workspace.
@@ -44,14 +44,14 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 HOTFIX = REPO / "patches/hotfix-qwen38-steering-projective.py"
 DEFAULT_MODELS = REPO.parent / "vllm/vllm/model_executor/models"
 
-PER_LAYER_TARGETS = ("self._steer_dirs[layer_id]", "_QWEN_HOOK_DIRS[layer_id]")
+PER_LAYER_TARGETS = ("self._steer_dirs[layer_id]", "_GLP_HOOK_DIRS[layer_id]")
 
 
 def run_hotfix(next_py: pathlib.Path, p35_py: pathlib.Path,
                env_extra: dict | None = None) -> subprocess.CompletedProcess:
     env = os.environ.copy()
-    env["QWEN_STEERING_MODEL_PY"] = str(next_py)
-    env["QWEN_STEERING_MODEL_PY_35"] = str(p35_py)
+    env["WEIGHTLESS_STEERING_MODEL_PY"] = str(next_py)
+    env["WEIGHTLESS_STEERING_MODEL_PY_35"] = str(p35_py)
     env.update(env_extra or {})
     return subprocess.run(
         [sys.executable, str(HOTFIX)], env=env, capture_output=True, text=True
@@ -166,8 +166,8 @@ def main(models_dir: pathlib.Path) -> int:
         # 5b. fail-closed: steering requested but anchors missing
         bogus = pathlib.Path(td) / "bogus.py"
         bogus.write_text("# not a model file\n")
-        r3 = run_hotfix(bogus, bogus, {"QWEN_STEER_PATH": "/nonexistent.gguf"})
-        check(r3.returncode == 1, "anchors missing + QWEN_STEER_PATH set fails closed")
+        r3 = run_hotfix(bogus, bogus, {"WEIGHTLESS_STEER_PATH": "/nonexistent.gguf"})
+        check(r3.returncode == 1, "anchors missing + WEIGHTLESS_STEER_PATH set fails closed")
         r4 = run_hotfix(bogus, bogus)
         check(r4.returncode == 0, "anchors missing + steering off stays stock")
 

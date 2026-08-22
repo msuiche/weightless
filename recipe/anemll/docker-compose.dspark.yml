@@ -47,8 +47,8 @@ services:
       - ${DSPARK_ASSISTANT_FINAL_HOTFIX:-./patches/hotfix-dsv4-assistant-final-continuation.py}:/opt/hotfix-dsv4-assistant-final-continuation.py:ro
       # Projective activation steering (DSpark control vector). Patches
       # models/deepseek_v4/nvidia/model.py; the vector itself is read from
-      # /cache/huggingface via DSPARK_STEER_PATH. Spec: weightless/spec/CONTROL-VECTOR.md.
-      - ${DSPARK_STEERING_HOTFIX:-./patches/hotfix-dsv4-steering-projective.py}:/opt/hotfix-dsv4-steering-projective.py:ro
+      # /cache/huggingface via WEIGHTLESS_STEER_PATH. Spec: weightless/spec/CONTROL-VECTOR.md.
+      - ${WEIGHTLESS_STEERING_HOTFIX:-./patches/hotfix-dsv4-steering-projective.py}:/opt/hotfix-dsv4-steering-projective.py:ro
       - ${DSPARK_PATCHES_DIR:-./patches}:/opt/dspark-patches:ro
       - ${DSPARK_TMP_HOST:-${HOME}/.cache/dspark-tmp}:/tmp
 
@@ -61,7 +61,7 @@ services:
       HF_HUB_OFFLINE: "${HF_HUB_OFFLINE:-0}"
       TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-0}"
       HF_HUB_DISABLE_XET: "${HF_HUB_DISABLE_XET:-1}"
-      DSPARK_MODEL: "${DSPARK_MODEL:-deepseek-ai/DeepSeek-V4-Flash-0731}"
+      WEIGHTLESS_MODEL: "${WEIGHTLESS_MODEL:-deepseek-ai/DeepSeek-V4-Flash-0731}"
       # Issue #26: sparsify SWA prefix-cache checkpoints (one tail per
       # 4096-token segment + replay boundary). Complements the hybrid
       # coordinator hotfix — SWA-min alone still 0/8 at 44K+ x8 because
@@ -75,10 +75,10 @@ services:
       # Do NOT pass --max-num-partial-prefills (Anemll 0.1.1 rejects it).
       DSPARK_MAX_INFLIGHT_PREFILLS: "${DSPARK_MAX_INFLIGHT_PREFILLS:-2}"
       # Projective activation steering (all empty = off). Set in .env.dspark.
-      DSPARK_STEER_PATH: "${DSPARK_STEER_PATH:-}"
-      DSPARK_STEER_ALPHA: "${DSPARK_STEER_ALPHA:-}"
-      DSPARK_STEER_LAYERS: "${DSPARK_STEER_LAYERS:-}"
-      DSPARK_STEER_HOOK: "${DSPARK_STEER_HOOK:-}"
+      WEIGHTLESS_STEER_PATH: "${WEIGHTLESS_STEER_PATH:-}"
+      WEIGHTLESS_STEER_ALPHA: "${WEIGHTLESS_STEER_ALPHA:-}"
+      WEIGHTLESS_STEER_LAYERS: "${WEIGHTLESS_STEER_LAYERS:-}"
+      WEIGHTLESS_STEER_HOOK: "${WEIGHTLESS_STEER_HOOK:-}"
       # Pin HF revision (issue #19). Empty → tip of default branch / refs/main.
       DSPARK_REVISION: "${DSPARK_REVISION:-}"
       DSPARK_ENCODING_FILE: "${DSPARK_ENCODING_FILE:-}"
@@ -199,7 +199,7 @@ services:
         if [ -z "$${NCCL_DMABUF_ENABLE:-}" ]; then unset NCCL_DMABUF_ENABLE; fi;
         ENCODING_SOURCE="$${DSPARK_ENCODING_FILE:-}";
         if [ -z "$${ENCODING_SOURCE}" ]; then
-          MODEL_HUB_DIR=$$(printf '%s' "$${DSPARK_MODEL:-deepseek-ai/DeepSeek-V4-Flash-0731}" | sed 's|/|--|g');
+          MODEL_HUB_DIR=$$(printf '%s' "$${WEIGHTLESS_MODEL:-deepseek-ai/DeepSeek-V4-Flash-0731}" | sed 's|/|--|g');
           if [ -n "$${DSPARK_REVISION:-}" ] && [ -f "/cache/huggingface/hub/models--$${MODEL_HUB_DIR}/snapshots/$${DSPARK_REVISION}/encoding/encoding_dsv4.py" ]; then
             ENCODING_SOURCE="/cache/huggingface/hub/models--$${MODEL_HUB_DIR}/snapshots/$${DSPARK_REVISION}/encoding/encoding_dsv4.py";
           fi;
@@ -236,7 +236,7 @@ services:
         esac;
         REVISION_ARGS="";
         if [ -n "$${DSPARK_REVISION:-}" ]; then REVISION_ARGS="--revision $${DSPARK_REVISION}"; fi;
-        exec /usr/local/bin/vllm serve ${DSPARK_MODEL:-deepseek-ai/DeepSeek-V4-Flash-0731}
+        exec /usr/local/bin/vllm serve ${WEIGHTLESS_MODEL:-deepseek-ai/DeepSeek-V4-Flash-0731}
         $${REVISION_ARGS}
         --served-model-name ${SERVED_MODEL_NAME:-deepseek-v4-flash-dspark}
         --host ${VLLM_HOST:-127.0.0.1}

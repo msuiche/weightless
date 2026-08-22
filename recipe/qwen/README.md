@@ -31,7 +31,7 @@ respectively) — the bf16→NVFP4 transfer holds for both formats.
 
 - **`STEER_MODE=gguf`** (default): fail-closed hotfix, spec-enforced loader,
   steers the full residual stream. The boot log must read
-  `Qwen refusal steering active: hook=post_layer alpha=1.000 ... layers=49`.
+  `weightless GLP steering active: hook=post_layer alpha=1.000 ... layers=49`.
 - **`STEER_MODE=lora`**: no patch, no anchor fragility on image bumps; the
   steered model is served as the `qwen-abliterated` module next to the stock
   base model (so one boot gives you both arms). vLLM needs the **peft
@@ -80,12 +80,12 @@ import the DSV4 lane's 4.0 — α is checkpoint-specific.
   inherits its forward from `Qwen3NextModel` but overrides `__init__` and
   skips the parent's, so the steering buffers must be registered in both
   (the first hardware boot proved it: missing the qwen3_5 half crashes at
-  torch.compile). Inert unless `QWEN_STEER_PATH` is set.
-- **`QWEN_STEERING_MODEL_PY` may need setting.** The default assumes a
+  torch.compile). Inert unless `WEIGHTLESS_STEER_PATH` is set.
+- **`WEIGHTLESS_STEERING_MODEL_PY` may need setting.** The default assumes a
   dist-packages install; if the image has a source install the default
   silently patches a file nobody imports. Discover the real path (command in
   `.env.qwen.example`) and confirm the boot log reads
-  `Qwen refusal steering active: hook=post_layer alpha=1.000 ... layers=49`.
+  `weightless GLP steering active: hook=post_layer alpha=1.000 ... layers=49`.
 
 ## Validate
 
@@ -94,7 +94,7 @@ import the DSV4 lane's 4.0 — α is checkpoint-specific.
 python3 ../../scripts/test-qwen-steering-structure.py
 
 # the exact injected loader against the real vector (needs torch)
-QWEN_STEER_PATH=$MODELS/cvec/Qwen3.8-27B-refusal-cvec-per_layer-L10-58-a1.gguf \
+WEIGHTLESS_STEER_PATH=$MODELS/cvec/Qwen3.8-27B-refusal-cvec-per_layer-L10-58-a1.gguf \
   python3 ../../patches/hotfix-qwen38-steering-projective.py --check
 ```
 

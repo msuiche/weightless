@@ -240,7 +240,7 @@ on this model ranges 2.4 to 5.6 purely by prompt shape).
 **vLLM (this repo)** —
 `recipe/overlay/vllm/models/deepseek_v4/nvidia/model.py`. `_load_gguf_control_vector()`
 reads the file; the apply is in the layer loop. Enabled with
-`DSPARK_STEER_PATH=/path/to.gguf`, `DSPARK_STEER_ALPHA`, `DSPARK_STEER_LAYERS`.
+`WEIGHTLESS_STEER_PATH=/path/to.gguf`, `WEIGHTLESS_STEER_ALPHA`, `WEIGHTLESS_STEER_LAYERS`.
 The live deployment is the Anemll 0.1.1 (vLLM 0.25.2) stack, where the same
 code is applied by `patches/hotfix-dsv4-steering-projective.py` as a boot
 hotfix — that image has no `gguf` package, so the hotfix embeds a minimal

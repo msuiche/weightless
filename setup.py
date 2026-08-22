@@ -66,7 +66,7 @@ LANES = [
     dict(name="DSV4 TP=2 serving — 2x DGX Spark, Anemll recipe",
          example="recipe/anemll/.env.dspark.example",
          target="recipe/anemll/.env.dspark",
-         steer_key="DSPARK_STEER_PATH",
+         steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="scripts/test-dsv4-hotfix-structure.py",
          vector_repo="msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29",
          steer_modes=None,
@@ -74,7 +74,7 @@ LANES = [
     dict(name="Qwen TP=1 serving — single DGX Spark",
          example="recipe/qwen/.env.qwen.example",
          target="recipe/qwen/.env.qwen",
-         steer_key="QWEN_STEER_PATH",
+         steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="scripts/test-qwen-steering-structure.py",
          vector_repo="msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49",
          steer_modes=[
@@ -131,8 +131,8 @@ def detect_state():
         steer = env.get(lane["steer_key"], "")
         steer_line = None
         if steer:
-            layers = [t for t in env.get("DSPARK_STEER_LAYERS", "").split(",") if t.strip()]
-            alpha = env.get("DSPARK_STEER_ALPHA") or env.get("QWEN_STEER_ALPHA") or "?"
+            layers = [t for t in env.get("WEIGHTLESS_STEER_LAYERS", "").split(",") if t.strip()]
+            alpha = env.get("WEIGHTLESS_STEER_ALPHA") or env.get("WEIGHTLESS_STEER_ALPHA") or "?"
             n = f", {len(layers)} layers" if layers else ""
             steer_line = f"steering on (α={alpha}{n})"
         elif lane["steer_key"] in env:
@@ -308,8 +308,8 @@ def run_suite(io, base, model):
     """Run tests/0*.sh one by one, inside the wizard UI: each test's verdict
     line lands as a colored ✓/~/✗ row instead of dropping out to a shell."""
     import glob
-    env = dict(os.environ, DSPARK_BASE_URL=base, DSPARK_MODEL=model,
-               DSPARK_OMP_MODEL=f"{PROVIDER}/{model}")
+    env = dict(os.environ, WEIGHTLESS_BASE_URL=base, WEIGHTLESS_MODEL=model,
+               WEIGHTLESS_OMP_MODEL=f"{PROVIDER}/{model}")
     io.info("")
     io.header("endpoint test suite")
     io.info("─" * 40)

@@ -36,7 +36,7 @@ RUN python3 - <<'PY'
 import ast, importlib.util, pathlib, sys
 
 MODEL = "vllm.models.deepseek_v4.nvidia.model"
-REQUIRED = ("_load_gguf_control_vector", "_DSPARK_STEER_HOOK", "_load_steering")
+REQUIRED = ("_load_gguf_control_vector", "_WEIGHTLESS_STEER_HOOK", "_load_steering")
 
 spec = importlib.util.find_spec(MODEL)
 if spec is None or not spec.origin:

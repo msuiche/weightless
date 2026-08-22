@@ -11,9 +11,9 @@ weightless/spec/CONTROL-VECTOR.md) to the Anemll 0.1.1 image's vLLM
 on the post-layer residual stream (hyper-connection streams steered
 independently), layers/alpha/vector gated by env:
 
-    DSPARK_STEER_PATH    .gguf (spec-conformant cvec) or .pt {layer: tensor}
-    DSPARK_STEER_ALPHA   float, default 1.0 in code; deployment pins 4.0
-    DSPARK_STEER_LAYERS  optional comma list restricting layer ids
+    WEIGHTLESS_STEER_PATH    .gguf (spec-conformant cvec) or .pt {layer: tensor}
+    WEIGHTLESS_STEER_ALPHA   float, default 1.0 in code; deployment pins 4.0
+    WEIGHTLESS_STEER_LAYERS  optional comma list restricting layer ids
 
 Differences from the v0.27 patch:
 
@@ -30,10 +30,10 @@ Differences from the v0.27 patch:
 
 Failure semantics (fail-closed where it matters):
 
-- Anchors not found: exit 1 if DSPARK_STEER_PATH is set (a boot that was
+- Anchors not found: exit 1 if WEIGHTLESS_STEER_PATH is set (a boot that was
   asked for steering must not silently serve unsteered), exit 0 otherwise
   (stock behaviour, other hotfixes still guard the stack).
-- DSPARK_STEER_PATH set but the vector file is missing/invalid/non-project:
+- WEIGHTLESS_STEER_PATH set but the vector file is missing/invalid/non-project:
   exit 1, before the ~8-minute model load.
 
 Patches
@@ -41,7 +41,7 @@ Patches
 in-place inside the container (called from the compose entrypoint before
 ``exec vllm serve``). Idempotent: re-applying is a no-op once the marker
 is present. ``--status`` reports state; ``--check`` validates the vector
-named by DSPARK_STEER_PATH without touching model.py.
+named by WEIGHTLESS_STEER_PATH without touching model.py.
 """
 import os
 from pathlib import Path
@@ -49,7 +49,7 @@ import sys
 
 # Overridable for dry-runs against a copy of model.py outside the container.
 P = Path(os.environ.get(
-    "DSPARK_STEERING_MODEL_PY",
+    "WEIGHTLESS_STEERING_MODEL_PY",
     "/usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia/model.py",
 ))
 MARK = "# [steering-hotfix] projective activation steering (DSpark)"
@@ -193,7 +193,7 @@ def _load_gguf_control_vector(path: str) -> dict:
         )
 
     logger.info(
-        "DSpark GGUF control vector: mode=%s spec_version=%s base_model=%s rev=%s",
+        "weightless GLP vector: mode=%s spec_version=%s base_model=%s rev=%s",
         mode,
         meta.get("glp.spec_version", "?"),
         meta.get("general.base_model.0.name") or meta.get("glp.base_model"),
@@ -251,7 +251,7 @@ def _load_gguf_control_vector(path: str) -> dict:
                 f"layers. Re-export it."
             )
     logger.info(
-        "DSpark GGUF control vector: %d directions, n_embd=%d, layers %s",
+        "weightless GLP vector: %d directions, n_embd=%d, layers %s",
         len(out), next(iter(widths)), sorted(out),
     )
     return out
@@ -272,7 +272,7 @@ MODULE_BLOCK = (
     "# fp8 requantisation floor is ~39% of a lambda=3.5 weight edit, so small\n"
     "# coefficients are not representable in the weights at all.\n"
     "#\n"
-    "# Everything here is inert unless DSPARK_STEER_PATH is set.\n"
+    "# Everything here is inert unless WEIGHTLESS_STEER_PATH is set.\n"
     "# ---------------------------------------------------------------------------\n"
     + MARK
     + "\n"
@@ -281,16 +281,16 @@ MODULE_BLOCK = (
     "# here, which is the shipped setting and the one every measurement was taken at.\n"
     "# On this architecture the site matters about 9x: the same direction applied to\n"
     "# the attention writer alone left 34.0% refusal, against 3.8% post-layer.\n"
-    "_DSPARK_STEER_HOOK = (os.environ.get(\"DSPARK_STEER_HOOK\") or \"post_layer\").strip()\n"
-    "_DSPARK_HOOK_ALPHA = float(os.environ.get(\"DSPARK_STEER_ALPHA\", \"1.0\") or 1.0)\n"
+    "_WEIGHTLESS_STEER_HOOK = (os.environ.get(\"WEIGHTLESS_STEER_HOOK\") or \"post_layer\").strip()\n"
+    "_GLP_HOOK_ALPHA = float(os.environ.get(\"WEIGHTLESS_STEER_ALPHA\", \"1.0\") or 1.0)\n"
     "# layer id -> (k, hidden) orthonormal rows. Populated for inspection and for\n"
     "# offline tooling; NOT read by the forward path. The pre-fold writer-isolation\n"
     "# hooks that used it are deliberately not ported: they branch on\n"
-    "# _DSPARK_STEER_HOOK inside the traced region, and that choice is not part of\n"
+    "# _WEIGHTLESS_STEER_HOOK inside the traced region, and that choice is not part of\n"
     "# vLLM's compile cache key, so a cached artifact would silently ignore a changed\n"
     "# hook site. Reintroduce them behind a separate image if that experiment is\n"
     "# re-run, and clear the compile cache when doing so.\n"
-    "_DSPARK_HOOK_DIRS: dict[int, torch.Tensor] = {}\n"
+    "_GLP_HOOK_DIRS: dict[int, torch.Tensor] = {}\n"
     "\n"
     + GGUF_SRC
 )
@@ -300,7 +300,7 @@ MODULE_BLOCK = (
 INIT_BLOCK = '''\
 
         # ---- projective activation steering ---------------------------------
-        self._steer_alpha_val = float(os.environ.get("DSPARK_STEER_ALPHA", "1.0") or 1.0)
+        self._steer_alpha_val = float(os.environ.get("WEIGHTLESS_STEER_ALPHA", "1.0") or 1.0)
         self._steer_dirs: dict[int, torch.Tensor] = {}
         _dev = current_platform.device_type
         _dtype = vllm_config.model_config.dtype
@@ -335,13 +335,13 @@ INIT_BLOCK = '''\
         self._load_steering(config, _dev, _dtype)
 
     def _load_steering(self, config, device, dtype) -> None:
-        """Fill _steer_stack from DSPARK_STEER_PATH. No-op when unset.
+        """Fill _steer_stack from WEIGHTLESS_STEER_PATH. No-op when unset.
 
         Loaded on every rank and indexed by GLOBAL layer id, so this is correct
         under pipeline parallelism: each rank's forward loop only visits its own
         layers and looks them up by the same global index.
         """
-        path = os.environ.get("DSPARK_STEER_PATH", "").strip()
+        path = os.environ.get("WEIGHTLESS_STEER_PATH", "").strip()
         if not path:
             return
         try:
@@ -349,7 +349,7 @@ INIT_BLOCK = '''\
                 raw = _load_gguf_control_vector(path)
             else:
                 raw = torch.load(path, map_location="cpu")
-            want = os.environ.get("DSPARK_STEER_LAYERS", "").strip()
+            want = os.environ.get("WEIGHTLESS_STEER_LAYERS", "").strip()
             selected = (
                 {int(t) for t in want.replace(" ", "").split(",") if t} if want else None
             )
@@ -376,13 +376,13 @@ INIT_BLOCK = '''\
                 # A previous revision dedented them out, which kept only the
                 # final iteration and silently steered one layer instead of 29.
                 self._steer_dirs[layer_id] = vec.to(device=device, dtype=dtype)
-                _DSPARK_HOOK_DIRS[layer_id] = vec.to(
+                _GLP_HOOK_DIRS[layer_id] = vec.to(
                     device=device, dtype=torch.bfloat16
                 )
 
             if not self._steer_dirs:
                 logger.warning(
-                    "DSPARK_STEER_PATH=%s matched no layers; serving unsteered", path
+                    "WEIGHTLESS_STEER_PATH=%s matched no layers; serving unsteered", path
                 )
                 return
 
@@ -398,9 +398,9 @@ INIT_BLOCK = '''\
                 self._steer_alpha_val, device=device, dtype=dtype
             )
             logger.info(
-                "DSpark refusal steering active: hook=%s alpha=%.3f rank=%s "
+                "weightless GLP steering active: hook=%s alpha=%.3f rank=%s "
                 "layers=%d %s",
-                _DSPARK_STEER_HOOK,
+                _WEIGHTLESS_STEER_HOOK,
                 self._steer_alpha_val,
                 {k_: int(v.shape[0]) for k_, v in sorted(self._steer_dirs.items())},
                 len(self._steer_dirs),
@@ -476,14 +476,14 @@ PATCHES = (
 
 
 def steer_requested() -> bool:
-    return bool(os.environ.get("DSPARK_STEER_PATH", "").strip())
+    return bool(os.environ.get("WEIGHTLESS_STEER_PATH", "").strip())
 
 
 def check_vector() -> int:
-    """Validate the vector named by DSPARK_STEER_PATH. 0 ok, 1 bad."""
-    path = os.environ.get("DSPARK_STEER_PATH", "").strip()
+    """Validate the vector named by WEIGHTLESS_STEER_PATH. 0 ok, 1 bad."""
+    path = os.environ.get("WEIGHTLESS_STEER_PATH", "").strip()
     if not path:
-        print("[steering-hotfix] --check: DSPARK_STEER_PATH unset; nothing to check")
+        print("[steering-hotfix] --check: WEIGHTLESS_STEER_PATH unset; nothing to check")
         return 0
     if not os.path.isfile(path):
         print(f"[steering-hotfix] --check: {path} not found", file=sys.stderr)
@@ -522,10 +522,10 @@ def check_vector() -> int:
                 f"[steering-hotfix] --check: {os.path.basename(path)} OK: "
                 f"pt layers {layers[0]}..{layers[-1]} ({len(layers)})"
             )
-        want = os.environ.get("DSPARK_STEER_LAYERS", "").strip()
+        want = os.environ.get("WEIGHTLESS_STEER_LAYERS", "").strip()
         if want:
             [int(t) for t in want.replace(" ", "").split(",") if t]
-        float(os.environ.get("DSPARK_STEER_ALPHA", "1.0") or 1.0)
+        float(os.environ.get("WEIGHTLESS_STEER_ALPHA", "1.0") or 1.0)
     except Exception as exc:
         print(f"[steering-hotfix] --check: {path}: {exc}", file=sys.stderr)
         return 1
@@ -538,7 +538,7 @@ def main() -> int:
         print(
             "steering (projective cvec)          :",
             "APPLIED" if MARK in status_src else "NOT APPLIED",
-            "| DSPARK_STEER_PATH",
+            "| WEIGHTLESS_STEER_PATH",
             "set" if steer_requested() else "unset",
         )
         return 0
@@ -554,7 +554,7 @@ def main() -> int:
     if missing:
         msg = f"[steering-hotfix] anchors not found: {missing}; refusing to patch"
         if steer_requested():
-            print(msg + " (DSPARK_STEER_PATH is set; failing closed)", file=sys.stderr)
+            print(msg + " (WEIGHTLESS_STEER_PATH is set; failing closed)", file=sys.stderr)
             return 1
         print(msg + " (steering off; leaving model.py stock)")
         return 0

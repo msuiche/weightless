@@ -116,22 +116,22 @@ Real `.env` files are gitignored — only `*.example` templates are tracked.
 
 ## Steering (live stack)
 
-Off unless `DSPARK_STEER_PATH` is set. The env vars pass through
+Off unless `WEIGHTLESS_STEER_PATH` is set. The env vars pass through
 `recipe/anemll/docker-compose.dspark.yml` and the GGUF reader is embedded in
 the hotfix — nothing to build:
 
 ```sh
 # the general/broad direction; the cyber-derived alternative
 # (...-cyber-abliterated-cvec-L10-38-a4.gguf) is a one-line swap
-DSPARK_STEER_PATH=/cache/huggingface/DeepSeek-V4-Flash-0731-general-abliterated-cvec-L10-38-a4-keysdir.gguf
-DSPARK_STEER_ALPHA=4.0
-DSPARK_STEER_LAYERS=$(seq -s, 10 38)
+WEIGHTLESS_STEER_PATH=/cache/huggingface/DeepSeek-V4-Flash-0731-general-abliterated-cvec-L10-38-a4-keysdir.gguf
+WEIGHTLESS_STEER_ALPHA=4.0
+WEIGHTLESS_STEER_LAYERS=$(seq -s, 10 38)
 ```
 
 Confirm from the boot log — **check that `layers=` reads 29, not 1**:
 
 ```
-DSpark refusal steering active: hook=post_layer alpha=4.000 ... layers=29 [10, ...]
+weightless GLP steering active: hook=post_layer alpha=4.000 ... layers=29 [10, ...]
 ```
 
 A previous revision dedented the per-layer assignment out of its loop and
@@ -158,7 +158,7 @@ verified against their pinned checkpoint revisions.
   L10–38, n_embd 4096, α=4.0. The live config currently serves the
   general-contrast variant from the same repo family — a *third-party*
   direction we reformatted, re-measured and repackaged (attribution in the
-  file metadata); swapping is one `DSPARK_STEER_PATH` line. Wiring:
+  file metadata); swapping is one `WEIGHTLESS_STEER_PATH` line. Wiring:
   `recipe/anemll/README.md`.
 - [`msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49`](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49)
   — **Qwen lane, GLP-49 (GGUF + LoRA).** The GGUF is canonical: per-layer

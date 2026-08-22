@@ -10,10 +10,10 @@ stack that Qwen3.8-27B loads as in the eugr/drowzeys GB10 images
 
 on the post-layer residual stream, layers/alpha/vector gated by env:
 
-    QWEN_STEER_PATH    .gguf (spec-conformant cvec) or .pt {layer: tensor}
-    QWEN_STEER_ALPHA   float, default 1.0; the shipping Qwen vector is
+    WEIGHTLESS_STEER_PATH    .gguf (spec-conformant cvec) or .pt {layer: tensor}
+    WEIGHTLESS_STEER_ALPHA   float, default 1.0; the shipping Qwen vector is
                        calibrated AT alpha 1.0 (unlike the DSV4 lane's 4.0)
-    QWEN_STEER_LAYERS  optional comma list restricting layer ids
+    WEIGHTLESS_STEER_LAYERS  optional comma list restricting layer ids
 
 TWO FILES are patched, and the reason bit us in production:
 
@@ -42,10 +42,10 @@ Other architecture notes:
 
 Failure semantics (fail-closed where it matters):
 
-- Anchors not found in either file: exit 1 if QWEN_STEER_PATH is set (a boot
+- Anchors not found in either file: exit 1 if WEIGHTLESS_STEER_PATH is set (a boot
   that was asked for steering must not silently serve unsteered), exit 0
   otherwise.
-- QWEN_STEER_PATH set but the vector file is missing/invalid/non-project:
+- WEIGHTLESS_STEER_PATH set but the vector file is missing/invalid/non-project:
   exit 1, before the model load.
 
 Patches
@@ -53,7 +53,7 @@ Patches
 and .../qwen3_5.py in-place inside the container (called from the serve
 script before ``exec vllm serve``). Idempotent per file: re-applying is a
 no-op once the marker is present. ``--status`` reports state; ``--check``
-validates the vector named by QWEN_STEER_PATH without touching the files.
+validates the vector named by WEIGHTLESS_STEER_PATH without touching the files.
 """
 import os
 from pathlib import Path
@@ -61,11 +61,11 @@ import sys
 
 # Overridable for dry-runs against copies outside the container.
 P = Path(os.environ.get(
-    "QWEN_STEERING_MODEL_PY",
+    "WEIGHTLESS_STEERING_MODEL_PY",
     "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/qwen3_next.py",
 ))
 P35 = Path(os.environ.get(
-    "QWEN_STEERING_MODEL_PY_35",
+    "WEIGHTLESS_STEERING_MODEL_PY_35",
     str(P.parent / "qwen3_5.py"),
 ))
 MARK = "# [steering-hotfix] projective activation steering (Qwen3.5/3.8)"
@@ -209,7 +209,7 @@ def _load_gguf_control_vector(path: str) -> dict:
         )
 
     logger.info(
-        "DSpark GGUF control vector: mode=%s spec_version=%s base_model=%s rev=%s",
+        "weightless GLP vector: mode=%s spec_version=%s base_model=%s rev=%s",
         mode,
         meta.get("glp.spec_version", "?"),
         meta.get("general.base_model.0.name") or meta.get("glp.base_model"),
@@ -267,7 +267,7 @@ def _load_gguf_control_vector(path: str) -> dict:
                 f"layers. Re-export it."
             )
     logger.info(
-        "DSpark GGUF control vector: %d directions, n_embd=%d, layers %s",
+        "weightless GLP vector: %d directions, n_embd=%d, layers %s",
         len(out), next(iter(widths)), sorted(out),
     )
     return out
@@ -283,17 +283,17 @@ MODULE_BLOCK = (
     "# h <- h - alpha * (h . d_hat) d_hat on the residual stream at chosen layers.\n"
     "# Same intervention as the DSV4 lane; see weightless/spec/CONTROL-VECTOR.md.\n"
     "#\n"
-    "# Everything here is inert unless QWEN_STEER_PATH is set.\n"
+    "# Everything here is inert unless WEIGHTLESS_STEER_PATH is set.\n"
     "# ---------------------------------------------------------------------------\n"
     + MARK
     + "\n"
     "\n"
     "# Recorded for provenance in the startup log. Only \"post_layer\" is implemented\n"
     "# here, which is the shipped setting and the one every measurement was taken at.\n"
-    "_QWEN_STEER_HOOK = (os.environ.get(\"QWEN_STEER_HOOK\") or \"post_layer\").strip()\n"
+    "_WEIGHTLESS_STEER_HOOK = (os.environ.get(\"WEIGHTLESS_STEER_HOOK\") or \"post_layer\").strip()\n"
     "# layer id -> (k, hidden) orthonormal rows. Populated for inspection and for\n"
     "# offline tooling; NOT read by the forward path.\n"
-    "_QWEN_HOOK_DIRS: dict[int, torch.Tensor] = {}\n"
+    "_GLP_HOOK_DIRS: dict[int, torch.Tensor] = {}\n"
     "\n"
     + GGUF_SRC
 )
@@ -303,13 +303,13 @@ MODULE_BLOCK = (
 LOAD_METHOD_BLOCK = '''\
 
     def _load_steering(self, config, device, dtype) -> None:
-        """Fill _steer_stack from QWEN_STEER_PATH. No-op when unset.
+        """Fill _steer_stack from WEIGHTLESS_STEER_PATH. No-op when unset.
 
         Loaded on every rank and indexed by GLOBAL layer id, so this is
         correct under pipeline parallelism: each rank's forward loop only
         visits its own layers and looks them up by the same global index.
         """
-        path = os.environ.get("QWEN_STEER_PATH", "").strip()
+        path = os.environ.get("WEIGHTLESS_STEER_PATH", "").strip()
         if not path:
             return
         try:
@@ -317,7 +317,7 @@ LOAD_METHOD_BLOCK = '''\
                 raw = _load_gguf_control_vector(path)
             else:
                 raw = torch.load(path, map_location="cpu")
-            want = os.environ.get("QWEN_STEER_LAYERS", "").strip()
+            want = os.environ.get("WEIGHTLESS_STEER_LAYERS", "").strip()
             selected = (
                 {int(t) for t in want.replace(" ", "").split(",") if t} if want else None
             )
@@ -344,13 +344,13 @@ LOAD_METHOD_BLOCK = '''\
                 # which kept only the final iteration and silently steered
                 # one layer instead of the full set.
                 self._steer_dirs[layer_id] = vec.to(device=device, dtype=dtype)
-                _QWEN_HOOK_DIRS[layer_id] = vec.to(
+                _GLP_HOOK_DIRS[layer_id] = vec.to(
                     device=device, dtype=torch.bfloat16
                 )
 
             if not self._steer_dirs:
                 logger.warning(
-                    "QWEN_STEER_PATH=%s matched no layers; serving unsteered", path
+                    "WEIGHTLESS_STEER_PATH=%s matched no layers; serving unsteered", path
                 )
                 return
 
@@ -366,9 +366,9 @@ LOAD_METHOD_BLOCK = '''\
                 self._steer_alpha_val, device=device, dtype=dtype
             )
             logger.info(
-                "Qwen refusal steering active: hook=%s alpha=%.3f rank=%s "
+                "weightless GLP steering active: hook=%s alpha=%.3f rank=%s "
                 "layers=%d %s",
-                _QWEN_STEER_HOOK,
+                _WEIGHTLESS_STEER_HOOK,
                 self._steer_alpha_val,
                 {k_: int(v.shape[0]) for k_, v in sorted(self._steer_dirs.items())},
                 len(self._steer_dirs),
@@ -387,7 +387,7 @@ LOAD_METHOD_BLOCK = '''\
 INIT_BLOCK = '''\
 
         # ---- projective activation steering ---------------------------------
-        self._steer_alpha_val = float(os.environ.get("QWEN_STEER_ALPHA", "1.0") or 1.0)
+        self._steer_alpha_val = float(os.environ.get("WEIGHTLESS_STEER_ALPHA", "1.0") or 1.0)
         self._steer_dirs: dict[int, torch.Tensor] = {}
         _dev = current_platform.device_type
         _dtype = vllm_config.model_config.dtype
@@ -539,14 +539,14 @@ FILE_PATCHES = (
 
 
 def steer_requested() -> bool:
-    return bool(os.environ.get("QWEN_STEER_PATH", "").strip())
+    return bool(os.environ.get("WEIGHTLESS_STEER_PATH", "").strip())
 
 
 def check_vector() -> int:
-    """Validate the vector named by QWEN_STEER_PATH. 0 ok, 1 bad."""
-    path = os.environ.get("QWEN_STEER_PATH", "").strip()
+    """Validate the vector named by WEIGHTLESS_STEER_PATH. 0 ok, 1 bad."""
+    path = os.environ.get("WEIGHTLESS_STEER_PATH", "").strip()
     if not path:
-        print("[steering-hotfix] --check: QWEN_STEER_PATH unset; nothing to check")
+        print("[steering-hotfix] --check: WEIGHTLESS_STEER_PATH unset; nothing to check")
         return 0
     if not os.path.isfile(path):
         print(f"[steering-hotfix] --check: {path} not found", file=sys.stderr)
@@ -585,10 +585,10 @@ def check_vector() -> int:
                 f"[steering-hotfix] --check: {os.path.basename(path)} OK: "
                 f"pt layers {layers[0]}..{layers[-1]} ({len(layers)})"
             )
-        want = os.environ.get("QWEN_STEER_LAYERS", "").strip()
+        want = os.environ.get("WEIGHTLESS_STEER_LAYERS", "").strip()
         if want:
             [int(t) for t in want.replace(" ", "").split(",") if t]
-        float(os.environ.get("QWEN_STEER_ALPHA", "1.0") or 1.0)
+        float(os.environ.get("WEIGHTLESS_STEER_ALPHA", "1.0") or 1.0)
     except Exception as exc:
         print(f"[steering-hotfix] --check: {path}: {exc}", file=sys.stderr)
         return 1
@@ -604,7 +604,7 @@ def main() -> int:
                 "APPLIED" if MARK in src else "NOT APPLIED",
             )
         print(
-            "QWEN_STEER_PATH",
+            "WEIGHTLESS_STEER_PATH",
             "set" if steer_requested() else "unset",
         )
         return 0
@@ -625,7 +625,7 @@ def main() -> int:
                 f"{missing}; refusing to patch"
             )
             if steer_requested():
-                print(msg + " (QWEN_STEER_PATH is set; failing closed)",
+                print(msg + " (WEIGHTLESS_STEER_PATH is set; failing closed)",
                       file=sys.stderr)
                 return 1
             print(msg + " (steering off; leaving the file stock)")
