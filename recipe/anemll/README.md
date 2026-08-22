@@ -51,5 +51,6 @@ Gotchas:
   inside a string, failing strict JSON parsers client-side. Rare
   (0/12 on retry), nothing in the server logs; the response carries
   nonstandard fields (`routed_experts`), so the suspect is the recipe's
-  custom response path. `tests/03-tool-call.sh` reports the byte offset and
-  context if it recurs — capture it before assuming client-side breakage.
+  custom response path. `tests/03-tool-call.sh` retries once
+  and reports the byte offset and context if it recurs twice in a row —
+  capture that before assuming client-side breakage.

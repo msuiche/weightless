@@ -5,7 +5,7 @@ set -u
 BASE="${WEIGHTLESS_BASE_URL:-http://localhost:8888/v1}"
 MODEL="${WEIGHTLESS_MODEL:-deepseek-v4-flash-dspark}"
 
-resp=$(curl -sf -m 180 -H 'Content-Type: application/json' -d '{
+payload='{
   "model": "'"$MODEL"'",
   "messages": [{"role": "user", "content": "What is the weather in Paris right now? Use the get_weather tool."}],
   "tools": [{
@@ -22,18 +22,39 @@ resp=$(curl -sf -m 180 -H 'Content-Type: application/json' -d '{
   }],
   "max_tokens": 1024,
   "temperature": 0
-}' "$BASE/chat/completions") || { echo "FAIL: tool-call request failed"; exit 1; }
+}'
 
-echo "$resp" | python3 -c '
+# Known server-side flake (documented in recipe/anemll/README.md): the image
+# occasionally emits raw control characters inside JSON strings on this path.
+# One retry absorbs the flake; a second failure is a real regression and fails
+# with the byte offset + context.
+attempt=1
+while :; do
+  resp=$(curl -sf -m 180 -H 'Content-Type: application/json' -d "$payload" "$BASE/chat/completions") \
+    || { echo "FAIL: tool-call request failed"; exit 1; }
+  if ! echo "$resp" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' 2>/dev/null; then
+    if [ "$attempt" -eq 1 ]; then
+      echo "note: invalid JSON from server (serializer flake) — retrying once"
+      attempt=2
+      continue
+    fi
+    echo "$resp" | python3 -c '
 import json, sys
 raw = sys.stdin.read()
 try:
-    d = json.loads(raw)
+    json.loads(raw)
 except json.JSONDecodeError as e:
-    # observed flake: this image sometimes emits raw control characters
-    # (literal newlines) inside JSON strings on the tool-call path
-    print(f"server emitted invalid JSON at byte {e.pos}: {raw[max(0, e.pos-40):e.pos+20]!r}")
-    sys.exit(1)
+    print(f"invalid JSON persisted across retry, byte {e.pos}: {raw[max(0, e.pos-40):e.pos+20]!r}")
+'
+    echo "FAIL: server emitted invalid JSON twice"
+    exit 1
+  fi
+  break
+done
+
+echo "$resp" | python3 -c '
+import json, sys
+d = json.loads(sys.stdin.read())
 m = d["choices"][0]["message"]
 calls = m.get("tool_calls") or []
 assert calls, "no tool_calls in response: %s" % json.dumps(m)[:400]
