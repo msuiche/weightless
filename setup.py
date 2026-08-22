@@ -171,6 +171,70 @@ def box(io, title, lines):
     io.info("└" + "─" * width + "┘")
 
 
+_MDNS_CACHE = None
+
+
+def mdns_hosts(timeout=2.5):
+    """SSH-advertising hosts on the LAN via mDNS (dns-sd on macOS,
+    avahi-browse on Linux). Returns sorted hostnames like 'node-a.local'.
+    Result is cached — one browse per process."""
+    global _MDNS_CACHE
+    if _MDNS_CACHE is not None:
+        return _MDNS_CACHE
+    hosts = set()
+    import time as _time
+    if shutil.which("dns-sd"):
+        cmd = ["dns-sd", "-B", "_ssh._tcp", "local."]
+        kill = True
+
+        def parse(line):
+            parts = line.split()
+            if len(parts) >= 7 and parts[1].startswith("Add"):
+                name = " ".join(parts[6:])
+                if name.endswith(" SSH"):
+                    name = name[:-4]
+                if name and " " not in name:
+                    hosts.add(name if name.endswith(".local") else name + ".local")
+    elif shutil.which("avahi-browse"):
+        cmd = ["avahi-browse", "-tp", "_ssh._tcp"]
+        kill = False
+
+        def parse(line):
+            parts = line.split(";")
+            if parts and parts[0] == "=" and len(parts) > 6 and parts[6]:
+                h = parts[6].rstrip(".")
+                hosts.add(h if "." in h else h + ".local")
+    else:
+        _MDNS_CACHE = []
+        return []
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, text=True)
+        if kill:
+            _time.sleep(timeout)
+            proc.terminate()
+        out, _ = proc.communicate(timeout=timeout + 5)
+        for line in out.splitlines():
+            parse(line)
+    except Exception:
+        pass
+    _MDNS_CACHE = sorted(hosts)
+    return _MDNS_CACHE
+
+
+def pick_host(io, prompt, default=""):
+    """Host prompt backed by mDNS discovery: pick from LAN hosts or enter
+    manually. Falls back to a plain text prompt when nothing is discovered."""
+    hosts = mdns_hosts()
+    if not hosts:
+        return io.text(prompt + ": ", default)
+    preselect = hosts.index(default) if default in hosts else 0
+    sel = io.menu(f"{prompt} (mDNS):", hosts + ["enter manually"], preselect=preselect)
+    if sel == len(hosts):
+        return io.text(prompt + ": ", default)
+    return hosts[sel]
+
+
 def placeholders(example):
     """Ordered unique <...> placeholders in non-comment lines."""
     out = []
@@ -465,16 +529,19 @@ class CliIO:
             self._eof()
         return s.startswith("y") if s else default
 
-    def menu(self, title, items, idle=None):  # idle is TUI-only (animation)
+    def menu(self, title, items, idle=None, preselect=0):  # idle is TUI-only
         print(self._c("head", title))
         for i, it in enumerate(items):
             label = it[1] if isinstance(it, tuple) else it
-            print(f"  {self._c('head', str(i + 1) + ')')} {label}")
+            mark = "›" if i == preselect else " "
+            print(f" {mark} {self._c('head', str(i + 1) + ')')} {label}")
         while True:
             try:
                 s = input("> ").strip()
             except EOFError:
                 self._eof()
+            if not s:
+                return preselect
             if s.isdigit() and 1 <= int(s) <= len(items):
                 return int(s) - 1
             print("  enter a number from the list")
@@ -608,10 +675,10 @@ class TuiIO:
                     self._w(row0 + i, col0 + j, ch, self.grad[(j + self._tick) % n])
         self.s.refresh()
 
-    def menu(self, title, items, idle=None):
+    def menu(self, title, items, idle=None, preselect=0):
         r = self._next(len(items) + 1)
         self._w(r, 0, title, self._attr("head"))
-        sel = 0
+        sel = preselect
         if idle:
             self.s.timeout(150)
         try:
@@ -700,12 +767,9 @@ def lane_chain(io, lane_idx):
         # MASTER_ADDR/head-ip is the RoCE fabric address — not routable from
         # the LAN. ssh needs a reachable host: the omp provider's by default.
         omp_host = urllib.parse.urlparse(default_base()).hostname
-        if lane_idx == 0:
-            ssh_host = io.text("Head node ssh host (fabric IPs are not routable): ",
-                               omp_host or values.get("head-ip", ""))
-        else:
-            ssh_host = io.text("Node ssh host or IP: ",
-                               omp_host or values.get("head-ip", ""))
+        note = "Head node ssh host" if lane_idx == 0 else "Node ssh host"
+        ssh_host = pick_host(io, note + " (fabric IPs are not routable)",
+                             omp_host or values.get("head-ip", ""))
         if remote_preflight(io, lane_idx, values, ssh_host):
             io.ok("remote is in sync and running — nothing to deploy")
             if not io.confirm("Redeploy and restart anyway?", False):
@@ -779,7 +843,9 @@ def remote_diagnose(io, host):
     default_target = f"{saved.get('user', os.environ.get('USER', ''))}@{ssh_host}"
     if not io.confirm("Check the node over ssh (docker ps, GPU)?", True):
         return
-    target = io.text("ssh target (user@host): ", default_target)
+    ssh_host = pick_host(io, "ssh host", ssh_host)
+    target = f"{saved.get('user', os.environ.get('USER', ''))}@{ssh_host}"
+    io.info(f"ssh target: {target}")
     probe = ("docker ps -a --format '{{.Names}} {{.Status}}' "
              "| grep -i -E 'deepseek|qwen|vllm' || echo '(no serving container)'; "
              "nvidia-smi --query-gpu=clocks.sm,power.draw,utilization.gpu "
