@@ -10,8 +10,10 @@ path — not just that it answers chat.
 
 ## Setup
 
-Interactive wizard (probes the endpoint, lists the models it actually
-serves, installs the omp provider, offers to run the suite):
+Interactive wizard — probes the endpoint, lists the models it actually
+serves, installs the omp provider, offers to run the suite (the root
+`install.py` does this plus env generation, steering validation, and
+ssh deploy for the serving lanes):
 
 ```sh
 python3 install.py   # repo root

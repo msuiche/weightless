@@ -11,3 +11,5 @@
 *-suite.json
 probe-*.json
 *refusal*.json
+
+__pycache__/
