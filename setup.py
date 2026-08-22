@@ -778,14 +778,26 @@ def lane_chain(io, lane_idx):
     # 3. write env
     text = render_env(example, values, steer_mode=steer_mode,
                       steering=steering, steer_key=lane["steer_key"])
+    changed = any(saved.get(k) != v for k, v in values.items() if k in saved) \
+              or any(k not in saved for k in values)
     if os.path.exists(target):
-        if io.confirm(f"{target} exists — overwrite?", False):
+        existing = open(target).read()
+        m = re.search(rf"(?m)^{re.escape(lane['steer_key'])}=(\S*)", existing)
+        if bool(m and m.group(1)) != steering:
+            changed = True
+        m2 = re.search(r"(?m)^STEER_MODE=(\w+)", existing)
+        if steer_mode and m2 and m2.group(1) != steer_mode:
+            changed = True
+    if os.path.exists(target):
+        if not changed:
+            io.info("env unchanged — nothing to write")
+        elif io.confirm(f"{target} exists — apply your changes?", True):
             with open(target, "w") as f:
                 f.write(text)
             io.ok(f"wrote {target}")
         else:
-            # keep the existing file and continue the chain with it
-            io.info("keeping the existing env file")
+            io.warn("your edits were NOT saved — the file on disk still has "
+                    "the old values (it will prefill them again next run)")
     else:
         with open(target, "w") as f:
             f.write(text)
