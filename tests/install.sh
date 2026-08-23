@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # install.sh — install (or merge) the dspark provider into ~/.omp/agent/models.yml
+# and register it in omp's modelRoles (config.yml).
+# Env: WEIGHTLESS_MODEL (default deepseek-v4-flash-dspark),
+#      WEIGHTLESS_OMP_ALL_ROLES=1 routes every text role (smol, slow, plan,
+#      task, commit, tiny, advisor, designer) — not just default. vision is
+#      never touched: the endpoint serves text-only models.
 set -euo pipefail
 
 src="$(cd "$(dirname "$0")" && pwd)/models.yml"
@@ -19,25 +24,28 @@ else
   echo "installed $dst"
 fi
 
-# register the endpoint as omp's default model (merge into config.yml,
+# register the endpoint in omp's modelRoles (merge into config.yml,
 # preserving other keys and sibling roles)
 cfg="$HOME/.omp/agent/config.yml"
 ref="dspark/${WEIGHTLESS_MODEL:-deepseek-v4-flash-dspark}"
-if [ -f "$cfg" ] && grep -A5 "^modelRoles:" "$cfg" | grep -q "default: $ref"; then
-  echo "omp default model already '$ref'"
-else
-  [ -f "$cfg" ] && cp "$cfg" "$cfg.bak.$(date +%s)"
-  touch "$cfg"
+roles="default"
+if [ "${WEIGHTLESS_OMP_ALL_ROLES:-0}" = "1" ]; then
+  roles="default smol slow plan task commit tiny advisor designer"
+fi
+
+[ -f "$cfg" ] && cp "$cfg" "$cfg.bak.$(date +%s)"
+touch "$cfg"
+for role in $roles; do
   tmp="$cfg.tmp.$$"
-  awk -v ref="$ref" '
+  awk -v ref="$ref" -v role="$role" '
     /^modelRoles:/ { inmr=1; seenblock=1; print; next }
-    inmr && /^[^ \t]/ { if (!donedef) { print "  default: " ref; donedef=1 }; inmr=0 }
-    inmr && /^[ \t]+default:/ { if (!donedef) { print "  default: " ref; donedef=1 } next }
+    inmr && /^[^ \t]/ { if (!donedef) { print "  " role ": " ref; donedef=1 }; inmr=0 }
+    inmr && $1 == role":" { if (!donedef) { print "  " role ": " ref; donedef=1 } next }
     { print }
     END {
-      if (seenblock && inmr && !donedef) print "  default: " ref
-      if (!seenblock) print "modelRoles:\n  default: " ref
+      if (seenblock && inmr && !donedef) print "  " role ": " ref
+      if (!seenblock) print "modelRoles:\n  " role ": " ref
     }
   ' "$cfg" > "$tmp" && mv "$tmp" "$cfg"
-  echo "omp default model -> '$ref' ($cfg)"
-fi
+done
+echo "omp roles [$roles] -> '$ref' ($cfg)"

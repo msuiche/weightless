@@ -506,23 +506,29 @@ def install_provider(base, model, deepseek_compat):
     return f"wrote {OMP_MODELS}"
 
 
-def read_omp_default_model():
-    """omp's modelRoles.default from ~/.omp/agent/config.yml, if set."""
+# omp roles we route to the endpoint when the user picks "all text roles".
+# vision stays untouched: the endpoint serves text-only models.
+OMP_EXTRA_ROLES = ["smol", "slow", "plan", "task", "commit", "tiny",
+                   "advisor", "designer"]
+
+
+def read_omp_model_roles():
+    """omp's modelRoles map from ~/.omp/agent/config.yml ({} if unset)."""
     try:
         with open(OMP_CONFIG) as f:
             text = f.read()
     except OSError:
-        return None
+        return {}
     block = re.search(r"(?m)^modelRoles:\s*\n(?:[ \t]+\S.*\n?)*", text)
     if not block:
-        return None
-    m = re.search(r"(?m)^\s+default:\s*(\S+)", block.group(0))
-    return m.group(1) if m else None
+        return {}
+    return {m.group(1): m.group(2)
+            for m in re.finditer(r"(?m)^\s+(\w+):\s*(\S+)", block.group(0))}
 
 
-def set_omp_default_model(model):
-    """Set modelRoles.default in ~/.omp/agent/config.yml, preserving the
-    rest of the file (including sibling roles). Returns a status line."""
+def set_omp_model_roles(model, roles):
+    """Set modelRoles.<role> for each role in ~/.omp/agent/config.yml,
+    preserving the rest of the file (including other roles)."""
     ref = f"{PROVIDER}/{model}"
     try:
         with open(OMP_CONFIG) as f:
@@ -530,23 +536,21 @@ def set_omp_default_model(model):
     except OSError:
         text = ""
     block = re.search(r"(?m)^modelRoles:\s*\n(?:[ \t]+\S.*\n?)*", text)
-    if block and re.search(r"(?m)^\s+default:", block.group(0)):
-        new_block = re.sub(r"(?m)^(\s+)default:.*",
-                           lambda m: f"{m.group(1)}default: {ref}",
-                           block.group(0))
-        text = text[:block.start()] + new_block + text[block.end():]
-    elif block:
-        text = text[:block.end()] + f"  default: {ref}\n" + text[block.end():]
-    else:
-        if text and not text.endswith("\n"):
-            text += "\n"
-        text += f"modelRoles:\n  default: {ref}\n"
+    body = block.group(0) if block else "modelRoles:\n"
+    for role in roles:
+        if re.search(rf"(?m)^\s+{role}:", body):
+            body = re.sub(rf"(?m)^(\s+){role}:.*",
+                          lambda m: f"{m.group(1)}{role}: {ref}", body)
+        else:
+            body += f"  {role}: {ref}\n"
+    text = (text[:block.start()] + body + text[block.end():]) if block \
+        else (text + ("" if not text or text.endswith("\n") else "\n") + body)
     if os.path.exists(OMP_CONFIG):
         shutil.copy(OMP_CONFIG, OMP_CONFIG + ".bak")
     os.makedirs(os.path.dirname(OMP_CONFIG), exist_ok=True)
     with open(OMP_CONFIG, "w") as f:
         f.write(text)
-    return f"omp default model → '{ref}' ({OMP_CONFIG})"
+    return f"omp roles {', '.join(roles)} → '{ref}' ({OMP_CONFIG})"
 
 
 def prereqs():
@@ -1152,10 +1156,23 @@ def tests_chain(io):
                         "deepseek" in model.lower())
     io.ok(install_provider(base, model, compat))
     ref = f"{PROVIDER}/{model}"
-    if read_omp_default_model() == ref:
-        io.ok(f"omp default model already '{ref}'")
-    elif io.confirm(f"Make '{ref}' omp's default model?", True):
-        io.ok(set_omp_default_model(model))
+    configured = read_omp_model_roles()
+    missing = [r for r in ["default"] + OMP_EXTRA_ROLES
+               if configured.get(r) != ref]
+    if not missing:
+        io.ok(f"omp already routes all text roles to '{ref}'")
+    elif configured.get("default") == ref:
+        if io.confirm(f"also route {'/'.join(missing)} "
+                      f"(sub-agents, planning, commits) to '{ref}'?", True):
+            io.ok(set_omp_model_roles(model, missing))
+    else:
+        scope = io.menu(f"Route '{ref}' in omp:", [
+            "default role only — the main session model",
+            "all text roles — default + smol/slow/plan/task/commit/tiny/"
+            "advisor/designer (vision untouched)",
+        ], preselect=1)
+        roles = ["default"] if scope == 0 else missing
+        io.ok(set_omp_model_roles(model, roles))
     if io.confirm("Run the test suite now?", True):
         return run_suite(io, base, model)
     io.info(f"done — later: sh {os.path.join(HERE, 'tests', 'run.sh')}")
