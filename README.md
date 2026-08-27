@@ -7,16 +7,18 @@
 **Abliteration without the weights — put your model on GLP.** Projective
 refusal steering for open-weight models: serving config, boot hotfixes, the
 steering patch, and the GLP (GGUF Layer Projection) format spec. The goal is
-most good open models; the first two lanes are DeepSeek V4 Flash 0731 on 2x
-DGX Spark (GB10, SM121, TP=2 over RoCE) and Qwen3.8-27B on a single Spark.
+most good open models; the lanes are DeepSeek V4 Flash 0731 on 2x
+DGX Spark (GB10, SM121, TP=2 over RoCE), Qwen3.8-27B on a single Spark, and
+Qwen3.8-Flash-Next NVFP4 on 2x DGX Spark (TP=2, day-0 image).
 The method and the measurements behind it are in the original write-up:
 [Abliteration without redistributing the model](https://www.msuiche.com/posts/autoresearch-abliteration-without-redistributing-the-model/).
 
 The live DSV4 stack is the Anemll image (`ghcr.io/anemll/dspark-vllm-gx10:0.1.1`,
 vLLM 0.25.2) driven by the MiaAI 2x recipe, with our state on top vendored in
 `recipe/anemll/`; the Qwen lane (stock vLLM 0.27 image, GGUF or LoRA steering)
-lives in `recipe/qwen/`. The retired v027 stack's patch is kept for reference
-and as the fallback path.
+lives in `recipe/qwen/`; the Qwen3.8-Flash-Next lane (day-0 image
+`vllm/vllm-openai:qwen38-flash-next`, GLP-47) lives in `recipe/qwen38fn/`. The
+retired v027 stack's patch is kept for reference and as the fallback path.
 
 ![setup wizard — splash, local-state box, main menu](imgs/01-home.png)
 
@@ -76,16 +78,18 @@ flowchart LR
         OMP["omp<br/>agent harness"]
         WIZ["setup.py<br/>wizard + tests/"]
     end
-    OMP -->|OpenAI-compatible /v1| EP["vLLM endpoint<br/>:8888 or :8078"]
+    OMP -->|OpenAI-compatible /v1| EP["vLLM endpoint<br/>:8888, :8078 or :8079"]
     WIZ -->|probe / diagnose / boot| EP
     EP --> DSV4["DSV4 lane — TP=2<br/>2x DGX Spark over RoCE<br/>DeepSeek-V4-Flash-0731 NVFP4"]
     EP --> QWEN["Qwen lane — TP=1<br/>single DGX Spark<br/>Qwen3.8-27B NVFP4"]
+    EP --> QWENFN["Flash-Next lane — TP=2<br/>2x DGX Spark over RoCE<br/>Qwen3.8-Flash-Next NVFP4"]
     CV["GLP vector (GGUF)<br/>fail-closed boot hotfix"] -.->|optional| DSV4
     CV2["GLP vector hotfix<br/>or rank-1 LoRA, no patch"] -.->|optional| QWEN
+    CV3["GLP-47 vector (GGUF)<br/>fail-closed boot hotfix"] -.->|optional| QWENFN
 ```
 
-The two lanes never run at once: DSV4 TP=2 already holds both GPUs at 0.80
-memory utilization, so the Qwen lane is parked until DSV4 is down.
+The lanes never run at once: each two-node lane (DSV4, Flash-Next) already
+holds both GPUs, and the Qwen lane is parked until the two-node stack is down.
 
 ![endpoint smoke tests running inside the wizard](imgs/02-omp-smoke-tests.png)
 
@@ -95,6 +99,12 @@ memory utilization, so the Qwen lane is parked until DSV4 is down.
 |---|---|---|---|---|
 | **DSV4 TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-0731, NVFP4 (166.9 GB) | projective cvec, live on 29 layers | **live** — `recipe/anemll/` |
 | **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | per-layer cvec, L10–58 at α=1.0 ([shipping artifact](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49)) | **hardware-validated** — `recipe/qwen/`; stock 4/32, GGUF 24/32, LoRA 24/32 on refusal32 (2026-08-22) |
+| **Qwen3.8-Flash-Next TP=2** | both Sparks over RoCE | Qwen3.8-Flash-Next-NVFP4 (~135 GB), day-0 image | per-layer cvec, L1–47 at α=1.0 ([GLP-47](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-GLP-47)) | **wired, structure-tested** — `recipe/qwen38fn/`; vector eval 81.2% refusal32 at α=1.0 (vLLM lane, cos 0.9931 vs HF) |
+
+**GLM-5.3-Flash: no lane, by capacity.** The canonical FP8 checkpoint is
+~306 GB — it does not fit 2x DGX Spark (~256 GB unified), so there is no
+`recipe/` lane for it; that vector (`GLP-44`, below) is cloud-only until a
+smaller quantization exists.
 
 **Single-Spark DSV4 (EXL3 3.0bpw + REAP-K216): evaluated and rejected.**
 The full NVFP4 checkpoint (166.9 GB) cannot fit one Spark, so single-node
@@ -112,11 +122,14 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `setup.py` | full-chain setup wizard (TUI or prompts, stdlib-only): lane pick → env file → steering validation → ssh deploy → omp provider + tests, plus a diagnose chain (DNS → TCP → HTTP → remote docker/GPU status, optional boot) |
 | `recipe/anemll/` | **live**: compose / start script / `.env.dsv4.example` for the MiaAI 2x clone, plus rebuild notes |
 | `recipe/qwen/` | Qwen TP=1 lane: serve script + `.env.qwen.example`; `STEER_MODE=gguf\|lora`, both hardware-validated |
+| `recipe/qwen38fn/` | Qwen3.8-Flash-Next TP=2 lane: head+worker start script + `.env.qwen38fn.example`; `--no-enable-prefix-caching` and `VLLM_PLE_CPU_OFFLOAD=1` are mandatory there |
 | `patches/hotfix-dsv4-steering-projective.py` | **live**: steering as a fail-closed boot hotfix for the 0.25.2 image (embedded GGUF reader) |
 | `patches/hotfix-qwen38-steering-projective.py` | the same steering for the Qwen lane: patches `qwen3_next.py` + `qwen3_5.py`, steers `hidden_states + residual` |
+| `patches/hotfix-qwen38fn-steering-projective.py` | the same steering for the Flash-Next lane: patches the day-0 image's `vllm/models/qwen3_8_flash_next/nvidia/model.py`, steers the materialized hyper-connection stream (10240 = 4×2560) |
+| `patches/reference/qwen3_8_flash_next.py` | byte-identical copy of the day-0 image's model file — the Flash-Next structure test's reference (the `../vllm` checkout predates the arch) |
 | `patches/0001-*.patch`, `0002-*.patch` | the hook + its vLLM-side test as git patches against v0.27.0 (fallback stack) |
 | `recipe/` (top level) | retired v027 stack: Dockerfiles + compose |
-| `scripts/` | structural guard tests for the steering patches: `test-dsv4-hotfix-structure.py`, `test-qwen-steering-structure.py`, `test-steering-structure.py` (retired v027 overlay) |
+| `scripts/` | structural guard tests for the steering patches: `test-dsv4-hotfix-structure.py`, `test-qwen-steering-structure.py`, `test-qwen38fn-steering-structure.py`, `test-steering-structure.py` (retired v027 overlay) |
 | `tests/` | endpoint smoke tests: endpoint / chat / tool-call / headless omp agent loop — `tests/README.md` |
 | `spec/GLP.md` | the GLP format spec: the `glp.mode` contract, layer-id mapping, why an additive reader must refuse the file |
 | `BENCHMARK.md` | every serving measurement, with shapes stated |
@@ -179,13 +192,34 @@ verified against their pinned checkpoint revisions.
   hardware (both 24/32 refusal32, 2026-08-22), but is still unscored on the
   cyber holdout and is valid only for checkpoint revision `1d4bf0f2ff60`
   (`lora_A` embeds `W`). Wiring: `recipe/qwen/README.md`.
+- [`msuiche/Qwen3.8-Flash-Next-abliterated-GLP-47`](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-GLP-47)
+  — **Qwen3.8-Flash-Next (`qwen4_exp`), GLP-47, day-0.** Per-layer
+  difference-of-means over the widened hyper-connection stream (10240 =
+  4×2560), layers 1–47, α=1.0. Derived 2026-08-26 on Modal (8×H100, BF16
+  reference) from AdvBench-vs-Alpaca. refusal32 3.1% → 81.2% at α=1.0 with
+  benign32 32/32 and capability12 12/12 (higher α over-projects — do not
+  raise it; the shipped default is the measured peak). Direction verified
+  engine-independent: a vLLM-lane capture reproduces it at cos 0.9931.
+  Serving lane: `recipe/qwen38fn/` (TP=2 on 2x Spark, day-0 image; the
+  hotfix steers the materialized hyper-connection stream).
+- [`msuiche/GLM-5.3-Flash-abliterated-GLP-44`](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-GLP-44)
+  — **GLM-5.3-Flash (`glm5_next`), GLP-44, day-0.** Per-layer dom over the
+  Sinkhorn hyper-connection stream (16384 = 4×4096), layers 1–44, α=2.0.
+  Derived from the FP8-native canonical checkpoint (snapshot `3f1971b7`).
+  refusal32 3.1% → 65.6% at α=2.0, benign/capability clean; **α=2.5+
+  garbles everything** — the cliff is abrupt, stay at or below 2.0. **No
+  serving lane**: 306 GB FP8 does not fit 2x DGX Spark — cloud-only until a
+  smaller quantization exists.
 
 ## Roadmap
 
 - **More model lanes.** The GLP spec and the fail-closed hotfix pattern are
   model-agnostic — DSV4 and Qwen3.8 are the starting lanes, not the scope.
   The target is most good open models, one `recipe/` lane and one published
-  GLP vector each.
+  GLP vector each. Day-0 vectors for Qwen3.8-Flash-Next (GLP-47) and
+  GLM-5.3-Flash (GLP-44) shipped 2026-08-27; the Flash-Next serving lane is
+  `recipe/qwen38fn/`, and GLM-5.3-Flash stays cloud-only (306 GB FP8 does not
+  fit 2x Spark) until a smaller quantization exists.
 - **k=7/greedy draft A/B** (upstream issue #84): now one env line
   (`DRAFT_SAMPLE_METHOD=greedy MTP_NUM_TOKENS=7`) after the 2026-08-21
   upstream merge.
