@@ -1,61 +1,124 @@
-# GLM-5.3-Flash TP=4 lane — FP8 on 4x DGX Spark + GLP-44 steering
+# GLM-5.3-Flash TP=4 lane — NVFP4 on 4x DGX Spark + GLP-44 steering
 
-GLM-5.3-Flash (`zai-org/GLM-5.3-Flash`, ~306 GB FP8, 320B total / 18B
-active, 45 layers, KDA + NoPE sparse MLA, mHC hyperconnections) on the day-0
-image `vllm/vllm-openai:glm53-flash`, tensor-parallel across **four** Sparks
-(head + 3 workers over RoCE), with the GLP-44 projective refusal vector
-applied by a fail-closed boot hotfix.
+GLM-5.3-Flash (320B total / 18B active, 45 layers, KDA + NoPE sparse MLA,
+mHC hyperconnections) across **four** Sparks (head + 3 workers over RoCE),
+with the GLP-44 projective refusal vector applied by a fail-closed boot
+hotfix.
 
-**This lane needs 4 nodes.** 306 GB of FP8 weights do not fit 2x Spark
-(~256 GB unified); at TP=4 that is ~77 GB of weights per 128 GB node, the
-rest is KV + activation headroom. `machines.txt` listing two nodes means two
-more must be racked and cabled before this lane can boot.
+**This lane needs 4 nodes.** If your `machines.txt` lists two, rack and cable
+two more first. A 2-node TP2 config exists (262K context, ~97 GiB weights per
+rank, KV-starved — needs local weights on both ranks plus an aggressive
+cache-flush ritual; see tonyd2wild's TP2 repo below) but stays out of scope
+for this wizard lane: `nodes` stays 4.
 
-If the nodes are rebuilt: pull the image and model on all four, copy
-`.env.glm53.example` to `.env.glm53`, fill in the `<...>` placeholders, and
-run `start-glm53-flash-dspark.sh` on the head.
+The serving stack is **hardware-validated** — but not by the stock vendor
+image. Everything below the flags comes from tonyd2wild's day-0 GB10
+deployments:
+[GLM-5.3-Flash-NVFP4-1M-KV-4x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-1M-KV-4x-DGX-Spark)
+(TP4 flagship, this lane's config) and
+[GLM-5.3-Flash-NVFP4-262K-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-262K-2x-DGX-Spark)
+(TP2 deep-dive; its `docs/DEPLOY-REPORT.md` has every failure, root cause,
+and receipt). We reference, we do not fork.
 
-| file | what it is |
-|---|---|
-| `start-glm53-flash-dspark.sh` | head+3-worker boot: syncs env + hotfix to every worker, starts headless ranks 1–3, then the API rank 0 on the head |
-| `.env.glm53.example` | full config with site values as `<...>` placeholders (the real `.env.glm53` is gitignored) |
-| `../../patches/hotfix-glm53-steering-projective.py` | the steering hook; patches the container's `vllm/models/glm5next/nvidia/model.py` at boot |
-| `../../patches/reference/glm5next.py` | the structure test's reference copy of that file — see the drift caveat below |
+## Model and image — both are non-obvious
 
-## Serve flags (from the official vLLM recipe)
+- **Model: the NVFP4 quant
+  [`LibertAIDAI/GLM-5.3-Flash-NVFP4`](https://huggingface.co/LibertAIDAI/GLM-5.3-Flash-NVFP4),
+  not the 306 GB FP8 original.** At TP4 that is ~50 GiB of weights per rank,
+  and the GB10 KV-allocation ceiling dissolves: the shipped config pins
+  **24 GiB KV/rank = 3,774,873 fp8 tokens = 3.6 concurrent full-1M-context
+  requests** at `--max-model-len 1048576` (model-native 1M, no rope
+  scaling). On TP2 the same model is ~97 GiB/rank and the driver grants only
+  ~4.5–5.5 GiB of KV afterward — that is the 262K TP2 ceiling.
+- **Image: the sm121-v8 patch stack, never stock.** The day-0
+  `vllm/vllm-openai:glm53-flash-arm64-cu130` (vLLM 0.1.dev20051) works on
+  B200 but dies **five separate ways** on GB10: the NoPE-MLA SM12x sparse
+  backend gap (the stock capability-12 path hardcodes DeepSeek's
+  `pe_dim=64`; GLM is NoPE), a FlashInfer 0.6.17 FA2 MLA NaN on SM121 (fix:
+  0.6.18 nightly), two dependency downgrades that nightly sneaks in
+  (NCCL → re-pin 2.30.7; cutlass-dsl → re-pin 4.6.2), a PDL race surface
+  (gated off on SM12x), and an uninitialized indexer top-k buffer
+  (`torch.empty` → init −1 + clamp). v8 adds the fp8-KV shared-memory tile
+  fix (a Hopper 228 KB smem assumption vs GB10's ~101 KB).
+  - Prebuilt: **`radixark/vllm-glm53-flash:sm121-v8`** (what their TP4
+    launcher ships) — the `.env` default.
+  - Local build: their `docker/Dockerfile.glm53-sm121*` **v1→v8 in order**,
+    each `FROM` the previous, on the day-0 arm64-cu130 base.
+  - **v9/InstantTensor is UNSTABLE multi-node** (a rank dies silently ~1 min
+    post-load in every v9 boot) — do not use it; v8 is the stable ceiling.
+  - The start script refuses any image tag without `sm121` in it, and checks
+    the image ID is identical on all four nodes.
 
-[recipes.vllm.ai/zai-org/GLM-5.3-Flash](https://recipes.vllm.ai/zai-org/GLM-5.3-Flash):
-`--tensor-parallel-size 4 --kv-cache-dtype fp8` (fp8 KV is Blackwell-OK;
-Hopper must not use it), `--speculative-config '{"method":"mtp","num_speculative_tokens":5}'`,
-`--tool-call-parser glm47 --reasoning-parser glm45 --enable-auto-tool-choice`.
-The image must contain FlashInfer ≥ 0.6.17 (NoPE sparse MLA). Thinking is
-always on; `reasoning_effort` low/high/max via chat template kwargs (default
-max).
+## Serve flags (theirs, hardware-validated)
 
-## Traps (each one documented before it costs a run)
+`--block-size 2304` (DeepGEMM's arch-12 fp8 paged-MQA accepts only 64-entry
+pool pages; 2304 is a multiple of kpool·64 and of the MLA 128 alignment),
+`--gpu-memory-utilization 0.85` with **`--kv-cache-memory` pinned**
+(25769803776 = 24 GiB/rank — the MTP draft head OOMs riding the gmu edge;
+the number is stress-gated behind 3× concurrent 20K prefills — 38 GiB boots
+and answers short prompts, then the first long prefill NVRM-OOMs the
+engine), `--kv-cache-dtype fp8_e4m3`, MTP `num_speculative_tokens=4` (their
+acceptance data suggests 3 as a micro-tune — position 4 nearly free-rides),
+`--moe-backend marlin`, `--enforce-eager`, `--max-num-seqs 6`,
+`--tool-call-parser glm47 --reasoning-parser glm45 --enable-auto-tool-choice`,
+thinking off by default via `--default-chat-template-kwargs`, and
+`--chat-template …/chat_template_mm.jinja` (the checkpoint ships a text-only
+template; vision requests 500 without the mm variant — the start script
+resolves it from the HF snapshot). Full 1M prefills take minutes of wall
+clock; cap `--max-model-len` lower (e.g. 300000) for a snappier multi-user
+endpoint.
 
-- **α=2.0 is calibrated — and α≥2.5 GARBLES this model.** The cliff is
-  abrupt (measured). Do not raise it; do not import another lane's alpha.
-- **Reference is the PR source, not the image.** The vendored
-  `patches/reference/glm5next.py` is vllm-project/vllm#53906 @ `142062f1`;
-  the `glm53-flash` image predates that revision by a day. On first deploy,
-  diff the image's file and re-vendor if it drifted:
-  ```sh
-  docker run --rm --entrypoint cat "$GLM53_IMAGE" \
-    /usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/nvidia/model.py \
-    | diff - patches/reference/glm5next.py
-  ```
-  The hotfix's anchor check is fail-closed either way — drifted source aborts
-  the boot when steering is requested instead of serving unsteered. Confirm
-  the boot log reads `weightless GLP steering active: hook=post_layer
-  alpha=2.000 ... layers=44`.
-- **NCCL GID indexes drift** across reboots; this lane pins
-  `NCCL_IB_GID_INDEX=3` on all four nodes (no sysfs auto-resolver). Re-verify
-  after reboot.
-- **Stream-order caveat:** the hotfix flattens the mHC stream HC-outer
-  ([T, n, hidden] → n*hidden, stream k in columns [k*hidden:(k+1)*hidden]) —
-  the convention the Qwen3.8-Flash-Next capture validated. It has not been
-  re-measured for GLM-5.3; verify on first boot with a refusal32 A/B arm.
+Measured on their 4-node stack: TTFT 0.204 s median; decode **35.7 tok/s**
+generic greedy median — and that is a floor: MTP acceptance is
+content-regime dependent, so structured/agentic output (what agents actually
+generate) warms to **53–64 tok/s**, freeform prose sits ~37.
+
+## Boot ritual (each rule cost them a boot)
+
+The start script bakes in what it can; the rest is on the operator:
+
+1. `sync; echo 3 > /proc/sys/vm/drop_caches` on **every node** before boot
+   (the script attempts it non-interactively and warns if it can't).
+2. Their **`cache_flusher.sh` sidecar on every node during boot** — GB10's
+   driver fails allocations against page-cache-full memory; get it from the
+   TP4 repo (`cache_flusher.sh`, mechanism in `docs/GB10-KV-MEMORY-LADDER.md`).
+   The script warns when no flusher is running on a worker.
+3. Workers first, ~20 s apart, **head last** (the script does this).
+4. **Tear down ALL ranks before relaunching any** — a fresh rank that
+   rendezvouses with a dying one hangs. The script refuses to start if the
+   container exists on any node.
+5. Identical image ID on all four nodes (the script checks).
+6. A node that has been through many boot cycles accumulates allocator
+   degradation — reboot it when a proven config starts dying.
+7. Capture `docker logs` before `docker rm -f`.
+
+## The two patch layers (order and failure semantics)
+
+1. **Image-build time (theirs):** the sm121 v1→v8 Dockerfile/string-patch
+   stack — fixes GB10 kernel/backend bugs. Baked into the image.
+2. **Container start (ours):**
+   `../../patches/hotfix-glm53-steering-projective.py` runs in the entrypoint
+   before `vllm serve` on every rank, and the `&&` makes it fail-closed: a
+   boot asked for steering that cannot apply it never serves unsteered.
+
+Anchor caveat: our hotfix's anchors target the PR-head `glm5next` source
+(vllm-project/vllm#53906 @ `142062f1`, vendored in
+`../../patches/reference/glm5next.py`); the image is a `0.1.dev20051`
+snapshot that predates it, and the sm121 stack patches other vLLM files at
+build time (`sparse_attn_indexer_kpool.py`, `glm5next/nvidia/ops/kpool_compress.py`
+— not known to touch `model.py`). **The first real boot is the anchor test**;
+if the anchors fail, the boot refuses (fail-closed) — then diff the image's
+file against the vendored reference, update the anchors, re-vendor:
+
+```sh
+docker run --rm --entrypoint cat "$GLM53_IMAGE" \
+  /usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/nvidia/model.py \
+  | diff - ../../patches/reference/glm5next.py
+```
+
+Confirm steering from the boot log: `weightless GLP steering active:
+hook=post_layer alpha=2.000 ... layers=44` (layers=1 means the
+per-layer-loop regression; layers=0 means unsteered).
 
 ## Steering vector
 
@@ -66,15 +129,15 @@ difference-of-means over the mHC stream (16384 = 4×4096), layers 1–44,
 Published at
 [`msuiche/GLM-5.3-Flash-abliterated-GLP-44`](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-GLP-44)
 (gated — fetch with an HF token), at the **root of the HF cache on ALL FOUR
-nodes** so it lands at `/cache/huggingface/` in every container:
+nodes**:
 
 ```sh
 huggingface-cli download msuiche/GLM-5.3-Flash-abliterated-GLP-44 \
   --include "*.gguf" --local-dir ~/.cache/huggingface   # on ALL FOUR nodes
 ```
 
-The start script preflights its presence on every node when
-`WEIGHTLESS_STEER_PATH` is set and refuses to boot otherwise (fail-closed).
+**α=2.0 is calibrated — and α≥2.5 GARBLES this model.** The cliff is abrupt
+(measured). Do not raise it; do not import another lane's alpha.
 
 ## How the steering works on mHC
 
@@ -103,3 +166,16 @@ python3 ../../scripts/test-glm53-steering-structure.py
 WEIGHTLESS_STEER_PATH=$HF_CACHE/GLM-5.3-Flash-abliterated-GLP-44-L1-44-a2.gguf \
   python3 ../../patches/hotfix-glm53-steering-projective.py --check
 ```
+
+## Credits
+
+- Model: [zai-org/GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash);
+  quant: [LibertAIDAI/GLM-5.3-Flash-NVFP4](https://huggingface.co/LibertAIDAI/GLM-5.3-Flash-NVFP4)
+  (their sm_121 notes fed directly into the deployment).
+- The GB10 deployment and the sm121 patch stack: **[@tonyd2wild](https://github.com/tonyd2wild),
+  deployed and debugged by Knox (Claude)** — the day-0 failure receipts are
+  in their `docs/DEPLOY-REPORT.md`.
+- **barrydeen** — the gmu 0.85 reference config and quantization-coverage
+  table from their independent DGX Spark recipe.
+- vLLM [PR #53906](https://github.com/vllm-project/vllm/pull/53906) authors
+  for the day-0 image; FlashInfer for the 0.6.18 SM90-NoPE MLA path.

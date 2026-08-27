@@ -10,7 +10,7 @@ steering patch, and the GLP (GGUF Layer Projection) format spec. The goal is
 most good open models; the lanes are DeepSeek V4 Flash 0731 on 2x
 DGX Spark (GB10, SM121, TP=2 over RoCE), Qwen3.8-27B on a single Spark,
 Qwen3.8-Flash-Next NVFP4 on 2x DGX Spark (TP=2, day-0 image), and
-GLM-5.3-Flash FP8 on 4x DGX Spark (TP=4, day-0 image).
+GLM-5.3-Flash NVFP4 on 4x DGX Spark (TP=4, patched day-0 image).
 The method and the measurements behind it are in the original write-up:
 [Abliteration without redistributing the model](https://www.msuiche.com/posts/autoresearch-abliteration-without-redistributing-the-model/).
 
@@ -19,7 +19,8 @@ vLLM 0.25.2) driven by the MiaAI 2x recipe, with our state on top vendored in
 `recipe/anemll/`; the Qwen lane (stock vLLM 0.27 image, GGUF or LoRA steering)
 lives in `recipe/qwen/`; the Qwen3.8-Flash-Next lane (day-0 image
 `vllm/vllm-openai:qwen38-flash-next`, GLP-47) lives in `recipe/qwen38fn/`;
-the GLM-5.3-Flash lane (day-0 image `vllm/vllm-openai:glm53-flash`, GLP-44)
+the GLM-5.3-Flash lane (tonyd2wild's sm121-v8 patch stack on the day-0
+`vllm/vllm-openai:glm53-flash-arm64-cu130`, GLP-44)
 lives in `recipe/glm53/`. The
 retired v027 stack's patch is kept for reference and as the fallback path.
 
@@ -86,7 +87,7 @@ flowchart LR
     EP --> DSV4["DSV4 lane — TP=2<br/>2x DGX Spark over RoCE<br/>DeepSeek-V4-Flash-0731 NVFP4"]
     EP --> QWEN["Qwen lane — TP=1<br/>single DGX Spark<br/>Qwen3.8-27B NVFP4"]
     EP --> QWENFN["Flash-Next lane — TP=2<br/>2x DGX Spark over RoCE<br/>Qwen3.8-Flash-Next NVFP4"]
-    EP --> GLM["GLM-5.3-Flash lane — TP=4<br/>4x DGX Spark over RoCE<br/>GLM-5.3-Flash FP8"]
+    EP --> GLM["GLM-5.3-Flash lane — TP=4<br/>4x DGX Spark over RoCE<br/>GLM-5.3-Flash NVFP4"]
     CV["GLP vector (GGUF)<br/>fail-closed boot hotfix"] -.->|optional| DSV4
     CV2["GLP vector hotfix<br/>or rank-1 LoRA, no patch"] -.->|optional| QWEN
     CV3["GLP-47 vector (GGUF)<br/>fail-closed boot hotfix"] -.->|optional| QWENFN
@@ -106,12 +107,17 @@ parked until the multi-node stack is down.
 | **DSV4 TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-0731, NVFP4 (166.9 GB) | projective cvec, live on 29 layers | **live** — `recipe/anemll/` |
 | **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | per-layer cvec, L10–58 at α=1.0 ([shipping artifact](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49)) | **hardware-validated** — `recipe/qwen/`; stock 4/32, GGUF 24/32, LoRA 24/32 on refusal32 (2026-08-22) |
 | **Qwen3.8-Flash-Next TP=2** | both Sparks over RoCE | Qwen3.8-Flash-Next-NVFP4 (~135 GB), day-0 image | per-layer cvec, L1–47 at α=1.0 ([GLP-47](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-GLP-47)) | **wired, structure-tested** — `recipe/qwen38fn/`; vector eval 81.2% refusal32 at α=1.0 (vLLM lane, cos 0.9931 vs HF) |
-| **GLM-5.3-Flash TP=4** | **four** Sparks over RoCE | GLM-5.3-Flash FP8 (~306 GB → ~77 GB/node), day-0 image | per-layer cvec, L1–44 at α=2.0 ([GLP-44](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-GLP-44)) | **wired, structure-tested** — `recipe/glm53/`; vector eval 65.6% refusal32 at α=2.0; **α≥2.5 garbles this model** |
+| **GLM-5.3-Flash TP=4** | **four** Sparks over RoCE | GLM-5.3-Flash-NVFP4 (~50 GiB/rank), sm121-v8 patched day-0 image | per-layer cvec, L1–44 at α=2.0 ([GLP-44](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-GLP-44)) | **hardware-validated stack** — `recipe/glm53/`; 1M context (3.77M-token fp8 KV pool), 36 tok/s freeform → 53–64 tok/s structured/agentic (MTP acceptance is regime-dependent); vector eval 65.6% refusal32 at α=2.0; **α≥2.5 garbles this model** |
 
-**GLM-5.3-Flash needs 4 nodes.** The canonical FP8 checkpoint is ~306 GB —
-it does not fit 2x DGX Spark (~256 GB unified), which is why this lane is
-TP=4 (~77 GB of weights per 128 GB node). If your `machines.txt` lists two
-nodes, this lane cannot boot until two more are racked and cabled.
+**GLM-5.3-Flash needs 4 nodes — and a patched image.** At TP4 the NVFP4
+quant is ~50 GiB of weights per 128 GB node, which is what makes the
+1M-context KV pool possible. A 2-node TP2 config exists (262K context,
+KV-starved — [tonyd2wild's TP2 repo](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-262K-2x-DGX-Spark))
+but stays out of scope for this wizard lane. The stock day-0 vendor image
+dies five different ways on GB10; the lane requires the sm121-v8 patch stack
+(`radixark/vllm-glm53-flash:sm121-v8` or a local v1→v8 build — details in
+`recipe/glm53/README.md`). If your `machines.txt` lists two nodes, this lane
+cannot boot until two more are racked and cabled.
 
 **Single-Spark DSV4 (EXL3 3.0bpw + REAP-K216): evaluated and rejected.**
 The full NVFP4 checkpoint (166.9 GB) cannot fit one Spark, so single-node
@@ -130,7 +136,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `recipe/anemll/` | **live**: compose / start script / `.env.dsv4.example` for the MiaAI 2x clone, plus rebuild notes |
 | `recipe/qwen/` | Qwen TP=1 lane: serve script + `.env.qwen.example`; `STEER_MODE=gguf\|lora`, both hardware-validated |
 | `recipe/qwen38fn/` | Qwen3.8-Flash-Next TP=2 lane: head+worker start script + `.env.qwen38fn.example`; `--no-enable-prefix-caching` and `VLLM_PLE_CPU_OFFLOAD=1` are mandatory there |
-| `recipe/glm53/` | GLM-5.3-Flash TP=4 lane: head+3-worker start script + `.env.glm53.example`; needs 4 nodes, α=2.0 is calibrated (α≥2.5 garbles) |
+| `recipe/glm53/` | GLM-5.3-Flash TP=4 lane: head+3-worker start script + `.env.glm53.example`; needs 4 nodes and the sm121-v8 patched image, α=2.0 is calibrated (α≥2.5 garbles) |
 | `patches/hotfix-dsv4-steering-projective.py` | **live**: steering as a fail-closed boot hotfix for the 0.25.2 image (embedded GGUF reader) |
 | `patches/hotfix-qwen38-steering-projective.py` | the same steering for the Qwen lane: patches `qwen3_next.py` + `qwen3_5.py`, steers `hidden_states + residual` |
 | `patches/hotfix-qwen38fn-steering-projective.py` | the same steering for the Flash-Next lane: patches the day-0 image's `vllm/models/qwen3_8_flash_next/nvidia/model.py`, steers the materialized hyper-connection stream (10240 = 4×2560) |
@@ -219,8 +225,9 @@ verified against their pinned checkpoint revisions.
   Derived from the FP8-native canonical checkpoint (snapshot `3f1971b7`).
   refusal32 3.1% → 65.6% at α=2.0, benign/capability clean; **α=2.5+
   garbles everything** — the cliff is abrupt, stay at or below 2.0.
-  Serving lane: `recipe/glm53/` (TP=4 on **4x Spark** — 306 GB FP8 does not
-  fit 2x; the hotfix steers the materialized mHC stream).
+  Serving lane: `recipe/glm53/` (TP=4 on **4x Spark**, NVFP4 quant on the
+  sm121-v8 patched day-0 image; the hotfix steers the materialized mHC
+  stream).
 
 ## Roadmap
 
@@ -251,6 +258,7 @@ verified against their pinned checkpoint revisions.
 - [drowzeys/keys-DeepSeekV4-Flash-GA-0731-Dspark-Abliterated-32-32](https://huggingface.co/drowzeys/keys-DeepSeekV4-Flash-GA-0731-Dspark-Abliterated-32-32) — Keys' abliterated DSV4 checkpoint, prior art; the benchmarked general/broad direction (`keysdir` artifact) was recovered from these weights by SVD
 - [orcarouter/Qwen3.8-27B-Uncensored-FP8](https://huggingface.co/orcarouter/Qwen3.8-27B-Uncensored-FP8) — the published Qwen3.8 abliteration we benchmark against; its direction, SVD-recovered and run through our harness, scores 90.6/100/100
 - [drowzeys/keys-vLLm.0.27-Qwen3.8-NVFP4-MTP3-Single-DGX-Spark](https://github.com/drowzeys/keys-vLLm.0.27-Qwen3.8-NVFP4-MTP3-Single-DGX-Spark) — the Qwen TP=1 lane's serving recipe
+- [tonyd2wild/GLM-5.3-Flash-NVFP4-1M-KV-4x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-1M-KV-4x-DGX-Spark) + the [TP2 companion](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-262K-2x-DGX-Spark) — the GLM-5.3 lane's serving stack (sm121-v8 image patches, boot ritual, KV ladder), deployed and debugged by Knox (Claude) for @tonyd2wild; quant by [LibertAIDAI](https://huggingface.co/LibertAIDAI/GLM-5.3-Flash-NVFP4); gmu reference config by barrydeen
 
 ## Fallback: the retired v027 stack
 
