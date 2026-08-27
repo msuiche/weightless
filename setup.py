@@ -91,9 +91,9 @@ LOGO_TRUECOLOR = [f"\033[38;2;{r};{g};{b}m" for r, g, b in LOGO_RGB]
 ANSI_RESET = "\033[0m"
 
 # lane -> (example env, target env, steering env key, structure test, vector
-# repo). two_node lanes (head+worker over RoCE) add the remote deploy layout:
-# remote_dir, recipe_files (basenames in the example's dir), start_script,
-# hotfix (basename in patches/).
+# repo). Multi-node lanes (nodes: 2|4, head+workers over RoCE) add the remote
+# deploy layout: remote_dir, recipe_files (basenames in the example's dir),
+# start_script, hotfix (basename in patches/).
 LANES = [
     dict(name="DSV4 TP=2 serving — 2x DGX Spark, Anemll recipe",
          example="recipe/anemll/.env.dsv4.example",
@@ -102,7 +102,7 @@ LANES = [
          structure_test="scripts/test-dsv4-hotfix-structure.py",
          vector_repo="msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29",
          steer_modes=None,
-         two_node=True,
+         nodes=2,
          remote_dir="dspark-miaai",
          recipe_files=[".env.dsv4", "docker-compose.dsv4.yml",
                        "start-deepseek-v4-flash-dspark.sh"],
@@ -126,16 +126,31 @@ LANES = [
          structure_test="scripts/test-qwen38fn-steering-structure.py",
          vector_repo="msuiche/Qwen3.8-Flash-Next-abliterated-GLP-47",
          steer_modes=None,
-         two_node=True,
+         nodes=2,
          remote_dir="dspark-qwen38fn",
          recipe_files=[".env.qwen38fn", "start-qwen38-flash-next-dspark.sh"],
          start_script="start-qwen38-flash-next-dspark.sh",
          hotfix="hotfix-qwen38fn-steering-projective.py",
          port=8079),
+    dict(name="GLM-5.3-Flash TP=4 serving — 4x DGX Spark, day-0 image",
+         example="recipe/glm53/.env.glm53.example",
+         target="recipe/glm53/.env.glm53",
+         steer_key="WEIGHTLESS_STEER_PATH",
+         structure_test="scripts/test-glm53-steering-structure.py",
+         vector_repo="msuiche/GLM-5.3-Flash-abliterated-GLP-44",
+         steer_modes=None,
+         nodes=4,
+         remote_dir="dspark-glm53",
+         recipe_files=[".env.glm53", "start-glm53-flash-dspark.sh"],
+         start_script="start-glm53-flash-dspark.sh",
+         hotfix="hotfix-glm53-steering-projective.py",
+         port=8080),
 ]
 PLACEHOLDER_HINTS = {
     "head-ip": ("Head node IP or hostname", ""),
     "worker-ip": ("Worker node IP or hostname", ""),
+    "worker2-ip": ("Worker 2 node IP or hostname", ""),
+    "worker3-ip": ("Worker 3 node IP or hostname", ""),
     "user": ("Remote username on the node(s)", os.environ.get("USER", "")),
 }
 
@@ -340,6 +355,10 @@ def read_lane_env():
             vals.setdefault("host", env["MASTER_ADDR"])
         if env.get("WORKER_HOST"):
             vals.setdefault("worker-ip", env["WORKER_HOST"])
+        for i in ("2", "3"):
+            w = env.get(f"WORKER{i}_HOST")
+            if w:
+                vals.setdefault(f"worker{i}-ip", w)
         m = re.search(r"/home/([^/]+)/", env.get("HF_CACHE", "") or env.get("MODELS", ""))
         if m:
             vals.setdefault("user", m.group(1))
@@ -348,11 +367,12 @@ def read_lane_env():
 
 def deploy_commands(lane_idx, values, ssh_host=None):
     """(description, argv) pairs to push the lane to its node(s) and boot it.
-    two_node lanes target a remote dir on the head (their start script syncs
-    the worker itself); Qwen targets a repo-shaped dir on the single node.
+    Multi-node lanes (nodes: 2|4) target a remote dir on the head (their
+    start script syncs the worker(s) itself); Qwen targets a repo-shaped dir
+    on the single node.
     ssh_host is the LAN-reachable name/IP — never the fabric address."""
     user = values.get("user", os.environ.get("USER", ""))
-    if LANES[lane_idx].get("two_node"):
+    if LANES[lane_idx].get("nodes", 1) > 1:
         lane = LANES[lane_idx]
         head = f"{user}@{ssh_host or values.get('head-ip', '<head-ip>')}"
         remote = lane["remote_dir"]
@@ -399,8 +419,8 @@ def vector_paths(lane_idx):
         return None
     fname = os.path.basename(steer)
     local = os.path.join(HERE, ".vectors", fname)  # staging dir (gitignored)
-    if LANES[lane_idx].get("two_node"):
-        # two-node lanes read the vector from the HF cache root on both nodes
+    if LANES[lane_idx].get("nodes", 1) > 1:
+        # multi-node lanes read the vector from the HF cache root on all nodes
         hf = env.get("HF_CACHE", "~/.cache/huggingface")
         home_rel = hf.split("/", 3)[3] if hf.startswith("/home/") else ".cache/huggingface"
         return (local, f"{home_rel}/{fname}")
@@ -423,8 +443,11 @@ DEPLOY_MAP = {
     2: [("recipe/qwen38fn/.env.qwen38fn", "dspark-qwen38fn/.env.qwen38fn"),
         ("recipe/qwen38fn/start-qwen38-flash-next-dspark.sh", "dspark-qwen38fn/start-qwen38-flash-next-dspark.sh"),
         ("patches/hotfix-qwen38fn-steering-projective.py", "dspark-qwen38fn/patches/hotfix-qwen38fn-steering-projective.py")],
+    3: [("recipe/glm53/.env.glm53", "dspark-glm53/.env.glm53"),
+        ("recipe/glm53/start-glm53-flash-dspark.sh", "dspark-glm53/start-glm53-flash-dspark.sh"),
+        ("patches/hotfix-glm53-steering-projective.py", "dspark-glm53/patches/hotfix-glm53-steering-projective.py")],
 }
-CONTAINER_GREP = {0: "deepseek", 1: "qwen38", 2: "qwen38fn"}
+CONTAINER_GREP = {0: "deepseek", 1: "qwen38", 2: "qwen38fn", 3: "glm53"}
 
 
 def remote_preflight(io, lane_idx, values, ssh_host):
@@ -953,7 +976,7 @@ def lane_chain(io, lane_idx):
     for p in placeholders(example):
         prompt, default = PLACEHOLDER_HINTS.get(p, (p.replace("-", " "), ""))
         default = saved.get(p, default)
-        if p in ("head-ip", "worker-ip"):
+        if p == "head-ip" or re.fullmatch(r"worker\d*-ip", p):
             values[p] = pick_host(io, f"{prompt} ({p})", default)
         else:
             values[p] = io.text(f"{prompt} ({p}): ", default)
@@ -1030,7 +1053,7 @@ def lane_chain(io, lane_idx):
         # MASTER_ADDR/head-ip is the RoCE fabric address — not routable from
         # the LAN. ssh needs a reachable host: the omp provider's by default.
         omp_host = urllib.parse.urlparse(default_base()).hostname
-        note = ("Head node ssh host" if LANES[lane_idx].get("two_node")
+        note = ("Head node ssh host" if LANES[lane_idx].get("nodes", 1) > 1
                 else "Node ssh host")
         ssh_host = pick_host(io, note + " (fabric IPs are not routable)",
                              omp_host or values.get("head-ip", ""))
@@ -1047,9 +1070,12 @@ def lane_chain(io, lane_idx):
             vlocal, vremote = vp
             cmds.insert(-1, ("sync GLP vector",
                              ["scp", vlocal, f"{target}:{vremote}"]))
-            if LANES[lane_idx].get("two_node"):  # the worker needs its own copy
-                worker = values.get("worker-ip", "<worker-ip>")
-                cmds.insert(-1, ("sync GLP vector to the worker",
+            # every worker needs its own copy of the vector (each rank reads
+            # WEIGHTLESS_STEER_PATH inside its own container)
+            workers = [values[k] for k in sorted(values)
+                       if re.fullmatch(r"worker\d*-ip", k) and values[k]]
+            for worker in workers:
+                cmds.insert(-1, (f"sync GLP vector to worker {worker}",
                                  ["ssh", target,
                                   f"scp -o BatchMode=yes {vremote} {user}@{worker}:{vremote}"]))
         for desc, argv in cmds:
