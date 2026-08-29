@@ -56,6 +56,15 @@ if [ ! -f "$HOTFIX" ]; then
   HOTFIX="$(cd "$SCRIPT_DIR/../../patches" && pwd)/hotfix-qwen38fn-steering-projective.py"
 fi
 [ -f "$HOTFIX" ] || { echo "Missing steering hotfix (looked in $SCRIPT_DIR/patches and the repo)." >&2; exit 1; }
+# The day-0 image cannot load the RadixArk NVFP4 checkpoint's FP8-serialized
+# PLE N-gram table without this patch (unknown param 'ngram_embedding.weight_
+# scale'; found during Modal B200 validation, 2026-08-29). Same fail-closed
+# chain as the hotfix.
+PLE_PATCH="${PLE_FP8_PATCH:-$SCRIPT_DIR/patches/patch-qwen38fn-ple-fp8-nvfp4.py}"
+if [ ! -f "$PLE_PATCH" ]; then
+  PLE_PATCH="$(cd "$SCRIPT_DIR/../../patches" && pwd)/patch-qwen38fn-ple-fp8-nvfp4.py"
+fi
+[ -f "$PLE_PATCH" ] || { echo "Missing PLE FP8 patch (looked in $SCRIPT_DIR/patches and the repo)." >&2; exit 1; }
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "Missing required command: $1" >&2; exit 1; }
@@ -109,10 +118,11 @@ ssh "$WORKER_HOST" "docker image inspect '$QWEN38FN_IMAGE' >/dev/null" || {
 }
 
 # --- docker run command (per node) ------------------------------------------
-# $1 rank, $2 api|headless, $3 host HF cache, $4 host hotfix path, $5 host IP.
+# $1 rank, $2 api|headless, $3 host HF cache, $4 host hotfix path, $5 host IP,
+# $6 host PLE-patch path.
 # Env values are operator-controlled and must not contain spaces.
 build_cmd() {
-  local rank="$1" mode="$2" hf="$3" hotfix="$4" hostip="$5"
+  local rank="$1" mode="$2" hf="$3" hotfix="$4" hostip="$5" plepatch="$6"
   local ep_args="--headless"
   if [ "$mode" = "api" ]; then
     ep_args="--host 0.0.0.0 --port $VLLM_PORT"
@@ -124,6 +134,7 @@ docker run -d --restart unless-stopped --name $CONTAINER \
   --device /dev/infiniband \
   -v $hf:/cache/huggingface \
   -v $hotfix:/patches/hotfix-qwen38fn-steering-projective.py:ro \
+  -v $plepatch:/patches/patch-qwen38fn-ple-fp8-nvfp4.py:ro \
   -e HF_HOME=/cache/huggingface \
   -e HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1} \
   -e VLLM_PLE_CPU_OFFLOAD=${VLLM_PLE_CPU_OFFLOAD:-1} \
@@ -141,7 +152,7 @@ docker run -d --restart unless-stopped --name $CONTAINER \
   $STEER_ENV \
   --entrypoint bash \
   $QWEN38FN_IMAGE \
-  -c 'python3 /patches/hotfix-qwen38fn-steering-projective.py && exec vllm serve $MODEL \
+  -c 'python3 /patches/patch-qwen38fn-ple-fp8-nvfp4.py && python3 /patches/hotfix-qwen38fn-steering-projective.py && exec vllm serve $MODEL \
         --served-model-name $SERVED_MODEL_NAME \
         --tensor-parallel-size 2 \
         --nnodes 2 --node-rank $rank \
@@ -173,14 +184,15 @@ echo "Syncing env + hotfix to ${WORKER_HOST}:${WORKER_DIR}"
 ssh "$WORKER_HOST" "mkdir -p '$WORKER_DIR/patches'"
 scp "$ENV_FILE" "$WORKER_HOST:$WORKER_DIR/.env.qwen38fn" >/dev/null
 scp "$HOTFIX" "$WORKER_HOST:$WORKER_DIR/patches/hotfix-qwen38fn-steering-projective.py" >/dev/null
+scp "$PLE_PATCH" "$WORKER_HOST:$WORKER_DIR/patches/patch-qwen38fn-ple-fp8-nvfp4.py" >/dev/null
 
 echo "Starting worker rank 1 (headless) on $WORKER_HOST..."
 ssh "$WORKER_HOST" "docker rm -f $CONTAINER >/dev/null 2>&1 || true"
-ssh "$WORKER_HOST" "$(build_cmd 1 headless "$WORKER_HF_CACHE" "$WORKER_DIR/patches/hotfix-qwen38fn-steering-projective.py" "$WORKER_VLLM_HOST_IP")"
+ssh "$WORKER_HOST" "$(build_cmd 1 headless "$WORKER_HF_CACHE" "$WORKER_DIR/patches/hotfix-qwen38fn-steering-projective.py" "$WORKER_VLLM_HOST_IP" "$WORKER_DIR/patches/patch-qwen38fn-ple-fp8-nvfp4.py")"
 
 echo "Starting head rank 0 (API :$VLLM_PORT)..."
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-bash -c "$(build_cmd 0 api "$HF_CACHE" "$HOTFIX" "$VLLM_HOST_IP")"
+bash -c "$(build_cmd 0 api "$HF_CACHE" "$HOTFIX" "$VLLM_HOST_IP" "$PLE_PATCH")"
 
 echo "Waiting for the API (model load takes minutes; NVFP4 weights stream from both caches)..."
 for _ in $(seq 1 "$WAIT_ATTEMPTS"); do

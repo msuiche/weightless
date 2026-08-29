@@ -32,7 +32,10 @@ AST-checks the result:
   5. the final mixer takes the mix() path when the pending combine was
      consumed (last-layer-steered guard);
   6. re-applying is a no-op, and anchors-missing fails closed when
-     WEIGHTLESS_STEER_PATH is set.
+     WEIGHTLESS_STEER_PATH is set;
+  7. the PLE FP8 patch (patch-qwen38fn-ple-fp8-nvfp4.py, required to serve
+     the RadixArk NVFP4 checkpoint at all) applies to the vendored
+     ple_layer.py, parses, is idempotent, and fails closed on anchor drift.
 
 Run: python3 scripts/test-qwen38fn-steering-structure.py [reference.py]
 Default is the vendored copy of the day-0 image's
@@ -53,7 +56,9 @@ import tempfile
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 HOTFIX = REPO / "patches/hotfix-qwen38fn-steering-projective.py"
+PLE_PATCH = REPO / "patches/patch-qwen38fn-ple-fp8-nvfp4.py"
 DEFAULT_REFERENCE = REPO / "patches/reference/qwen3_8_flash_next.py"
+PLE_REFERENCE = REPO / "patches/reference/qwen3_8_flash_next_ple_layer.py"
 
 PER_LAYER_TARGETS = ("self._steer_dirs[layer_id]", "_GLP_HOOK_DIRS[layer_id]")
 
@@ -200,6 +205,34 @@ def main(reference: pathlib.Path) -> int:
         check(r3.returncode == 1, "anchors missing + WEIGHTLESS_STEER_PATH set fails closed")
         r4 = run_hotfix(bogus)
         check(r4.returncode == 0, "anchors missing + steering off stays stock")
+
+        # 7. the PLE FP8 patch (NVFP4 serving prerequisite): applies to the
+        #    vendored ple_layer.py, parses, idempotent, fail-closed on drift
+        if not PLE_REFERENCE.is_file():
+            check(False, "PLE reference vendored", f"missing {PLE_REFERENCE}")
+        else:
+            ple = pathlib.Path(td) / "ple_layer.py"
+            shutil.copy(PLE_REFERENCE, ple)
+            env = dict(os.environ, WEIGHTLESS_PLE_LAYER_PY=str(ple))
+            p1 = subprocess.run([sys.executable, str(PLE_PATCH)], env=env,
+                                capture_output=True, text=True)
+            check(p1.returncode == 0 and "applied to" in p1.stdout,
+                  "PLE FP8 patch applies to the reference ple_layer.py",
+                  p1.stdout + p1.stderr)
+            try:
+                ast.parse(ple.read_text())
+                check(True, "patched ple_layer.py parses")
+            except SyntaxError as exc:
+                check(False, "patched ple_layer.py parses", str(exc))
+            p2 = subprocess.run([sys.executable, str(PLE_PATCH)], env=env,
+                                capture_output=True, text=True)
+            check(p2.returncode == 0 and "already applied" in p2.stdout,
+                  "PLE FP8 patch re-apply is a no-op", p2.stdout + p2.stderr)
+            env_b = dict(os.environ, WEIGHTLESS_PLE_LAYER_PY=str(bogus))
+            p3 = subprocess.run([sys.executable, str(PLE_PATCH)], env=env_b,
+                                capture_output=True, text=True)
+            check(p3.returncode == 1, "PLE FP8 patch fails closed on anchor drift",
+                  p3.stdout + p3.stderr)
 
     print()
     print("qwen38fn steering structure: " + ("all checks passed" if not failures else f"{failures} failure(s)"))

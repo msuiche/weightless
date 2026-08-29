@@ -32,3 +32,11 @@ copy of THIS file. Keep it byte-identical to the image: on an image bump,
 re-pull the file from the new container and diff — drifted anchors are
 exactly what the hotfix's fail-closed anchor check exists to catch. The same
 applies to `glm5next.py` and `../hotfix-glm53-steering-projective.py`.
+
+`qwen3_8_flash_next_ple_layer.py` is a byte-identical copy of the same
+image's `vllm/models/qwen3_8_flash_next/nvidia/ple_layer.py` (md5
+`eb23dad30fbb00590704288bcc5010a2`, same pull) — the reference for
+`../patch-qwen38fn-ple-fp8-nvfp4.py`, which teaches the day-0 image to load
+the RadixArk NVFP4 checkpoint's FP8-serialized PLE N-gram table (found during
+Modal B200 validation 2026-08-29: without it, NVFP4 serving dies on the
+unknown parameter `ngram_embedding.weight_scale`).

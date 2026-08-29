@@ -13,6 +13,7 @@ are rebuilt: pull the image and model on both, copy `.env.qwen38fn.example` to
 | `start-qwen38-flash-next-dspark.sh` | head+worker boot: syncs env + hotfix to the worker, starts the headless rank 1 there, then the API rank 0 on the head |
 | `.env.qwen38fn.example` | full config with site values as `<...>` placeholders (the real `.env.qwen38fn` is gitignored) |
 | `../../patches/hotfix-qwen38fn-steering-projective.py` | the steering hook; patches the container's `vllm/models/qwen3_8_flash_next/nvidia/model.py` at boot |
+| `../../patches/patch-qwen38fn-ple-fp8-nvfp4.py` | required for NVFP4 at all: the day-0 image can't load the checkpoint's FP8-serialized PLE N-gram table without it (found on Modal B200, 2026-08-29); chained fail-closed before the hotfix |
 | `../../patches/reference/qwen3_8_flash_next.py` | byte-identical copy of that image file — the structure test's reference (the `../vllm` checkout predates the arch) |
 
 ## Traps (each one cost a run somewhere)
