@@ -35,6 +35,9 @@ Failure semantics (fail-closed where it matters):
   (stock behaviour, other hotfixes still guard the stack).
 - WEIGHTLESS_STEER_PATH set but the vector file is missing/invalid/non-project:
   exit 1, before the ~8-minute model load.
+- Runtime load failures with steering armed (direction width != the model's
+  stream width, no layers matched, direction layers out of range for the
+  model) re-raise: the engine boot dies rather than serving unsteered.
 
 Patches
 /usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia/model.py
@@ -209,7 +212,10 @@ def _load_gguf_control_vector(path: str) -> dict:
         try:
             idx = int(name[dot + 1:])
         except ValueError:
-            continue
+            raise ValueError(
+                f"{path}: malformed tensor name {name!r} — 'direction.' "
+                f"must be followed by an integer layer id"
+            ) from None
         if idx < 1:
             raise ValueError(
                 f"{path}: {name} is invalid; direction.0 is rejected "
@@ -240,7 +246,10 @@ def _load_gguf_control_vector(path: str) -> dict:
         try:
             want = sorted(int(x) for x in declared.split(",") if x.strip())
         except ValueError:
-            want = None
+            raise ValueError(
+                f"{path}: glp.layer_ids_zero_based is not a comma list of "
+                f"integers: {declared!r}"
+            ) from None
         if want and want != sorted(out):
             raise ValueError(
                 f"{path}: glp.layer_ids_zero_based declares layers "
@@ -367,6 +376,14 @@ INIT_BLOCK = '''\
                 if vec.ndim == 1:
                     vec = vec.unsqueeze(0)
                 vec = vec.reshape(-1, vec.shape[-1])
+                # Width guard (from the capture-validated reference lane): a
+                # direction that does not match this arch's stream width must
+                # fail here, not as an opaque broadcast error at serve time.
+                if vec.shape[-1] != config.hidden_size:
+                    raise RuntimeError(
+                        f"steering vector layer {layer_id} width "
+                        f"{vec.shape[-1]} != {config.hidden_size} (hidden_size)"
+                    )
                 # Rank-k: orthonormalise the basis, otherwise overlapping
                 # components get subtracted more than once. Refusal measured
                 # only 0.147 rank-1 energy here, so k>1 is expected to matter.
@@ -380,11 +397,22 @@ INIT_BLOCK = '''\
                     device=device, dtype=torch.bfloat16
                 )
 
-            if not self._steer_dirs:
-                logger.warning(
-                    "WEIGHTLESS_STEER_PATH=%s matched no layers; serving unsteered", path
+            if isinstance(raw, dict):
+                out_of_range = sorted(
+                    int(k) for k in raw
+                    if str(k).lstrip("-").isdigit()
+                    and not 0 <= int(k) < config.num_hidden_layers
                 )
-                return
+                if out_of_range:
+                    raise RuntimeError(
+                        f"{path}: direction layers {out_of_range} out of range "
+                        f"for this model ({config.num_hidden_layers} layers)"
+                    )
+            if not self._steer_dirs:
+                raise RuntimeError(
+                    f"WEIGHTLESS_STEER_PATH={path} matched no layers; "
+                    f"refusing to run unsteered"
+                )
 
             k = max(v.shape[0] for v in self._steer_dirs.values())
             stack = torch.zeros(
@@ -407,8 +435,9 @@ INIT_BLOCK = '''\
                 sorted(self._steer_dirs),
             )
         except Exception as exc:
-            logger.error("DSpark steering load failed (%s); serving unsteered", exc)
-            self._steer_dirs = {}
+            # Fail closed: a boot asked for steering must not serve unsteered.
+            logger.error("DSpark steering load failed (%s); failing closed", exc)
+            raise
 '''
 
 # Per-layer apply in the forward loop.

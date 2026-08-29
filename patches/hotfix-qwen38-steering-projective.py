@@ -42,11 +42,15 @@ Other architecture notes:
 
 Failure semantics (fail-closed where it matters):
 
-- Anchors not found in either file: exit 1 if WEIGHTLESS_STEER_PATH is set (a boot
-  that was asked for steering must not silently serve unsteered), exit 0
-  otherwise.
+- Anchors not found in ANY file: exit 1 if WEIGHTLESS_STEER_PATH is set (a
+  boot that was asked for steering must not silently serve unsteered), exit 0
+  otherwise — and either way NOTHING is written: the two-file patch is
+  all-or-nothing (a half-patched tree breaks even unsteered boots).
 - WEIGHTLESS_STEER_PATH set but the vector file is missing/invalid/non-project:
   exit 1, before the model load.
+- Runtime load failures with steering armed (direction width != the model's
+  stream width, no layers matched, direction layers out of range for the
+  model) re-raise: the engine boot dies rather than serving unsteered.
 
 Patches
 /usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/qwen3_next.py
@@ -225,7 +229,10 @@ def _load_gguf_control_vector(path: str) -> dict:
         try:
             idx = int(name[dot + 1:])
         except ValueError:
-            continue
+            raise ValueError(
+                f"{path}: malformed tensor name {name!r} — 'direction.' "
+                f"must be followed by an integer layer id"
+            ) from None
         if idx < 1:
             raise ValueError(
                 f"{path}: {name} is invalid; direction.0 is rejected "
@@ -256,7 +263,10 @@ def _load_gguf_control_vector(path: str) -> dict:
         try:
             want = sorted(int(x) for x in declared.split(",") if x.strip())
         except ValueError:
-            want = None
+            raise ValueError(
+                f"{path}: glp.layer_ids_zero_based is not a comma list of "
+                f"integers: {declared!r}"
+            ) from None
         if want and want != sorted(out):
             raise ValueError(
                 f"{path}: glp.layer_ids_zero_based declares layers "
@@ -335,6 +345,14 @@ LOAD_METHOD_BLOCK = '''\
                 if vec.ndim == 1:
                     vec = vec.unsqueeze(0)
                 vec = vec.reshape(-1, vec.shape[-1])
+                # Width guard (from the capture-validated reference lane): a
+                # direction that does not match this arch's stream width must
+                # fail here, not as an opaque broadcast error at serve time.
+                if vec.shape[-1] != config.hidden_size:
+                    raise RuntimeError(
+                        f"steering vector layer {layer_id} width "
+                        f"{vec.shape[-1]} != {config.hidden_size} (hidden_size)"
+                    )
                 # Rank-k: orthonormalise the basis, otherwise overlapping
                 # components get subtracted more than once.
                 q, _ = torch.linalg.qr(vec.T)
@@ -348,11 +366,22 @@ LOAD_METHOD_BLOCK = '''\
                     device=device, dtype=torch.bfloat16
                 )
 
-            if not self._steer_dirs:
-                logger.warning(
-                    "WEIGHTLESS_STEER_PATH=%s matched no layers; serving unsteered", path
+            if isinstance(raw, dict):
+                out_of_range = sorted(
+                    int(k) for k in raw
+                    if str(k).lstrip("-").isdigit()
+                    and not 0 <= int(k) < config.num_hidden_layers
                 )
-                return
+                if out_of_range:
+                    raise RuntimeError(
+                        f"{path}: direction layers {out_of_range} out of range "
+                        f"for this model ({config.num_hidden_layers} layers)"
+                    )
+            if not self._steer_dirs:
+                raise RuntimeError(
+                    f"WEIGHTLESS_STEER_PATH={path} matched no layers; "
+                    f"refusing to run unsteered"
+                )
 
             k = max(v.shape[0] for v in self._steer_dirs.values())
             stack = torch.zeros(
@@ -375,8 +404,9 @@ LOAD_METHOD_BLOCK = '''\
                 sorted(self._steer_dirs),
             )
         except Exception as exc:
-            logger.error("Qwen steering load failed (%s); serving unsteered", exc)
-            self._steer_dirs = {}
+            # Fail closed: a boot asked for steering must not serve unsteered.
+            logger.error("Qwen steering load failed (%s); failing closed", exc)
+            raise
 '''
 
 # Buffer registration, injected into BOTH Qwen3NextModel.__init__
@@ -611,7 +641,14 @@ def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--check":
         return check_vector()
 
-    rc = 0
+    # Preflight anchors for ALL files before writing any: the two-file patch
+    # is all-or-nothing. A half-patched tree breaks even unsteered boots
+    # (Qwen3_5Model.__init__ would call a _load_steering that was never
+    # injected into qwen3_next.py), so drift anywhere means: steering
+    # requested -> exit 1 with nothing written; steering off -> leave every
+    # file stock.
+    plans = []
+    drifted = {}
     for label, path, patches in FILE_PATCHES:
         src = path.read_text()
         if MARK in src:
@@ -620,24 +657,27 @@ def main() -> int:
 
         missing = [name for name, old, _ in patches if old not in src]
         if missing:
-            msg = (
-                f"[steering-hotfix] anchors not found in {label}: "
-                f"{missing}; refusing to patch"
-            )
-            if steer_requested():
-                print(msg + " (WEIGHTLESS_STEER_PATH is set; failing closed)",
-                      file=sys.stderr)
-                return 1
-            print(msg + " (steering off; leaving the file stock)")
-            rc = 0
+            drifted[label] = missing
             continue
+        plans.append((label, path, patches, src))
 
+    if drifted:
+        msg = (f"[steering-hotfix] anchors not found: {drifted}; "
+               f"refusing to patch (nothing written)")
+        if steer_requested():
+            print(msg + " (WEIGHTLESS_STEER_PATH is set; failing closed)",
+                  file=sys.stderr)
+            return 1
+        print(msg + " (steering off; leaving ALL files stock)")
+        return 0
+
+    for label, path, patches, src in plans:
         for name, old, new in patches:
             assert src.count(old) == 1, f"anchor {name!r} not unique in {label}"
             src = src.replace(old, new, 1)
         path.write_text(src)
         print(f"[steering-hotfix] applied to {path} ({len(patches)} anchors)")
-    return check_vector() if steer_requested() and rc == 0 else rc
+    return check_vector() if steer_requested() else 0
 
 
 if __name__ == "__main__":
