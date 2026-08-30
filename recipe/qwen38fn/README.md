@@ -40,18 +40,18 @@ are rebuilt: pull the image and model on both, copy `.env.qwen38fn.example` to
 ## Steering vector
 
 The shipping artifact is
-**`Qwen3.8-Flash-Next-abliterated-GLP-47-L1-47-a1.gguf`** — per-layer
+**`Qwen3.8-Flash-Next-abliterated-cyber-GLP-47-L1-47-a1.gguf`** — per-layer
 difference-of-means over the widened hyper-connection stream (10240 =
 4×2560), layers 1–47, α=1.0, spec-conformant per
 [`../../spec/GLP.md`](../../spec/GLP.md). Derived 2026-08-26 (8×H100 BF16
 reference) and reproduced on the vLLM lane at cos 0.9931; refusal32 3.1% →
 81.2% at α=1.0 with benign/capability clean. Published at
-[`msuiche/Qwen3.8-Flash-Next-abliterated-GLP-47`](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-GLP-47)
+[`msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47`](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47)
 (gated — fetch with an HF token), at the **root of the HF cache on BOTH
 nodes** so it lands at `/cache/huggingface/` in both containers:
 
 ```sh
-huggingface-cli download msuiche/Qwen3.8-Flash-Next-abliterated-GLP-47 \
+huggingface-cli download msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47 \
   --include "*.gguf" --local-dir ~/.cache/huggingface   # on BOTH nodes
 ```
 
@@ -78,7 +78,7 @@ stack, so the compiled graph is identical for every layer set. No
 python3 ../../scripts/test-qwen38fn-steering-structure.py
 
 # the exact injected loader against the real vector (needs torch)
-WEIGHTLESS_STEER_PATH=$HF_CACHE/Qwen3.8-Flash-Next-abliterated-GLP-47-L1-47-a1.gguf \
+WEIGHTLESS_STEER_PATH=$HF_CACHE/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47-L1-47-a1.gguf \
   python3 ../../patches/hotfix-qwen38fn-steering-projective.py --check
 ```
 

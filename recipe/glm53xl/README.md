@@ -36,10 +36,10 @@ staging — see below).
    same relative path (nodes can't each hold 378 GB).
 5. **The NCCL re-pin lib** at `$HF_CACHE/hub/nccl-2.30.4/libnccl.so.2`
    (LD_PRELOAD'd; their fabric dies on the image's NCCL).
-6. **The vector**: [`msuiche/GLM-5.3-abliterated-GLP-77`](https://huggingface.co/msuiche/GLM-5.3-abliterated-GLP-77)
+6. **The vector**: [`msuiche/GLM-5.3-abliterated-cyber-GLP-77`](https://huggingface.co/msuiche/GLM-5.3-abliterated-cyber-GLP-77)
    (gated) at the root of the HF cache on ALL FOUR nodes:
    ```sh
-   huggingface-cli download msuiche/GLM-5.3-abliterated-GLP-77 \
+   huggingface-cli download msuiche/GLM-5.3-abliterated-cyber-GLP-77 \
      --include "*.gguf" --local-dir ~/.cache/huggingface   # on ALL FOUR nodes
    ```
 

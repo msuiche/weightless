@@ -82,7 +82,7 @@ if [ -n "${WEIGHTLESS_STEER_PATH:-}" ]; then
   fname="$(basename "$WEIGHTLESS_STEER_PATH")"
   [ -f "$HF_CACHE/$fname" ] || {
     echo "Steering requested but $HF_CACHE/$fname is missing on the head." >&2
-    echo "  hf download msuiche/Qwen3.8-Flash-Next-abliterated-GLP-47 --include '*.gguf' --local-dir $HF_CACHE" >&2
+    echo "  hf download msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47 --include '*.gguf' --local-dir $HF_CACHE" >&2
     exit 1
   }
   ssh -o BatchMode=yes -o ConnectTimeout=10 "$WORKER_HOST" "test -f '$WORKER_HF_CACHE/$fname'" || {

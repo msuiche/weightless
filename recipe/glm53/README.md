@@ -123,16 +123,16 @@ per-layer-loop regression; layers=0 means unsteered).
 ## Steering vector
 
 The shipping artifact is
-**`GLM-5.3-Flash-abliterated-GLP-44-L1-44-a2.gguf`** — per-layer
+**`GLM-5.3-Flash-abliterated-cyber-GLP-44-L1-44-a2.gguf`** — per-layer
 difference-of-means over the mHC stream (16384 = 4×4096), layers 1–44,
 α=2.0, spec-conformant per [`../../spec/GLP.md`](../../spec/GLP.md).
 Published at
-[`msuiche/GLM-5.3-Flash-abliterated-GLP-44`](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-GLP-44)
+[`msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44`](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44)
 (gated — fetch with an HF token), at the **root of the HF cache on ALL FOUR
 nodes**:
 
 ```sh
-huggingface-cli download msuiche/GLM-5.3-Flash-abliterated-GLP-44 \
+huggingface-cli download msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44 \
   --include "*.gguf" --local-dir ~/.cache/huggingface   # on ALL FOUR nodes
 ```
 
@@ -163,7 +163,7 @@ apply (both serving wrappers delegate to it; no skip-parent trap).
 python3 ../../scripts/test-glm53-steering-structure.py
 
 # the exact injected loader against the real vector (needs torch)
-WEIGHTLESS_STEER_PATH=$HF_CACHE/GLM-5.3-Flash-abliterated-GLP-44-L1-44-a2.gguf \
+WEIGHTLESS_STEER_PATH=$HF_CACHE/GLM-5.3-Flash-abliterated-cyber-GLP-44-L1-44-a2.gguf \
   python3 ../../patches/hotfix-glm53-steering-projective.py --check
 ```
 

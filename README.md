@@ -110,9 +110,9 @@ parked until the multi-node stack is down.
 |---|---|---|---|---|
 | **DSV4 TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-0731, NVFP4 (166.9 GB) | projective cvec, live on 29 layers | **live** — `recipe/anemll/` |
 | **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | per-layer cvec, L10–58 at α=1.0 ([shipping artifact](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49)) | **hardware-validated** — `recipe/qwen/`; stock 4/32, GGUF 24/32, LoRA 24/32 on refusal32 (2026-08-22) |
-| **Qwen3.8-Flash-Next TP=2** | both Sparks over RoCE | Qwen3.8-Flash-Next-NVFP4 (~135 GB), day-0 image | per-layer cvec, L1–47 at α=1.0 ([GLP-47](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-GLP-47)) | **wired, structure-tested** — `recipe/qwen38fn/`; vector eval 81.2% refusal32 at α=1.0 (vLLM lane, cos 0.9931 vs HF) |
-| **GLM-5.3-Flash TP=4** | **four** Sparks over RoCE | GLM-5.3-Flash-NVFP4 (~50 GiB/rank), sm121-v8 patched day-0 image | per-layer cvec, L1–44 at α=2.0 ([GLP-44](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-GLP-44)) | **hardware-validated stack** — `recipe/glm53/`; 1M context (3.77M-token fp8 KV pool), 36 tok/s freeform → 53–64 tok/s structured/agentic (MTP acceptance is regime-dependent); vector eval 65.6% refusal32 at α=2.0; **α≥2.5 garbles this model** |
-| **GLM-5.3 743B TP=4** | **four** Sparks over RoCE | GLM-5.3 Int4-Int8Mix (~95.5 GiB/rank), tonyd2wild's stack (local image + sm12x overlay) | per-layer cvec, L1–77 at α=1.0 ([GLP-77](https://huggingface.co/msuiche/GLM-5.3-abliterated-GLP-77)) | **wired, structure-tested — NOT hardware-validated** — `recipe/glm53xl/`; vector eval (8×H100, full-length): cyber32 32/32, refusal32 12/32 (37.5%; 6/32 answer-audited) at α=1.0, null arm = stock; **refusal on the 753B is much stickier than Flash — α>1 makes it WORSE** |
+| **Qwen3.8-Flash-Next TP=2** | both Sparks over RoCE | Qwen3.8-Flash-Next-NVFP4 (~135 GB), day-0 image | per-layer cvec, L1–47 at α=1.0 ([GLP-47](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47)) | **wired, structure-tested** — `recipe/qwen38fn/`; vector eval 81.2% refusal32 at α=1.0 (vLLM lane, cos 0.9931 vs HF) |
+| **GLM-5.3-Flash TP=4** | **four** Sparks over RoCE | GLM-5.3-Flash-NVFP4 (~50 GiB/rank), sm121-v8 patched day-0 image | per-layer cvec, L1–44 at α=2.0 ([GLP-44](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44)) | **hardware-validated stack** — `recipe/glm53/`; 1M context (3.77M-token fp8 KV pool), 36 tok/s freeform → 53–64 tok/s structured/agentic (MTP acceptance is regime-dependent); vector eval 65.6% refusal32 at α=2.0; **α≥2.5 garbles this model** |
+| **GLM-5.3 743B TP=4** | **four** Sparks over RoCE | GLM-5.3 Int4-Int8Mix (~95.5 GiB/rank), tonyd2wild's stack (local image + sm12x overlay) | per-layer cvec, L1–77 at α=1.0 ([GLP-77](https://huggingface.co/msuiche/GLM-5.3-abliterated-cyber-GLP-77)) | **wired, structure-tested — NOT hardware-validated** — `recipe/glm53xl/`; vector eval (8×H100, full-length): cyber32 32/32, refusal32 12/32 (37.5%; 6/32 answer-audited) at α=1.0, null arm = stock; **refusal on the 753B is much stickier than Flash — α>1 makes it WORSE** |
 
 **GLM-5.3-Flash needs 4 nodes — and a patched image.** At TP4 the NVFP4
 quant is ~50 GiB of weights per 128 GB node, which is what makes the
@@ -220,7 +220,7 @@ verified against their pinned checkpoint revisions.
   hardware (both 24/32 refusal32, 2026-08-22), but is still unscored on the
   cyber holdout and is valid only for checkpoint revision `1d4bf0f2ff60`
   (`lora_A` embeds `W`). Wiring: `recipe/qwen/README.md`.
-- [`msuiche/Qwen3.8-Flash-Next-abliterated-GLP-47`](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-GLP-47)
+- [`msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47`](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47)
   — **Qwen3.8-Flash-Next (`qwen4_exp`), GLP-47, day-0.** Per-layer
   difference-of-means over the widened hyper-connection stream (10240 =
   4×2560), layers 1–47, α=1.0. Derived 2026-08-26 on Modal (8×H100, BF16
@@ -230,7 +230,7 @@ verified against their pinned checkpoint revisions.
   engine-independent: a vLLM-lane capture reproduces it at cos 0.9931.
   Serving lane: `recipe/qwen38fn/` (TP=2 on 2x Spark, day-0 image; the
   hotfix steers the materialized hyper-connection stream).
-- [`msuiche/GLM-5.3-Flash-abliterated-GLP-44`](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-GLP-44)
+- [`msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44`](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44)
   — **GLM-5.3-Flash (`glm5_next`), GLP-44, day-0.** Per-layer dom over the
   Sinkhorn hyper-connection stream (16384 = 4×4096), layers 1–44, α=2.0.
   Derived from the FP8-native canonical checkpoint (snapshot `3f1971b7`).
@@ -239,7 +239,7 @@ verified against their pinned checkpoint revisions.
   Serving lane: `recipe/glm53/` (TP=4 on **4x Spark**, NVFP4 quant on the
   sm121-v8 patched day-0 image; the hotfix steers the materialized mHC
   stream).
-- [`msuiche/GLM-5.3-abliterated-GLP-77`](https://huggingface.co/msuiche/GLM-5.3-abliterated-GLP-77)
+- [`msuiche/GLM-5.3-abliterated-cyber-GLP-77`](https://huggingface.co/msuiche/GLM-5.3-abliterated-cyber-GLP-77)
   — **GLM-5.3 743B (`glm_moe_dsa`), GLP-77.** Per-layer dom over the plain
   residual stream (6144 — no hyperconnection widening on this arch), layers
   1–77, α=1.0. Derived 2026-08-30 on the NVFP4 deployment (8×H100, vLLM

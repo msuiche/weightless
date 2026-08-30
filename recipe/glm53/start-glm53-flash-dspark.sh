@@ -166,7 +166,7 @@ if [ -n "${WEIGHTLESS_STEER_PATH:-}" ]; then
   fname="$(basename "$WEIGHTLESS_STEER_PATH")"
   [ -f "$HF_CACHE/$fname" ] || {
     echo "Steering requested but $HF_CACHE/$fname is missing on the head." >&2
-    echo "  hf download msuiche/GLM-5.3-Flash-abliterated-GLP-44 --include '*.gguf' --local-dir $HF_CACHE" >&2
+    echo "  hf download msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44 --include '*.gguf' --local-dir $HF_CACHE" >&2
     exit 1
   }
   for w in "${WORKERS[@]}"; do
