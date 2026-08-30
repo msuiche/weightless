@@ -128,7 +128,8 @@ same four nodes plus tonyd2wild's Int4-Int8Mix weights (377.4 GiB) and stack
 the anchor test (the hotfix stages fail-closed before GPU time). On x86
 SM120 instead of Sparks, brandonmusic's EXL3/B12X build
 (`brandonmusic/GLM-5.3-Flash-tr3-4bpw`, custom vLLM fork) takes the same
-GLP-44 hotfix mechanics — see `recipe/glm53/README.md` (unwired, unmeasured).
+GLP-44 hotfix mechanics — see `recipe/glm53/README.md` (runtime-validated
+on 2x RTX PRO 6000: refusal32 1→15/32, cyber32 14→31/32).
 
 **Single-Spark DSV4 (EXL3 3.0bpw + REAP-K216): evaluated and rejected.**
 The full NVFP4 checkpoint (166.9 GB) cannot fit one Spark, so single-node

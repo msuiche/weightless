@@ -349,8 +349,11 @@ LOAD_METHOD_BLOCK = '''\
                         f"(mhc_num_residual_streams*hidden_size)"
                     )
                 # Rank-k: orthonormalise the basis, otherwise overlapping
-                # components get subtracted more than once.
-                q, _ = torch.linalg.qr(vec.T)
+                # components get subtracted more than once. Run the QR on the
+                # target device (cuSOLVER): NGC torch builds can ship without
+                # CPU LAPACK, and a CPU-side qr() dies there (seen on the
+                # verdictai EXL3 image, torch 2.13.0).
+                q, _ = torch.linalg.qr(vec.T.to(device))
                 vec = q.T[: vec.shape[0]]
                 # Both of these are per layer and must stay inside this loop.
                 # A previous revision (on the DSV4 lane) dedented them out,

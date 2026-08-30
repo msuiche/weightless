@@ -233,16 +233,21 @@ file extracted from the published image (vendored:
 launcher env (`--moe-backend b12x`, `--attention-backend B12X_MLA_SPARSE`,
 DCP flags) stays as shipped; steering is orthogonal to all of it.
 
-**Status: wired, anchors verified against the published image's model file —
-not boot-validated.** That image is x86 SM120 — it does not run on the
-aarch64 GB10 Sparks this lane targets, and we had no SM120 on the bench when
-this was written (2026-08-30). Confirmed SM120-only: the image's
-`exllamav3_ext` .so carries **sm_120a cubins exclusively, no PTX fallback**
-(checked the published layer blobs), so it will not boot on H100/B200 — the
-runtime test needs real SM120 (2x RTX PRO 6000), not a datacenter swap.
-Direction transfer to a 4bpw EXL3 quant is expected (NVFP4 transfer is
-validated) but unmeasured — measure before you rely on it. The hotfix is
-fail-closed, so a first boot on his stack either steers or refuses.
+**Status: runtime-validated 2026-08-30 on real SM120** (Vast.ai 2x RTX PRO
+6000 Max-Q, verdictai v84 language-only image, eager + gmu 0.95). Anchors
+applied exactly once against the image's model file (md5-identical to the
+vendored reference); steered boot logged on both TP workers. Measured with
+GLP-44 α=2.0, greedy, 1400 tokens (n=32/cell): refusal32 1/32 → 15/32,
+cyber32 14/32 → 31/32, benign32 32/32 → 31/32, zero garbled — direction
+transfer to uniform-K4 EXL3 confirmed, somewhat attenuated vs the NVFP4
+reference on the contrast suite. Two serving notes from that run: the
+image's NGC torch 2.13.0 has no CPU LAPACK, so the hotfix's basis QR runs
+on the target device (fixed in the patch); and brandonmusic's published
+`gmu 0.986 + CUDA graphs` has no stable memory point at 8 concurrent seqs
+(MTP capture OOM at 0.986, empty KV pool at 0.95) — the run used
+`--enforce-eager` + gmu 0.95, KV pool ~192K tokens, ~2.5 min boot.
+The image remains x86 SM120-only (sm_120a cubins, no PTX) — it will not
+boot on H100/B200 or the aarch64 GB10 Sparks.
 
 ## Credits
 
