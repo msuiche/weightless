@@ -146,6 +146,19 @@ LANES = [
          start_script="start-glm53-flash-dspark.sh",
          hotfix="hotfix-glm53-steering-projective.py",
          port=8080),
+    dict(name="GLM-5.3 743B TP=4 serving — 4x DGX Spark, Int4-Int8Mix recipe",
+         example="recipe/glm53xl/.env.glm53xl.example",
+         target="recipe/glm53xl/.env.glm53xl",
+         steer_key="WEIGHTLESS_STEER_PATH",
+         structure_test="scripts/test-glm53xl-steering-structure.py",
+         vector_repo="msuiche/GLM-5.3-abliterated-GLP-77",
+         steer_modes=None,
+         nodes=4,
+         remote_dir="dspark-glm53xl",
+         recipe_files=[".env.glm53xl", "start-glm53xl-dspark.sh"],
+         start_script="start-glm53xl-dspark.sh",
+         hotfix="hotfix-glm53xl-steering-projective.py",
+         port=8081),
 ]
 PLACEHOLDER_HINTS = {
     "head-ip": ("Head node IP or hostname", ""),
@@ -449,8 +462,11 @@ DEPLOY_MAP = {
     3: [("recipe/glm53/.env.glm53", "dspark-glm53/.env.glm53"),
         ("recipe/glm53/start-glm53-flash-dspark.sh", "dspark-glm53/start-glm53-flash-dspark.sh"),
         ("patches/hotfix-glm53-steering-projective.py", "dspark-glm53/patches/hotfix-glm53-steering-projective.py")],
+    4: [("recipe/glm53xl/.env.glm53xl", "dspark-glm53xl/.env.glm53xl"),
+        ("recipe/glm53xl/start-glm53xl-dspark.sh", "dspark-glm53xl/start-glm53xl-dspark.sh"),
+        ("patches/hotfix-glm53xl-steering-projective.py", "dspark-glm53xl/patches/hotfix-glm53xl-steering-projective.py")],
 }
-CONTAINER_GREP = {0: "deepseek", 1: "qwen38", 2: "qwen38fn", 3: "glm53"}
+CONTAINER_GREP = {0: "deepseek", 1: "qwen38", 2: "qwen38fn", 3: "glm53", 4: "glm5xl"}
 
 
 def remote_preflight(io, lane_idx, values, ssh_host):

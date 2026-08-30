@@ -40,3 +40,22 @@ image's `vllm/models/qwen3_8_flash_next/nvidia/ple_layer.py` (md5
 the RadixArk NVFP4 checkpoint's FP8-serialized PLE N-gram table (found during
 Modal B200 validation 2026-08-29: without it, NVFP4 serving dies on the
 unknown parameter `ngram_embedding.weight_scale`).
+
+`deepseek_v2_glm53xl.py` is a byte-identical copy of the GB10 kernel-overlay
+`deepseek_v2.py` that actually serves the GLM-5.3 743B lane — vLLM
+0.23.1rc1-era `deepseek_v2.py` plus the `GlmMoeDsaForCausalLM` class
+(tonyd2wild's stack bind-mounts it over the image's file at
+`/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/deepseek_v2.py`):
+
+```
+https://raw.githubusercontent.com/tonyd2wild/GLM-5.2-QuantTrio-200K-4x-DGX-Spark--36tok-s/main/kernels/deepseek_v2.py
+```
+
+(md5 `7fc0271cb6587dcd69fd32a0ec660b32`; fetched 2026-08-30 from that repo's
+main). This is the reference for `../hotfix-glm53xl-steering-projective.py`.
+NOTE: our GLP-77 capture/steering validation ran against vLLM v0.28.0's
+`deepseek_v2.py` (refusal-research
+experiments/20260829-glm53-flagship/upstream_src/deepseek_v2_v0280.py) — the
+anchor strings happen to be identical in both, but the lane hotfix anchors on
+THIS file because it is what tonyd2wild's image will execute. On an overlay
+bump, re-fetch and diff.
