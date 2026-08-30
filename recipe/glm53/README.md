@@ -167,6 +167,29 @@ WEIGHTLESS_STEER_PATH=$HF_CACHE/GLM-5.3-Flash-abliterated-cyber-GLP-44-L1-44-a2.
   python3 ../../patches/hotfix-glm53-steering-projective.py --check
 ```
 
+## EXL/3 / B12X variant (x86 SM120) — brandonmusic's build
+
+[`brandonmusic/GLM-5.3-Flash-tr3-4bpw`](https://huggingface.co/brandonmusic/GLM-5.3-Flash-tr3-4bpw)
+is the same GLM-5.3-Flash base as a uniform-K4 EXL3 quant, served by a
+**custom vLLM/B12X fork** (`verdictai/glm53-flash-exl3-k4:*-v84`, TP2/EP2/DCP2
+on 2x RTX PRO 6000, NVFP4 MLA KV, DFlash2 or built-in MTP3) — not TabbyAPI,
+not stock vLLM. Because it is vLLM under the hood, the GLP-44 hotfix applies
+with the same mechanics as this lane: mount
+`patches/hotfix-glm53-steering-projective.py` into the container, run it
+before `vllm serve` (set `WEIGHTLESS_STEER_PATH` +
+`WEIGHTLESS_STEER_ALPHA=2.0`; `WEIGHTLESS_STEERING_MODEL_PY` overrides the
+anchor target if the fork keeps `glm5_next` at a different path). His
+launcher env (`--moe-backend b12x`, `--attention-backend B12X_MLA_SPARSE`,
+DCP flags) stays as shipped; steering is orthogonal to all of it.
+
+**Status: unwired here.** That image is x86 SM120 — it does not run on the
+aarch64 GB10 Sparks this lane targets, and we had no SM120 on the bench when
+this was written (2026-08-30). The hotfix is fail-closed, so a first boot on
+his stack either steers or refuses; anchor drift against his fork's model
+file is the thing to check. Direction transfer to a 4bpw EXL3 quant is
+expected (NVFP4 transfer is validated) but unmeasured — measure before you
+rely on it.
+
 ## Credits
 
 - Model: [zai-org/GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash);

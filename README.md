@@ -125,7 +125,10 @@ dies five different ways on GB10; the lane requires the sm121-v8 patch stack
 cannot boot until two more are racked and cabled. The 743B lane needs the
 same four nodes plus tonyd2wild's Int4-Int8Mix weights (377.4 GiB) and stack
 (image + kernel overlay — `recipe/glm53xl/README.md`); its first real boot is
-the anchor test (the hotfix stages fail-closed before GPU time).
+the anchor test (the hotfix stages fail-closed before GPU time). On x86
+SM120 instead of Sparks, brandonmusic's EXL3/B12X build
+(`brandonmusic/GLM-5.3-Flash-tr3-4bpw`, custom vLLM fork) takes the same
+GLP-44 hotfix mechanics — see `recipe/glm53/README.md` (unwired, unmeasured).
 
 **Single-Spark DSV4 (EXL3 3.0bpw + REAP-K216): evaluated and rejected.**
 The full NVFP4 checkpoint (166.9 GB) cannot fit one Spark, so single-node
