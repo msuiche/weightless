@@ -190,12 +190,13 @@ DCP flags) stays as shipped; steering is orthogonal to all of it.
 **Status: wired, anchors verified against the published image's model file —
 not boot-validated.** That image is x86 SM120 — it does not run on the
 aarch64 GB10 Sparks this lane targets, and we had no SM120 on the bench when
-this was written (2026-08-30). Remaining unvalidated items: (a) the image is
-compiled `CMAKE_CUDA_ARCHITECTURES=120a` with FlashInfer `12.0f`, so it is
-likely SM120-only (B200 probe planned); (b) direction transfer to a 4bpw
-EXL3 quant is expected (NVFP4 transfer is validated) but unmeasured —
-measure before you rely on it. The hotfix is fail-closed, so a first boot on
-his stack either steers or refuses.
+this was written (2026-08-30). Confirmed SM120-only: the image's
+`exllamav3_ext` .so carries **sm_120a cubins exclusively, no PTX fallback**
+(checked the published layer blobs), so it will not boot on H100/B200 — the
+runtime test needs real SM120 (2x RTX PRO 6000), not a datacenter swap.
+Direction transfer to a 4bpw EXL3 quant is expected (NVFP4 transfer is
+validated) but unmeasured — measure before you rely on it. The hotfix is
+fail-closed, so a first boot on his stack either steers or refuses.
 
 ## Credits
 
