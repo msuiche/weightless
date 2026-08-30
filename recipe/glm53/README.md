@@ -174,21 +174,28 @@ is the same GLM-5.3-Flash base as a uniform-K4 EXL3 quant, served by a
 **custom vLLM/B12X fork** (`verdictai/glm53-flash-exl3-k4:*-v84`, TP2/EP2/DCP2
 on 2x RTX PRO 6000, NVFP4 MLA KV, DFlash2 or built-in MTP3) — not TabbyAPI,
 not stock vLLM. Because it is vLLM under the hood, the GLP-44 hotfix applies
-with the same mechanics as this lane: mount
-`patches/hotfix-glm53-steering-projective.py` into the container, run it
-before `vllm serve` (set `WEIGHTLESS_STEER_PATH` +
-`WEIGHTLESS_STEER_ALPHA=2.0`; `WEIGHTLESS_STEERING_MODEL_PY` overrides the
-anchor target if the fork keeps `glm5_next` at a different path). His
+with the same mechanics as this lane — but with a **variant patch**:
+`../../patches/hotfix-glm53-exl3-steering-projective.py`. The fork's
+`vllm/models/glm5next/nvidia/model.py` (at `/opt/infernal-invocation/vllm`
+on PYTHONPATH) added a DFlash aux-hidden-state branch, so the stock single
+decoder loop is two loops there; the variant patches both (in the aux loop,
+steering lands after the aux capture, so DFlash features are pre-steering
+and the stream continues steered). Anchors are verified against the model
+file extracted from the published image (vendored:
+`../../patches/reference/glm5next_b12x_exl3.py`, from OCI layer
+`sha256:7f03081e…`). His
 launcher env (`--moe-backend b12x`, `--attention-backend B12X_MLA_SPARSE`,
 DCP flags) stays as shipped; steering is orthogonal to all of it.
 
-**Status: unwired here.** That image is x86 SM120 — it does not run on the
+**Status: wired, anchors verified against the published image's model file —
+not boot-validated.** That image is x86 SM120 — it does not run on the
 aarch64 GB10 Sparks this lane targets, and we had no SM120 on the bench when
-this was written (2026-08-30). The hotfix is fail-closed, so a first boot on
-his stack either steers or refuses; anchor drift against his fork's model
-file is the thing to check. Direction transfer to a 4bpw EXL3 quant is
-expected (NVFP4 transfer is validated) but unmeasured — measure before you
-rely on it.
+this was written (2026-08-30). Remaining unvalidated items: (a) the image is
+compiled `CMAKE_CUDA_ARCHITECTURES=120a` with FlashInfer `12.0f`, so it is
+likely SM120-only (B200 probe planned); (b) direction transfer to a 4bpw
+EXL3 quant is expected (NVFP4 transfer is validated) but unmeasured —
+measure before you rely on it. The hotfix is fail-closed, so a first boot on
+his stack either steers or refuses.
 
 ## Credits
 

@@ -59,3 +59,16 @@ experiments/20260829-glm53-flagship/upstream_src/deepseek_v2_v0280.py) — the
 anchor strings happen to be identical in both, but the lane hotfix anchors on
 THIS file because it is what tonyd2wild's image will execute. On an overlay
 bump, re-fetch and diff.
+
+`glm5next_b12x_exl3.py` is a byte-identical copy of the GLM-5.3-Flash model
+file from brandonmusic's EXL3/B12X fork image
+(`verdictai/glm53-flash-exl3-k4:r19-sm120-tp2-ep2-dcp2-v84-*`), extracted
+2026-08-30 from OCI layer
+`sha256:7f03081ec4e66729470668e9b4ff5825e57ea07f7bcae650db72763445400cdb`
+(the fork lives at `/opt/infernal-invocation/vllm` on PYTHONPATH; the file is
+`vllm/models/glm5next/nvidia/model.py` in it):
+
+(md5 `fc6efc65cddc2f75ea6c6e6d8c9afc31`). This is the reference for
+`../hotfix-glm53-exl3-steering-projective.py`. The fork adds a DFlash
+aux-hidden-state branch — TWO decoder loops, nested one level deeper than the
+day-0 file — which is why the EXL3 variant has two forward anchors.

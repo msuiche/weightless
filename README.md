@@ -154,12 +154,14 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `patches/hotfix-qwen38fn-steering-projective.py` | the same steering for the Flash-Next lane: patches the day-0 image's `vllm/models/qwen3_8_flash_next/nvidia/model.py`, steers the materialized hyper-connection stream (10240 = 4×2560) |
 | `patches/hotfix-glm53-steering-projective.py` | the same steering for the GLM-5.3 lane: patches `vllm/models/glm5next/nvidia/model.py`, steers the materialized mHC stream (16384 = 4×4096); the last layer's in-decoder contract is deferred so L44 is covered |
 | `patches/hotfix-glm53xl-steering-projective.py` | the same steering for the GLM-5.3 743B lane: patches the overlay's `deepseek_v2.py` copy at staging (the mount is read-only), steers `hidden_states + residual` (decomposed convention, no HC widening) |
+| `patches/hotfix-glm53-exl3-steering-projective.py` | the GLM-5.3-Flash steering for brandonmusic's EXL3/B12X fork image (SM120): the fork's DFlash branch splits the decoder loop in two — the variant patches both (aux loop steers after the aux capture, pre-steer features) |
+| `patches/reference/glm5next_b12x_exl3.py` | the EXL3 structure test's reference — the model file extracted from the published `verdictai/glm53-flash-exl3-k4` image (OCI layer sha256:7f03081e…) |
 | `patches/reference/deepseek_v2_glm53xl.py` | the 743B structure test's reference — tonyd2wild's kernel-overlay `deepseek_v2.py` (the file his stack actually serves); same anchors as vLLM v0.28.0 |
 | `patches/reference/qwen3_8_flash_next.py` | byte-identical copy of the day-0 image's model file — the Flash-Next structure test's reference (the `../vllm` checkout predates the arch) |
 | `patches/reference/glm5next.py` | the GLM-5.3 structure test's reference — from the day-0 PR source (vllm-project/vllm#53906); re-vendor against the image on first deploy |
 | `patches/0001-*.patch`, `0002-*.patch` | the hook + its vLLM-side test as git patches against v0.27.0 (fallback stack) |
 | `recipe/` (top level) | retired v027 stack: Dockerfiles + compose |
-| `scripts/` | structural guard tests for the steering patches: `test-dsv4-hotfix-structure.py`, `test-qwen-steering-structure.py`, `test-qwen38fn-steering-structure.py`, `test-glm53-steering-structure.py`, `test-glm53xl-steering-structure.py`, `test-steering-structure.py` (retired v027 overlay) |
+| `scripts/` | structural guard tests for the steering patches: `test-dsv4-hotfix-structure.py`, `test-qwen-steering-structure.py`, `test-qwen38fn-steering-structure.py`, `test-glm53-steering-structure.py`, `test-glm53xl-steering-structure.py`, `test-glm53-exl3-steering-structure.py`, `test-steering-structure.py` (retired v027 overlay) |
 | `tests/` | endpoint smoke tests: endpoint / chat / tool-call / headless omp agent loop — `tests/README.md` |
 | `spec/GLP.md` | the GLP format spec: the `glp.mode` contract, layer-id mapping, why an additive reader must refuse the file |
 | `BENCHMARK.md` | every serving measurement, with shapes stated |
