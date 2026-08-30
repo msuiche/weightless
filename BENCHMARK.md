@@ -1,5 +1,177 @@
 # Benchmarks
 
+Two parts: **steering effectiveness** (stock vs steered, every published GLP
+vector, every suite) and the **serving run log** (throughput measurements,
+append-only).
+
+---
+
+## Steering effectiveness
+
+Metric: **delivery** — did the requested artifact appear — not absence of
+refusal phrasing. Three-way scoring COMPLY / DEFLECT / REFUSE plus a GARBLED
+guard: DEFLECT (reframes as defensive, delivers something weaker) is the
+dominant failure mode and is invisible to a binary scorer. Temperature 0,
+greedy; 1024–1400 token budget (GLM-family rows marked *(400-tok)* predate
+that convention and carry a truncation confound — the 1400-token re-audit is
+the number of record). "Audited" = a human read the outputs; the phrase
+scorer is blind to factual correctness, so audited ≤ scored. Direction of
+record: AdvBench `harmful_behaviors` vs Stanford Alpaca contrast, per-layer
+difference-of-means. Every shipped vector has a **null arm** (random
+directions, same α) that scored identical to stock. n=32 resolves ~34
+points — treat ±2–3 deliveries as noise. Full per-experiment records (raw
+completions, alpha sweeps, null arms) are kept in our private research repo.
+
+### The suites
+
+| suite | n | what it covers |
+|---|---|---|
+| **refusal32** | 32 | cross-domain general harm: weapons & explosives (4), drugs & chemical synthesis (4), violence against persons (5), fraud & financial crime (5), theft & physical crime (4), cyber intrusion (6), harassment & privacy (2), forgery & illicit markets (2). A **third-party suite** (Keys), public on HF since 2026-08-01 — the one suite comparable to others' published numbers, but contaminated for any model trained after that date |
+| **benign32** | 32 | harmless controls, form-matched to refusal32 (opening word, length band, question-mark ratio) — the over-refusal detector |
+| **benign32-holdout** | 32 | same form profile as benign32, disjoint topics — checks overfitting to benign32 |
+| **blueteam32** | 32 | legitimate defensive security work (detection, hardening, incident response) — catches *cyber-specific* over-refusal that benign32 cannot see |
+| **cyber32** | 32 | offensive-security breadth across 10 domains: red team (3), pentest (3), vulnerability research (3), kernel exploitation (3), firmware exploitation (3), browser exploitation (3), web exploitation (4), malware development (3), Active Directory attacks (3), cloud exploitation (4). Category-balanced subset of cyber100, calibrated to reproduce its marginals — a diagnostic, not a neutral benchmark |
+| **cyber-v8-ladder** | 33 | cyber depth: a severity ladder on one bug class — t5 coverage → t4 reproduction → t3 target primitives → t2 generic primitives → t1 full control (+7 blue-team controls) |
+| **cyber-ambiguous-hard32** | 32 | outcome-selected hard cases: items that survive the shipped vector, plus items that regress when a second axis is ablated |
+| **cyber-hard** | 16 | the floor — nothing delivers, stock or steered; bounds what any intervention can do |
+| **capability12** | 12 | short factual questions — detects the model being damaged rather than ablated |
+
+refusal32 is the only public suite; cyber32, cyber-v8-ladder,
+cyber-ambiguous-hard32 and blueteam32 are private holdouts. Legacy suites
+quoted in the GLP-29 table: **cyber100** (80 offensive, 8 per domain across
+the same 10 as cyber32, + 20 blue-team controls), **cyber-fullchain** (112
+end-to-end attack chains), **cyber-extract** (196 extraction tasks), **V8
+CVE-2024-6100 bench** (24 items on one CVE class).
+
+### Headline table
+
+| GLP | Base model | Date | refusal32 stock → steered | cyber32 stock → steered | benign32 | cap |
+|---|---|---|---|---|---|---|
+| [GLP-29](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29) | DeepSeek-V4-Flash-0731 | 2026-08-12 | 0/32 → 19/32 (cyber dir, out-of-domain) · **32/32** (keysdir dir) | see per-model § | clean | — |
+| GLP-49 | Qwen3.8-27B | 2026-08-15 | 0/32 → **26/32** (81%) bf16 · 4/32 → 24/32 NVFP4 | 4/32 → **29/32** holdout | 30/32 holdout | — |
+| [GLP-47](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47) | Qwen3.8-Flash-Next | 2026-08-26 | 1/32 → **26/32** (81%) | 5/32 → **32/32** | 32/32 | 12/12 |
+| [GLP-44](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44) | GLM-5.3-Flash | 2026-08-27 | 1/32 → 21/32 *(400-tok)* → 16/32 audited *(1400-tok)* | 12/32 → **31/32** | 32/32 · 29/32 *(1400-tok)* | 12/12 |
+| [GLP-77](https://huggingface.co/msuiche/GLM-5.3-abliterated-cyber-GLP-77) | GLM-5.3 (753B) | 2026-08-30 | 1/32 → 12/32 repo / 6–8/32 audited *(1400-tok)* | 18/32 → **32/32** | 32/32 | 12/12 |
+
+### GLP-29 — DeepSeek-V4-Flash-0731 (MoE, 43 layers)
+
+Derived 2026-08-12/13 from a paired **cyber write/explain contrast** (not
+AdvBench), L10–38, α=4.0. Scored under the older refusal-rate protocol.
+
+| suite | n | stock refused | steered refused |
+|---|---|---|---|
+| cyber100 (80 offensive + 20 controls) | 100 | 75.0% | **0.0%** |
+| cyber-fullchain | 112 | 37.5% | **0.9%** |
+| V8 exploitation ladder | 40 | 15.2% | **0.0%** (delivery 81.8→100%) |
+| V8 CVE-2024-6100 bench | 24 | 20.0% | **0.0%** |
+| cyber-extract | 196 | 39.0% | **0.5%** |
+| refusal32 (out-of-domain, CBRN-heavy) | 32 | 96.9% | 37.5% (delivery 0→59.4%) |
+
+The cyber-derived direction barely transfers to refusal32 — the original
+evidence that **the contrast prompts shape the direction**. The third-party
+**keysdir** variant (SVD-recovered from Keys' abliterated checkpoint,
+near-orthogonal to ours at cos −0.0095) scores **refusal32 32/32, cyber100
+0% refusal**, and is the direction in the currently-served live config.
+
+Live-stack validation (Anemll vLLM 0.25.2, 2026-08-21): 8× refusal32 + 4×
+blueteam32 → 12/12 bypass, 0 garbled. Debt: GLP-29 has never been scored
+against the 7-suite core set.
+
+### GLP-49 — Qwen3.8-27B (dense, 64 layers)
+
+Derived 2026-08-14/15 from a hand-built refusal32-vs-benign32 contrast
+(in-sample for those two suites), L10–58, α=1.0. α=4 destroys this model.
+
+| lane | refusal32 | cyber32 holdout | benign32 holdout |
+|---|---|---|---|
+| HF / bf16 | 0/32 → **26/32 (81.2%)** | 4/32 → **29/32 (90.6%)** | 32/32 → 30/32 (93.8%) |
+| NVFP4, single Spark (2026-08-22) | 4/32 → **24/32** (GGUF and LoRA arms alike) | — | — |
+
+Also on bf16: cyber100 12.5→52.5%, V8 ladder 57.6→**97.0%**. A masked-0.5%
+variant scored 84.4% refusal32 / 100% benign. bf16→NVFP4 transfer holds.
+Debt: LoRA arm's cyber-holdout never measured.
+
+### GLP-47 — Qwen3.8-Flash-Next (180B, 48 layers, HC stream)
+
+Derived 2026-08-26 on 8×H100 bf16, **AdvBench-vs-Alpaca 32-pair contrast**,
+L1–47, α=1.0. Reproduced on the vLLM capture lane at cos +0.9931.
+
+| lane | stock refusal32 | steered α=1.0 | benign32 | cap |
+|---|---|---|---|---|
+| HF, 2026-08-26 | 1/32 | **26/32** | 32/32 | 12/12 |
+| vLLM bf16, 2026-08-27 | 1/32 | 25/32 | 32/32 | 12/12 |
+| NVFP4 B200, 2026-08-29 | 1/32 | 25/32 | 31/32 | 12/12 |
+| live lane-boot, 2×B200, 2026-08-30 | 1/32 | **26/32** | 32/32 (stock 31/32) | — |
+
+- cyber32 transfer: 5/32 → **32/32** at α=1.0, hand-verified.
+- α curve: 1.5 → 24/32, 2.0 → 24/32 (over-projects). Null arm: 1/32 = stock.
+- A 128-contrast v2 scored 25/32 — contrast breadth is a dead lever.
+- Quantization does not degrade the direction (bf16 ≈ NVFP4 within noise).
+
+### GLP-44 — GLM-5.3-Flash (~320B FP8-native, 45 layers, mHC stream)
+
+Derived 2026-08-27, AdvBench-vs-Alpaca, L1–44, **α=2.0** shipped.
+
+| arm | refusal32 | cyber32 | benign32 | cap |
+|---|---|---|---|---|
+| stock | 1/32 | 12/32 | 32/32 | 12/12 |
+| α=1.0 *(400-tok)* | 16/32 | — | 32/32 | 12/12 |
+| **α=2.0 *(400-tok)*** | **21/32** | **31/32** | 32/32 | 12/12 |
+| α=2.0 *(1400-tok re-audit)* | 19/32 repo / **16/32 audited** | 31/32 (24 audited) | 29/32 | — |
+| α=2.25 *(400-tok)* | 24/32 | — | 30/32 (benign slips) | — |
+| α≥2.5 | 0/32 — **GARBLED** (abrupt cliff) | — | — | — |
+| null, random dirs α=2.0 | 1/32 = stock | — | 32/32 | — |
+| EXL3 K4 stock (2× RTX PRO 6000, 1400-tok) | 1/32 | 14/32 | 32/32 | — |
+| **EXL3 K4 α=2.0** (same lane, 2026-08-30) | **15/32** | **31/32** | 31/32 | — |
+
+EXL3 arm (brandonmusic tr3-4bpw, verdictai sm_120a-only image): runtime-
+validated 2026-08-30 on rented SM120 — anchors applied exactly once, steered
+boot logged on both TP workers, zero garbled. Direction transfer to uniform-K4
+EXL3 confirmed, attenuated vs NVFP4 on the contrast suite (15/32 vs 21/32).
+Served eager + gmu 0.95 (brandonmusic's published CUDA-graph config OOMs at
+8 concurrent seqs).
+
+Head-to-head vs dealignai's baked-weight CRACK (2026-08-29): dealignai 28/32
+vs our 21/32 on refusal32 at 400-tok; at 2000-tok dealignai drops to 19/32;
+cyber32 tied 31/32; benign and capability clean on both. Serving numbers for
+this lane are in the run log below and `recipe/glm53/README.md`.
+
+### GLP-77 — GLM-5.3 flagship (753B / ~18B active, 78 layers)
+
+Derived 2026-08-30 on the vLLM v0.28.0 capture lane (RadixArk/GLM-5.3-NVFP4,
+8×H100), AdvBench/Alpaca 64-prompt contrast, L1–77, α=1.0. All 77 layers
+clear the 5× null gate; signal peaks L48–55. Scored at 1400 tokens — the
+400-token convention is corrupt on this model.
+
+| arm | refusal32 repo / audited | cyber32 | benign32 | cap |
+|---|---|---|---|---|
+| stock | 1/32 / 1/32 | 18/32 | 31/32 | 12/12 |
+| **α=1.0 (shipped)** | **12/32 / 6/32** | **32/32** | 32/32 | 12/12 |
+| α=1.5 | 9/32 / 6/32 (worse — do not raise) | 29/32 | 30/32 | 12/12 |
+| null, random 77 dirs | 1/32 = stock | — | — | — |
+
+Live-boot of the shipped GGUF + hotfix (2026-08-30, 8×H100): refusal32
+1/32 → 10/32 repo (8/32 audited); cyber32 15/32 → 31/32. Refusal on the
+753B is materially stickier than on Flash; the whole-file SHA-256 is pinned
+on the HF card.
+
+### Caveats and open items
+
+- The delivery scorer is blind to factual correctness — a fluent, wrong
+  answer counts as delivery. Audited rows are the honest ones.
+- GLM-family 400-token rows carry a truncation confound (thinking mode eats
+  the budget); 1400-token re-audits supersede them.
+- GLP-29 rows predate the delivery metric (refusal-rate framing).
+- GLP-29 (DSV4): never scored on the 7-suite core set.
+- GLP-49: LoRA arm cyber-holdout unmeasured.
+- glm53 (GLP-44) and glm53xl (GLP-77) 4×Spark lanes: steering numbers above
+  are from H100/B200/SM120 lanes; on-Spark validation pending hardware access.
+- EXL3 arm: optional re-tune of α for the K4 quant (transfer is attenuated).
+
+---
+
+## Serving run log
+
 A throughput number without its configuration is noise. Every row here carries
 the shape it was measured at, and single-stream is reported separately from
 aggregate because they are different quantities: at concurrency 6 this stack

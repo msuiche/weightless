@@ -166,7 +166,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `scripts/` | structural guard tests for the steering patches: `test-dsv4-hotfix-structure.py`, `test-qwen-steering-structure.py`, `test-qwen38fn-steering-structure.py`, `test-glm53-steering-structure.py`, `test-glm53xl-steering-structure.py`, `test-glm53-exl3-steering-structure.py`, `test-steering-structure.py` (retired v027 overlay) |
 | `tests/` | endpoint smoke tests: endpoint / chat / tool-call / headless omp agent loop — `tests/README.md` |
 | `spec/GLP.md` | the GLP format spec: the `glp.mode` contract, layer-id mapping, why an additive reader must refuse the file |
-| `BENCHMARK.md` | every serving measurement, with shapes stated |
+| `BENCHMARK.md` | steering effectiveness (all GLP vectors, all suites, with domain coverage) + the serving run log |
 
 Real `.env` files are gitignored — only `*.example` templates are tracked.
 
