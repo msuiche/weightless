@@ -5,7 +5,8 @@
 # THIS LANE NEEDS 4 NODES. The serve config is tonyd2wild's hardware-validated
 # TP4 recipe (see README.md): Int4-Int8Mix weights (~95.5 GiB/rank), the
 # glm-triton sm12x kernel overlay, fp8_ds_mla KV with the budget pinned, MTP
-# k=4, CUDA graphs FULL.
+# k=4, CUDA graphs FULL. Upstream's opt-in DFlash2 / NVFP4 KV lanes
+# (2026-08-29) are documented in README.md but deliberately NOT wired here.
 #
 # Boot ritual (each rule cost someone a boot — README.md has the receipts):
 #   * the image is a LOCAL build (vllm-node-tf5-glm52-b12x:probe-modded) and
