@@ -93,9 +93,14 @@ Measured upstream 2026-08-29 (end-to-end tok/s, TP4, 80K context):
 | MTP-4 | fp8_ds_mla | 26.91 | 97.0% | 100/100 |
 
 53.32 tok/s on structured output (count-to-100) = **1.98× over MTP-4**.
-Free-form prose is a wash (~23% acceptance vs MTP's ~39%) — upstream's
-leading suspect is the stock Eagle3 aux layer taps `(6,20,34,48,62,76)` not
-being tuned for the 743B. It degrades speed silently, never correctness.
+Free-form prose is a wash (~23% acceptance vs MTP's ~39%). Upstream
+suspected the stock Eagle3 aux taps `(6,20,34,48,62,76)` were untuned for
+the 743B — our serve-time tap sweep on GLM-5.3-Flash (2026-08-30) refutes
+the tap-tuning hypothesis: the taps ship in the drafter's own config
+(training-matched), every non-stock set measured worse, and tapping the
+final target layer collapses acceptance to single digits. Low prose
+acceptance is a drafter-capacity limit — it degrades speed silently, never
+correctness.
 
 The non-obvious requirements (each cost boots upstream):
 

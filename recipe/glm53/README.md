@@ -111,6 +111,14 @@ spec-decode method):
   the drafter conditions on pre-steering features in both arms; only greedy
   token-choice divergence couples through. Verification is lossless
   regardless.
+- **Aux taps are training-matched — do not retune at serve time.** Our
+  sweep (2026-08-30, same stack): the stock `target_layer_ids`
+  `[5,14,24,33,42]` ship in the drafter's own `config.json`, and every
+  non-stock set measured worse — uniformly, down to single digits. Two hard
+  rules found: **never tap the final target layer** (44) — acceptance
+  collapses to ~6%; and the tap count is fixed by the checkpoint's `fc`
+  width (5 taps). Prose acceptance (~26%) is a drafter-capacity limit, not
+  a tap-tuning opportunity.
 
 This lane keeps MTP-4 as shipped; DFlash2 is a TP2 opt-in you wire by hand
 from his launcher (still bind-mount the kpool fix — both images need it).
