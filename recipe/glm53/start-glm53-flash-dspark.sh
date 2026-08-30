@@ -71,6 +71,18 @@ if [ ! -f "$HOTFIX" ]; then
 fi
 [ -f "$HOTFIX" ] || { echo "Missing steering hotfix (looked in $SCRIPT_DIR/patches and the repo)." >&2; exit 1; }
 
+# SM121 kpool top-k fix (vendored from tonyd2wild's DFlash2 repo — see the
+# provenance header in the file). Both published images (sm121-v8 and the
+# dflash2 one) hard-kill on decode past ~24K context without it; it is
+# bind-mounted over the in-image file on every node, fail-closed. Same layout
+# as the hotfix: ./patches next to this script on deploy, ../../patches/vendor
+# in a bare repo checkout.
+KPOOL="${WEIGHTLESS_KPOOL_FIX:-$SCRIPT_DIR/patches/sparse_attn_indexer_kpool_sm121.py}"
+if [ ! -f "$KPOOL" ]; then
+  KPOOL="$(cd "$SCRIPT_DIR/../../patches" && pwd)/vendor/sparse_attn_indexer_kpool_sm121.py"
+fi
+[ -f "$KPOOL" ] || { echo "Missing the SM121 kpool top-k fix (looked in $SCRIPT_DIR/patches and the repo's patches/vendor)." >&2; exit 1; }
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "Missing required command: $1" >&2; exit 1; }
 }
@@ -182,16 +194,22 @@ if [ -n "${WEIGHTLESS_STEER_PATH:-}" ]; then
 fi
 
 # --- docker run command (per node) ------------------------------------------
-# $1 rank, $2 api|headless, $3 host HF cache, $4 host hotfix path, $5 host IP.
+# $1 rank, $2 api|headless, $3 host HF cache, $4 host hotfix path, $5 host IP,
+# $6 host kpool-fix path.
 # Env values are operator-controlled and must not contain spaces.
 build_cmd() {
-  local rank="$1" mode="$2" hf="$3" hotfix="$4" hostip="$5"
+  local rank="$1" mode="$2" hf="$3" hotfix="$4" hostip="$5" kpool="$6"
   local ep_args="--headless"
   if [ "$mode" = "api" ]; then
     ep_args="--host 0.0.0.0 --port $VLLM_PORT"
   fi
   local kv_args=""
   [ -n "$KV_CACHE_MEMORY" ] && kv_args="--kv-cache-memory $KV_CACHE_MEMORY"
+  # kpool mount target: /usr/local/lib/python3.12/dist-packages/... is the path
+  # tonyd2wild's launcher confirms for ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v11-dflash2.
+  # Our pinned sm121-v8 image shares the day-0 base, and this lane already uses
+  # the same python3.12 dist-packages layout for glm5next model.py (README), so
+  # the path is expected to hold — a wrong path would fail fast at vLLM import.
   cat <<EOF
 docker run -d --restart unless-stopped --name $CONTAINER \
   --gpus all --ipc=host --network host --shm-size 64gb \
@@ -199,6 +217,7 @@ docker run -d --restart unless-stopped --name $CONTAINER \
   --device /dev/infiniband \
   -v $hf:/cache/huggingface \
   -v $hotfix:/patches/hotfix-glm53-steering-projective.py:ro \
+  -v $kpool:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/sparse_attn_indexer_kpool.py:ro \
   -e HF_HOME=/cache/huggingface \
   -e HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1} \
   -e VLLM_HOST_IP=$hostip \
@@ -251,6 +270,7 @@ EOF
 echo "Resolved GLM-5.3-Flash profile:"
 echo "  image: $GLM53_IMAGE"
 echo "  model: $MODEL (NVFP4, ~50 GiB/rank at TP=4)"
+echo "  kpool fix: $KPOOL (bind-mounted over the in-image indexer file on all 4 nodes)"
 echo "  served model: $SERVED_MODEL_NAME"
 echo "  head: $MASTER_ADDR (api :$VLLM_PORT)  workers: ${WORKERS[*]}"
 echo "  max model len: $MAX_MODEL_LEN, kv pinned: ${KV_CACHE_MEMORY:-vllm-suggested} bytes/rank, gmu: $GPU_MEMORY_UTILIZATION"
@@ -265,21 +285,22 @@ fi
 # --- workers first, ~20 s apart; head LAST -----------------------------------
 rank=1
 for w in "${WORKERS[@]}"; do
-  echo "Syncing env + hotfix to ${w}:${WORKER_DIR}"
+  echo "Syncing env + hotfix + kpool fix to ${w}:${WORKER_DIR}"
   ssh "$w" "mkdir -p '$WORKER_DIR/patches'"
   scp "$ENV_FILE" "$w:$WORKER_DIR/.env.glm53" >/dev/null
   scp "$HOTFIX" "$w:$WORKER_DIR/patches/hotfix-glm53-steering-projective.py" >/dev/null
+  scp "$KPOOL" "$w:$WORKER_DIR/patches/sparse_attn_indexer_kpool_sm121.py" >/dev/null
 
   echo "Starting worker rank $rank (headless) on $w..."
   ssh "$w" "docker rm -f $CONTAINER >/dev/null 2>&1 || true"
-  ssh "$w" "$(build_cmd "$rank" headless "$WORKER_HF_CACHE" "$WORKER_DIR/patches/hotfix-glm53-steering-projective.py" "$w")"
+  ssh "$w" "$(build_cmd "$rank" headless "$WORKER_HF_CACHE" "$WORKER_DIR/patches/hotfix-glm53-steering-projective.py" "$w" "$WORKER_DIR/patches/sparse_attn_indexer_kpool_sm121.py")"
   rank=$((rank + 1))
   [ "$rank" -le 3 ] && sleep "$RANK_STAGGER_SECONDS"
 done
 
 echo "Starting head rank 0 (API :$VLLM_PORT)..."
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-bash -c "$(build_cmd 0 api "$HF_CACHE" "$HOTFIX" "$VLLM_HOST_IP")"
+bash -c "$(build_cmd 0 api "$HF_CACHE" "$HOTFIX" "$VLLM_HOST_IP" "$KPOOL")"
 
 echo "Waiting for the API (~12 min boot is normal: quarter weights per rank)..."
 for _ in $(seq 1 "$WAIT_ATTEMPTS"); do

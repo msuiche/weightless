@@ -23,13 +23,24 @@ and receipt). We reference, we do not fork.
 ## Model and image — both are non-obvious
 
 - **Model: the NVFP4 quant
-  [`LibertAIDAI/GLM-5.3-Flash-NVFP4`](https://huggingface.co/LibertAIDAI/GLM-5.3-Flash-NVFP4),
-  not the 306 GB FP8 original.** At TP4 that is ~50 GiB of weights per rank,
+  [`RedHatAI/GLM-5.3-Flash-NVFP4`](https://huggingface.co/RedHatAI/GLM-5.3-Flash-NVFP4)
+  (compressed-tensors W4A4), not the 306 GB FP8 original.** This is
+  upstream's current default: corruption-free, ~2x faster load, ungated, and
+  drop-in (same arch/flags). At TP4 that is ~50 GiB of weights per rank,
   and the GB10 KV-allocation ceiling dissolves: the shipped config pins
   **24 GiB KV/rank = 3,774,873 fp8 tokens = 3.6 concurrent full-1M-context
   requests** at `--max-model-len 1048576` (model-native 1M, no rope
   scaling). On TP2 the same model is ~97 GiB/rank and the driver grants only
   ~4.5–5.5 GiB of KV afterward — that is the 262K TP2 ceiling.
+  - Caveats: W4A4 scores a few points lower on hard reasoning than the
+    ModelOpt quant, and vision needs `chat_template_mm.jinja` in the weights
+    dir (the start script resolves it from the HF snapshot).
+  - Legacy alternative:
+    [`LibertAIDAI/GLM-5.3-Flash-NVFP4`](https://huggingface.co/LibertAIDAI/GLM-5.3-Flash-NVFP4)
+    (ModelOpt) — **intermittently emits corrupted token IDs** (vLLM issue
+    [#54150](https://github.com/vllm-project/vllm/issues/54150); upstream's
+    probe saw 4/9/8 U+FFFD over 3 runs vs 0/0/0 for RedHatAI, and corruption
+    inside a tool-call block desyncs the parsers). Prefer RedHatAI.
 - **Image: the sm121-v8 patch stack, never stock.** The day-0
   `vllm/vllm-openai:glm53-flash-arm64-cu130` (vLLM 0.1.dev20051) works on
   B200 but dies **five separate ways** on GB10: the NoPE-MLA SM12x sparse
@@ -73,6 +84,32 @@ generic greedy median — and that is a floor: MTP acceptance is
 content-regime dependent, so structured/agentic output (what agents actually
 generate) warms to **53–64 tok/s**, freeform prose sits ~37.
 
+## DFlash2 speculative decoding (opt-in)
+
+tonyd2wild's newer TP2 stack swaps MTP for a DFlash2 drafter — a serving
+option, not a separate lane (the GLP-44 steering is orthogonal to the
+spec-decode method):
+
+- **Image:** `ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v11-dflash2` (the
+  start script's `sm121` image gate accepts the tag).
+- **Drafter:**
+  [`incoai/GLM-5.3-Flash-DFlash2`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2)
+  (2.2 GB, license **CC BY-NC-ND** — non-commercial, no-derivatives). We do
+  **not** vendor it: download it yourself to **both** nodes, e.g.
+  `/var/tmp/models/GLM-5.3-Flash-DFlash2`.
+- **Measured upstream: 46.9 tok/s vs 21.8 tok/s MTP-4 at 262K context TP2**,
+  zero KV cost. Reference launcher: his repo's
+  `launch-glm53-vllm-tp2-dflash2.sh`.
+- **Speculative config:**
+  `--speculative-config '{"method":"dflash","model":"/models/dflash2-draft","num_speculative_tokens":7}'`
+  with `-v /var/tmp/models/GLM-5.3-Flash-DFlash2:/models/dflash2-draft:ro`.
+- **Steering caveat:** steering lowers draft acceptance — the drafter was
+  trained unsteered. Verification is lossless, so correctness holds; only
+  speed drops.
+
+This lane keeps MTP-4 as shipped; DFlash2 is a TP2 opt-in you wire by hand
+from his launcher (still bind-mount the kpool fix — both images need it).
+
 ## Boot ritual (each rule cost them a boot)
 
 The start script bakes in what it can; the rest is on the operator:
@@ -92,7 +129,7 @@ The start script bakes in what it can; the rest is on the operator:
    degradation — reboot it when a proven config starts dying.
 7. Capture `docker logs` before `docker rm -f`.
 
-## The two patch layers (order and failure semantics)
+## The patch layers (order and failure semantics)
 
 1. **Image-build time (theirs):** the sm121 v1→v8 Dockerfile/string-patch
    stack — fixes GB10 kernel/backend bugs. Baked into the image.
@@ -100,6 +137,15 @@ The start script bakes in what it can; the rest is on the operator:
    `../../patches/hotfix-glm53-steering-projective.py` runs in the entrypoint
    before `vllm serve` on every rank, and the `&&` makes it fail-closed: a
    boot asked for steering that cannot apply it never serves unsteered.
+3. **Container start (theirs, vendored):**
+   `../../patches/vendor/sparse_attn_indexer_kpool_sm121.py` is bind-mounted
+   over the in-image
+   `vllm/model_executor/layers/sparse_attn_indexer_kpool.py` on every node —
+   the SM121 indexer top-k fix. Both published images (sm121-v8 and the
+   dflash2 one) hard-kill on decode past ~24K context without it (forensics:
+   `docs/SM121-CRASH-FORENSICS-2026-08-27.md` in tonyd2wild's DFlash2 repo).
+   The start script syncs it to all four nodes and fails closed if the
+   vendored file is missing.
 
 Anchor caveat: our hotfix's anchors target the PR-head `glm5next` source
 (vllm-project/vllm#53906 @ `142062f1`, vendored in
@@ -201,8 +247,10 @@ fail-closed, so a first boot on his stack either steers or refuses.
 ## Credits
 
 - Model: [zai-org/GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash);
-  quant: [LibertAIDAI/GLM-5.3-Flash-NVFP4](https://huggingface.co/LibertAIDAI/GLM-5.3-Flash-NVFP4)
-  (their sm_121 notes fed directly into the deployment).
+  quant: [RedHatAI/GLM-5.3-Flash-NVFP4](https://huggingface.co/RedHatAI/GLM-5.3-Flash-NVFP4)
+  (compressed-tensors W4A4, the corruption-free default; the earlier
+  [LibertAIDAI](https://huggingface.co/LibertAIDAI/GLM-5.3-Flash-NVFP4)
+  ModelOpt quant's sm_121 notes fed directly into the deployment).
 - The GB10 deployment and the sm121 patch stack: **[@tonyd2wild](https://github.com/tonyd2wild),
   deployed and debugged by Knox (Claude)** — the day-0 failure receipts are
   in their `docs/DEPLOY-REPORT.md`.
