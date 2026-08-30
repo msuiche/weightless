@@ -103,9 +103,14 @@ spec-decode method):
 - **Speculative config:**
   `--speculative-config '{"method":"dflash","model":"/models/dflash2-draft","num_speculative_tokens":7}'`
   with `-v /var/tmp/models/GLM-5.3-Flash-DFlash2:/models/dflash2-draft:ro`.
-- **Steering caveat:** steering lowers draft acceptance — the drafter was
-  trained unsteered. Verification is lossless, so correctness holds; only
-  speed drops.
+- **Steering and draft acceptance — measured, not assumed** (2026-08-30,
+  4×H100, RedHatAI NVFP4, day-0 image + this drafter, GLP-44 α=2.0):
+  structured **81.4% → 87.1% steered** (+5.7 pts), prose 26.1% → 24.4%
+  (−1.6 pts, −4.3% tok/s) — **no meaningful acceptance cost**. The
+  aux-capture taps land before the steering block in the decoder loop, so
+  the drafter conditions on pre-steering features in both arms; only greedy
+  token-choice divergence couples through. Verification is lossless
+  regardless.
 
 This lane keeps MTP-4 as shipped; DFlash2 is a TP2 opt-in you wire by hand
 from his launcher (still bind-mount the kpool fix — both images need it).

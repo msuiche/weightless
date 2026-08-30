@@ -124,9 +124,13 @@ The non-obvious requirements (each cost boots upstream):
 - Build write-up: [`dflash2-port/README.md`](https://github.com/tonyd2wild/GLM-5.3-Int4-Int8Mix-TP4-4x-DGX-Spark/blob/main/dflash2-port/README.md).
   Port DFlash2 into the proven image, not the other way round — the Flash
   DFlash2 image's kernels emit digit soup on the 743B.
-- **GLP steering caveat (ours)**: steering lowers draft acceptance — the
-  drafter was trained unsteered. Verification is lossless; speed is what
-  drops.
+- **GLP steering and acceptance (ours)**: measured on GLM-5.3-Flash
+  (2026-08-30, DFlash2, GLP-44 α=2.0): structured 81.4% → 87.1% steered,
+  prose 26.1% → 24.4% — no meaningful cost, because the aux taps capture
+  pre-steering features, so the drafter barely couples to the vector.
+  Unmeasured on the 743B; the same mechanism should hold, and the untuned
+  stock aux taps (~23% prose, above) dominate any steering effect anyway.
+  Verification is lossless regardless.
 
 ### NVFP4 KV cache — 317,278-token pool at 300K context
 
