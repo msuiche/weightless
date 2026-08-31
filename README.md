@@ -111,7 +111,7 @@ parked until the multi-node stack is down.
 | **DSV4 TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-0731, NVFP4 (166.9 GB) | projective cvec, live on 29 layers | **live** — `recipe/anemll/` |
 | **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | per-layer cvec, L10–58 at α=1.0 ([shipping artifact](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49)) | **hardware-validated** — `recipe/qwen/`; stock 4/32, GGUF 24/32, LoRA 24/32 on refusal32 (2026-08-22) |
 | **Qwen3.8-Flash-Next TP=2** | both Sparks over RoCE | Qwen3.8-Flash-Next-NVFP4 (~135 GB), day-0 image | per-layer cvec, L1–47 at α=1.0 ([GLP-47](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47)) | **live-validated 2026-08-30 (2xB200)** — `recipe/qwen38fn/`; refusal32 1/32 stock → 26/32 steered at α=1.0, benign 32/32; vector eval 81.2% refusal32 (vLLM lane, cos 0.9931 vs HF) |
-| **GLM-5.3-Flash TP=4** | **four** Sparks over RoCE | GLM-5.3-Flash-NVFP4 (~50 GiB/rank), sm121-v8 patched day-0 image | per-layer cvec, L1–44 at α=2.0 ([GLP-44](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44)) | **hardware-validated stack** — `recipe/glm53/`; 1M context (3.77M-token fp8 KV pool), 36 tok/s freeform → 53–64 tok/s structured/agentic (MTP acceptance is regime-dependent); vector eval 65.6% refusal32 at α=2.0; **α≥2.5 garbles this model** |
+| **GLM-5.3-Flash TP=4** | **four** Sparks over RoCE | GLM-5.3-Flash-NVFP4 (~50 GiB/rank), sm121-v8 patched day-0 image | per-layer cvec, L1–44 at α=2.0 ([GLP-44](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44)) | **hardware-validated stack** — `recipe/glm53/`; 1M context (3.77M-token fp8 KV pool), 36 tok/s freeform → 53–64 tok/s structured/agentic with DFlash2 spec decode (acceptance is regime-dependent; steering costs none — measured, see below); vector eval 65.6% refusal32 at α=2.0; **α≥2.5 garbles this model** |
 | **GLM-5.3 743B TP=4** | **four** Sparks over RoCE | GLM-5.3 Int4-Int8Mix (~95.5 GiB/rank), tonyd2wild's stack (local image + sm12x overlay) | per-layer cvec, L1–77 at α=1.0 ([GLP-77](https://huggingface.co/msuiche/GLM-5.3-abliterated-cyber-GLP-77)) | **hotfix live-validated 2026-08-30** — `recipe/glm53xl/`; on stock vLLM 0.28.0 (8×H100, RadixArk/GLM-5.3-NVFP4): refusal32 1→10/32, cyber32 15→31/32; **the 4x-Spark GB10 lane itself remains untested** (needs the hardware); vector eval (8×H100, full-length): cyber32 32/32, refusal32 12/32 (37.5%; 6/32 answer-audited) at α=1.0, null arm = stock; **refusal on the 753B is much stickier than Flash — α>1 makes it WORSE** |
 
 **GLM-5.3-Flash needs 4 nodes — and a patched image.** At TP4 the NVFP4
@@ -130,6 +130,18 @@ SM120 instead of Sparks, brandonmusic's EXL3/B12X build
 (`brandonmusic/GLM-5.3-Flash-tr3-4bpw`, custom vLLM fork) takes the same
 GLP-44 hotfix mechanics — see `recipe/glm53/README.md` (runtime-validated
 on 2x RTX PRO 6000: refusal32 1→15/32, cyber32 14→31/32).
+
+**DFlash2 spec decode and steering — measured, not assumed** (2026-08-30,
+4xH100, Prometheus spec_decode counters): GLP-44 steering at α=2.0 costs the
+drafter **no acceptance** — structured 81.4% → 87.1% steered, prose 26.1% →
+24.4% — because the drafter's aux-capture taps sit *before* the steering
+injection point and condition on pre-steering features. The stock tap set
+`[5,14,24,33,42]` ships in the drafter's own config.json and is
+training-matched: a 7-set sweep found every alternative worse, tapping the
+final target layer poisons the drafter (~6% acceptance), and the tap count
+is fixed by the checkpoint's fc width. Prose acceptance (~26% Flash, ~23%
+flagship) is a drafter-capacity limit, not a tap-tuning opportunity — do not
+retune the taps.
 
 **Single-Spark DSV4 (EXL3 3.0bpw + REAP-K216): evaluated and rejected.**
 The full NVFP4 checkpoint (166.9 GB) cannot fit one Spark, so single-node
