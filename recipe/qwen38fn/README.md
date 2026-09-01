@@ -23,8 +23,17 @@ are rebuilt: pull the image and model on both, copy `.env.qwen38fn.example` to
   block boundary and defers the tail to a second forward — it corrupted the
   capture lane's run 3 and would corrupt steering the same way. The start
   script hardwires the flag.
-- **`VLLM_PLE_CPU_OFFLOAD=1`** keeps the 51B N-gram table in host RAM instead
-  of HBM. The env example sets it; the script passes it through.
+- **`VLLM_PLE_CPU_OFFLOAD=1` does not work at nnodes=2 on the arm64 image**
+  (hard `ValueError: Unsupported settings: nnodes=2`; the x86 build allows it
+  — do not copy a B200 config onto the Sparks). Leave it 0: the PLE table then
+  lives in HBM (~25.5 GB/rank), so the safe envelope on 128 GB unified memory
+  is util ≤ 0.88 with ≤ 128K ctx, or util ≤ 0.80 at 262K. The start script
+  fails closed on both, reproduces vLLM's free-memory startup gate before the
+  10-minute load, and refuses to boot over leftover GPU processes (a
+  crash-loop's CUDA memory survives `docker rm -f`; stacked loads drove the
+  pair to 0% free and earlyoom cannot kill a CUDA-stuck process — that wedged
+  both nodes on 2026-09-01). Lane containers run `--restart no` with capped
+  logs for the same reason.
 - **α=1.0 is calibrated, not a default to tune.** GLP-47 was measured
   peaking at α=1.0 (higher over-projects). Do not import the DSV4 lane's 4.0.
 - **The hotfix targets a package path, not `model_executor/models/`.** In the

@@ -355,6 +355,36 @@ def render_env(example, values, steer_mode=None, steering=True, steer_key=None):
     return text
 
 
+def validate_lane_env(lane, env_text):
+    """Hardware-fit rules for a rendered lane env. Returns (errors, warnings).
+
+    These are measured failures, not theory: each rule names the date it cost
+    us a rig-day. The same checks run fail-closed in the lane's start script
+    (defense in depth — the env file can be edited by hand after the wizard).
+    """
+    errors, warnings = [], []
+    env = dict(re.findall(r"(?m)^([A-Z_]+)=(\S*)", env_text))
+    nodes = lane.get("nodes", 1)
+    if lane["start_script"].startswith("start-qwen38"):
+        ple = env.get("VLLM_PLE_CPU_OFFLOAD", "1")
+        util = float(env.get("GPU_MEMORY_UTILIZATION", "0.90") or 0.90)
+        ctx = int(env.get("MAX_MODEL_LEN", "262144") or 262144)
+        if ple == "1" and nodes > 1:
+            errors.append(
+                "VLLM_PLE_CPU_OFFLOAD=1 is rejected by the arm64 day-0 image "
+                "at nnodes=2 (2026-09-01: crash-looped a 2x Spark boot). "
+                "Set it to 0 and keep util <= 0.88.")
+        if ple == "0":
+            budget_ok = util <= 0.88 if ctx <= 131072 else util <= 0.80
+            if not budget_ok:
+                errors.append(
+                    f"PLE in HBM (~25.5 GB/rank) + util {util} + ctx {ctx} "
+                    "exceeds the GB10 unified-memory envelope: util <= 0.88 "
+                    "at <=131K ctx, or util <= 0.80 at 262K. A miss wedges the "
+                    "node (0% free -> earlyoom cannot kill CUDA-stuck procs).")
+    return errors, warnings
+
+
 def read_lane_env():
     """Best-effort site values from existing (gitignored) lane env files —
     used to prefill wizard prompts and the diagnose ssh target."""
@@ -1013,6 +1043,16 @@ def lane_chain(io, lane_idx):
     # 3. write env
     text = render_env(example, values, steer_mode=steer_mode,
                       steering=steering, steer_key=lane["steer_key"])
+    env_errors, env_warnings = validate_lane_env(lane, text)
+    for w in env_warnings:
+        io.warn(w)
+    for e in env_errors:
+        io.warn("hardware fit: " + e)
+    if env_errors and not io.confirm(
+            "Env fails hardware-fit checks for this lane — write anyway?",
+            False):
+        io.warn("not written — fix the flagged values and re-run")
+        return
     changed = any(saved.get(k) != v for k, v in values.items() if k in saved) \
               or any(k not in saved for k in values)
     if os.path.exists(target):

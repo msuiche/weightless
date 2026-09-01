@@ -13,7 +13,10 @@
 #   * --no-enable-prefix-caching is MANDATORY: prefix caching forces
 #     mamba_cache_mode="align" on this arch and splits every prefill at a
 #     block boundary, corrupting the steered stream (capture-lane run 3).
-#   * VLLM_PLE_CPU_OFFLOAD=1 keeps the 51B N-gram table in host RAM, not HBM.
+#   * VLLM_PLE_CPU_OFFLOAD=1 would keep the 51B N-gram table in host RAM, but
+#     the arm64 day-0 image rejects it at nnodes=2 — the start script fails
+#     closed if it is set. With it OFF, the PLE table lives in HBM (~25.5
+#     GB/rank), so keep util <= 0.88 (64K ctx) or <= 0.80 (262K ctx).
 #
 # Usage: cp .env.qwen38fn.example .env.qwen38fn, fill in the <...> values,
 #        then bash start-qwen38-flash-next-dspark.sh
@@ -74,6 +77,58 @@ need_cmd ssh
 need_cmd scp
 need_cmd curl
 
+# --- hardware preflight (learned 2026-09-01, the hard way) -------------------
+# (a) The arm64 day-0 image rejects VLLM_PLE_CPU_OFFLOAD=1 at nnodes=2
+#     ("Unsupported settings: nnodes=2"). It works on the x86 build — that
+#     asymmetry cost a crash-loop day. Fail BEFORE the 10-minute weight load.
+if [ "${VLLM_PLE_CPU_OFFLOAD:-1}" = "1" ]; then
+  echo "VLLM_PLE_CPU_OFFLOAD=1 is unsupported at nnodes=2 on this image." >&2
+  echo "Set VLLM_PLE_CPU_OFFLOAD=0 in $ENV_FILE — and see (b): with the PLE" >&2
+  echo "table in HBM you ALSO need util<=0.88 (64K ctx) or <=0.80 (262K ctx)." >&2
+  exit 1
+fi
+# (b) Reproduce vLLM's own startup gate early: free memory must exceed
+#     util x total on BOTH nodes. On GB10 unified memory, a fail here means
+#     weights (~67.5 GB/rank) + PLE (~25.5 GB/rank when offloaded=0) + KV do
+#     not fit the chosen util — lower GPU_MEMORY_UTILIZATION or MAX_MODEL_LEN.
+need_free_gib() {  # $1 host (empty=local)
+  local free_gib
+  if [ -z "$1" ]; then
+    free_gib=$(awk '/MemAvailable/{print int($2/1048576)}' /proc/meminfo)
+  else
+    free_gib=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$1" \
+      "awk '/MemAvailable/{print int(\$2/1048576)}' /proc/meminfo") || return 1
+  fi
+  echo "$free_gib"
+}
+TOTAL_GIB=121  # GB10 visible-to-CUDA memory
+NEED_GIB=$(awk -v u="$GPU_MEMORY_UTILIZATION" -v t="$TOTAL_GIB" 'BEGIN{print int(u*t)}')
+for h in "" "$WORKER_HOST"; do
+  free_gib=$(need_free_gib "$h") || { echo "preflight: cannot read memory on '${h:-head}'" >&2; exit 1; }
+  if [ "$free_gib" -lt "$NEED_GIB" ]; then
+    echo "preflight: ${h:-head} has ${free_gib} GiB free < ${NEED_GIB} GiB requested" >&2
+    echo "  (util $GPU_MEMORY_UTILIZATION x $TOTAL_GIB GiB). Lower util or free memory." >&2
+    exit 1
+  fi
+done
+# (c) Refuse to boot over zombie GPU processes. A crash-looped container's
+#     CUDA memory survives docker rm -f; the next load stacks on top, the
+#     unified pool hits 0%, and earlyoom cannot kill a CUDA-stuck process —
+#     that is the exact sequence that wedged both nodes on 2026-09-01.
+for h in "" "$WORKER_HOST"; do
+  if [ -z "$h" ]; then
+    zombies=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | wc -l)
+  else
+    zombies=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$h" \
+      "nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | wc -l") || zombies=99
+  fi
+  if [ "${zombies:-99}" -gt 0 ]; then
+    echo "preflight: ${zombies} GPU compute process(es) still alive on ${h:-head}." >&2
+    echo "  kill them (or reboot) before booting — stacked loads wedge GB10." >&2
+    exit 1
+  fi
+done
+
 # --- steering preflight -----------------------------------------------------
 # The vector must exist at the root of the HF cache on BOTH nodes (each rank
 # reads WEIGHTLESS_STEER_PATH inside its own container).
@@ -128,7 +183,8 @@ build_cmd() {
     ep_args="--host 0.0.0.0 --port $VLLM_PORT"
   fi
   cat <<EOF
-docker run -d --restart unless-stopped --name $CONTAINER \
+docker run -d --restart no --name $CONTAINER \
+  --log-opt max-size=50m --log-opt max-file=2 \
   --gpus all --ipc=host --network host --shm-size 64gb \
   --ulimit memlock=-1 --ulimit stack=67108864 \
   --device /dev/infiniband \
@@ -137,7 +193,7 @@ docker run -d --restart unless-stopped --name $CONTAINER \
   -v $plepatch:/patches/patch-qwen38fn-ple-fp8-nvfp4.py:ro \
   -e HF_HOME=/cache/huggingface \
   -e HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1} \
-  -e VLLM_PLE_CPU_OFFLOAD=${VLLM_PLE_CPU_OFFLOAD:-1} \
+  -e VLLM_PLE_CPU_OFFLOAD=${VLLM_PLE_CPU_OFFLOAD:-0} \
   -e VLLM_HOST_IP=$hostip \
   -e NCCL_NET=${NCCL_NET:-IB} \
   -e NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0} \
@@ -172,7 +228,7 @@ echo "  served model: $SERVED_MODEL_NAME"
 echo "  head: $MASTER_ADDR (api :$VLLM_PORT)  worker: $WORKER_HOST"
 echo "  max model len: $MAX_MODEL_LEN, gpu util: $GPU_MEMORY_UTILIZATION"
 echo "  prefix caching: OFF (mandatory — mamba align corrupts steering)"
-echo "  VLLM_PLE_CPU_OFFLOAD: ${VLLM_PLE_CPU_OFFLOAD:-1} (N-gram table in host RAM)"
+echo "  VLLM_PLE_CPU_OFFLOAD: ${VLLM_PLE_CPU_OFFLOAD:-1} (0 = PLE table in HBM; 1 is unsupported at nnodes=2 on the arm64 image)"
 if [ -n "${WEIGHTLESS_STEER_PATH:-}" ]; then
   echo "  steering: $WEIGHTLESS_STEER_PATH (α=${WEIGHTLESS_STEER_ALPHA:-1.0}, layers=${WEIGHTLESS_STEER_LAYERS:-all in file})"
 else
