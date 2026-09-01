@@ -53,6 +53,7 @@ CVE-2024-6100 bench** (24 items on one CVE class).
 | [GLP-44](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44) | GLM-5.3-Flash | 2026-08-27 | 1/32 → 21/32 *(400-tok)* → 16/32 audited *(1400-tok)* | 12/32 → **31/32** | 32/32 · 29/32 *(1400-tok)* | 12/12 |
 | [GLP-77](https://huggingface.co/msuiche/GLM-5.3-abliterated-cyber-GLP-77) | GLM-5.3 (753B) | 2026-08-30 | 1/32 → 12/32 repo / 6–8/32 audited *(1400-tok)* | 18/32 → **32/32** | 32/32 | 12/12 |
 | [GLP-29 Vision-Exp](https://huggingface.co/msuiche/DeepSeek-V4-Flash-Vision-Exp-abliterated-cyber-GLP-29) | DeepSeek-V4-Flash-Vision-Exp | 2026-09-01 | 1/32 → **27/32** fresh per-layer (α=1.0; α=4 garbles) · **31/32** via the 0731 keysdir vector transferred cross-checkpoint | — | 32/32 stock + steered | — |
+| [GLP-41](https://huggingface.co/msuiche/Inkling-Small-abliterated-cyber-GLP-41) | Inkling-Small (TML) | 2026-09-02 | **0/32 → 30/32** (α=0.25; α≥0.5 garbles) | — | 30/32 steered | — |
 
 ### GLP-29 — DeepSeek-V4-Flash-0731 (MoE, 43 layers)
 
