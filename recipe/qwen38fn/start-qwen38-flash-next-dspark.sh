@@ -214,6 +214,9 @@ docker run -d --restart no --name $CONTAINER \
         --nnodes 2 --node-rank $rank \
         --master-addr $MASTER_ADDR --master-port $MASTER_PORT \
         --distributed-executor-backend mp \
+        --enable-expert-parallel --all2all-backend allgather_reducescatter \
+        --load-format safetensors --safetensors-load-strategy lazy \
+        --compilation-config '{"mode":0,"cudagraph_mode":"FULL_DECODE_ONLY"}' \
         --no-enable-prefix-caching \
         --max-model-len $MAX_MODEL_LEN \
         --gpu-memory-utilization $GPU_MEMORY_UTILIZATION \
@@ -241,6 +244,13 @@ ssh "$WORKER_HOST" "mkdir -p '$WORKER_DIR/patches'"
 scp "$ENV_FILE" "$WORKER_HOST:$WORKER_DIR/.env.qwen38fn" >/dev/null
 scp "$HOTFIX" "$WORKER_HOST:$WORKER_DIR/patches/hotfix-qwen38fn-steering-projective.py" >/dev/null
 scp "$PLE_PATCH" "$WORKER_HOST:$WORKER_DIR/patches/patch-qwen38fn-ple-fp8-nvfp4.py" >/dev/null
+
+# Drop page caches on both nodes before launch — mandatory on GB10 unified
+# memory (the model rsync just wrote ~135 GB of page cache; CUDA allocations
+# squeeze against it and the boot OOMs/wedges). MiaAI-Lab's measured recipe.
+sync && echo 3 | sudo tee /proc/sys/vm/drop_caches > /dev/null
+ssh -o BatchMode=yes -o ConnectTimeout=10 "$WORKER_HOST" \
+  "sync && echo 3 | sudo tee /proc/sys/vm/drop_caches > /dev/null"
 
 echo "Starting worker rank 1 (headless) on $WORKER_HOST..."
 ssh "$WORKER_HOST" "docker rm -f $CONTAINER >/dev/null 2>&1 || true"

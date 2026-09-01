@@ -34,6 +34,13 @@ are rebuilt: pull the image and model on both, copy `.env.qwen38fn.example` to
   pair to 0% free and earlyoom cannot kill a CUDA-stuck process — that wedged
   both nodes on 2026-09-01). Lane containers run `--restart no` with capped
   logs for the same reason.
+- **Drop page caches before every launch — mandatory on GB10.** The model
+  rsync writes ~135 GB of page cache; on unified memory CUDA allocations
+  squeeze against it and the boot OOMs/wedges with free RAM "available" on
+  paper. The start script does it on both nodes. (Source: MiaAI-Lab's
+  measured 2-Spark recipe, which also gave us the working profile: GMU 0.835,
+  `--enable-expert-parallel`, lazy safetensors, FULL_DECODE_ONLY graphs —
+  folded in 2026-09-01.)
 - **α=1.0 is calibrated, not a default to tune.** GLP-47 was measured
   peaking at α=1.0 (higher over-projects). Do not import the DSV4 lane's 4.0.
 - **The hotfix targets a package path, not `model_executor/models/`.** In the
