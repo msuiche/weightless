@@ -632,6 +632,9 @@ def check_vector() -> int:
             import torch
 
             raw = torch.load(path, map_location="cpu", weights_only=False)
+            # captain_vector --save-directions wraps: {"per_layer": {...}, ...}
+            if isinstance(raw, dict) and isinstance(raw.get("per_layer"), dict):
+                raw = raw["per_layer"]
             if not isinstance(raw, dict) or not raw:
                 raise ValueError("expected non-empty {layer_id: tensor} dict")
             layers = sorted(int(k) for k in raw if str(k).isdigit())
