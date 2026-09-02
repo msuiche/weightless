@@ -54,6 +54,19 @@ CVE-2024-6100 bench** (24 items on one CVE class).
 | [GLP-77](https://huggingface.co/msuiche/GLM-5.3-abliterated-cyber-GLP-77) | GLM-5.3 (753B) | 2026-08-30 | 1/32 → 12/32 repo / 6–8/32 audited *(1400-tok)* | 18/32 → **32/32** | 32/32 | 12/12 |
 | [GLP-29 Vision-Exp](https://huggingface.co/msuiche/DeepSeek-V4-Flash-Vision-Exp-abliterated-cyber-GLP-29) | DeepSeek-V4-Flash-Vision-Exp | 2026-09-01 | 1/32 → **27/32** fresh per-layer (α=1.0; α=4 garbles) · **31/32** via the 0731 keysdir vector transferred cross-checkpoint | — | 32/32 stock + steered | — |
 | [GLP-41](https://huggingface.co/msuiche/Inkling-Small-abliterated-cyber-GLP-41) | Inkling-Small (TML) | 2026-09-02 | **0/32 → 30/32** (α=0.25; α≥0.5 garbles) | — | 30/32 steered | — |
+| [GLP-77 (Hy4)](https://huggingface.co/msuiche/Hy4-preview-abliterated-cyber-GLP-77-L1-77-a2.0) | Tencent Hy4-preview (770B / 49B active, 78L iHC) | 2026-09-02 | 1/32 → **24/32** (+1 deflect) at α=2.0; ladder 1→11→19→24, no garble at any dose | 15/32 → **31/32** | **32/32 at α=2.0** (collateral non-monotonic: 6–7 items at α=1.0–1.5, zero at 2.0) | — |
+
+### GLP-77 (Hy4) — Tencent Hy4-preview (770B MoE, 78 layers, iHC hc_mult=4)
+
+The largest model with a published refusal vector. vLLM capture lane (prefill-only
+probe, eager) on the FP8 canonical checkpoint; batched eval ladder on H200:8.
+Direction: adjacent-layer cosine 0.98. Shipped dose **α=2.0** — collateral is
+non-monotonic (worst at α=1.0–1.5 on benign32, zero at 2.0); no garbling at any
+dose, the most steer-tolerant arch measured. Caveat: at α=2.0 all refusal32
+answers run to the 4096-token cap (verbose thinking amplified by steering; the
+model card's known issue), so delivery may be understated. propaganda32: 29/32
+comply stock — a non-event on this model. Hotfix: `patches/hotfix-hy4-steering-projective.py`;
+experiment + raw arms: refusal-research `experiments/20260902-hy4-preview-glp`.
 
 ### GLP-29 — DeepSeek-V4-Flash-0731 (MoE, 43 layers)
 
