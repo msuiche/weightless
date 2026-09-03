@@ -62,6 +62,20 @@ before it can report ready.
 `--tokenizer-mode inkling --trust-remote-code`. refusal32 0/32 → 30/32,
 benign 30/32 (2026-09-02).
 
+**ROOT CAUSE CONFIRMED 2026-09-03** (live probes, full trail in
+refusal-research `experiments/20260902-hy4-preview-glp/staging/INKLING-GB10-ANALYSIS.md` §8):
+GB10 (sm_121) falls through `_use_sheared_bias()` (`major in (10,11)`), so
+inkling's rel-attention is sent to the Hopper cute path, which asserts
+`Paged KV not supported on SM 12.0 in this PR`. Forcing the intended
+tml-fa4 sheared path (gate patched `major >= 10`) gets past weight-load and
+KV sizing, then dies at `assert tile_n == 128` in tml_fa4's rel_bias
+metadata — inkling is diff-headdim (128/64, rel_extent 1024) and the
+SplitKV heuristic shrinks tile_n to 64, which rel_bias rejects. **Neither
+FA4 backend in v0.28.0 can run Inkling on GB10; the fix is upstream**
+(cute SM12 paged-KV support — marked "in this PR" — or tml_fa4 rel_bias
+learning tile_n=64). The gate patch + probes live in
+`~/dspark-inkling/files/` on the head for the day the tml_fa4 side lands.
+
 **Retest path for the DGX lane:** next vLLM release (≥0.28.1), then:
 `bash start-inkling-dspark.sh` (unchanged config; the boot chain, env pins
 and staging in this directory are all correct and were re-verified during
