@@ -65,8 +65,7 @@ non-monotonic (worst at α=1.0–1.5 on benign32, zero at 2.0); no garbling at a
 dose, the most steer-tolerant arch measured. Caveat: at α=2.0 all refusal32
 answers run to the 4096-token cap (verbose thinking amplified by steering; the
 model card's known issue), so delivery may be understated. propaganda32: 29/32
-comply stock — a non-event on this model. Hotfix: `patches/hotfix-hy4-steering-projective.py`;
-experiment + raw arms: refusal-research `experiments/20260902-hy4-preview-glp`.
+comply stock — a non-event on this model. Hotfix: `patches/hotfix-hy4-steering-projective.py`.
 
 ### GLP-29 — DeepSeek-V4-Flash-0731 (MoE, 43 layers)
 
