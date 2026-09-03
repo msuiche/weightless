@@ -64,8 +64,9 @@ Direction: adjacent-layer cosine 0.98. Shipped dose **α=2.0** — collateral is
 non-monotonic (worst at α=1.0–1.5 on benign32, zero at 2.0); no garbling at any
 dose, the most steer-tolerant arch measured. Caveat: at α=2.0 all refusal32
 answers run to the 4096-token cap (verbose thinking amplified by steering; the
-model card's known issue), so delivery may be understated. propaganda32: 29/32
-comply stock — a non-event on this model. Hotfix: `patches/hotfix-hy4-steering-projective.py`.
+model card's known issue), so delivery may be understated. propaganda32: stock
+carries a refusal geography (2 refusals + 1 deflect — the map, not the tally,
+is the signal; the steered arm erases it). Hotfix: `patches/hotfix-hy4-steering-projective.py`.
 
 ### GLP-29 — DeepSeek-V4-Flash-0731 (MoE, 43 layers)
 
