@@ -63,7 +63,7 @@ before it can report ready.
 benign 30/32 (2026-09-02).
 
 **ROOT CAUSE CONFIRMED 2026-09-03** (live probes, full trail in
-refusal-research `experiments/20260902-hy4-preview-glp/staging/INKLING-GB10-ANALYSIS.md` §8):
+[`GB10-ANALYSIS.md`](GB10-ANALYSIS.md) §8, in this repo):
 GB10 (sm_121) falls through `_use_sheared_bias()` (`major in (10,11)`), so
 inkling's rel-attention is sent to the Hopper cute path, which asserts
 `Paged KV not supported on SM 12.0 in this PR`. Forcing the intended
