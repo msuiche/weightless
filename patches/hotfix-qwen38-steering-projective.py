@@ -515,6 +515,43 @@ NEXT_REPLACEMENT_FORWARD = (
     + "            if (layer_idx + 1) in self.aux_hidden_state_layers"
 )
 
+# v0.28.0 drift: the aux-hidden-state tail was refactored into a helper call.
+NEXT_ANCHOR_FORWARD_V28 = (
+    "            hidden_states, residual = layer(\n"
+    "                positions=positions,\n"
+    "                hidden_states=hidden_states,\n"
+    "                residual=residual,\n"
+    "            )\n"
+    "            self._maybe_add_hidden_state(\n"
+    "                aux_hidden_states, layer_idx + 1, hidden_states, residual\n"
+    "            )"
+)
+NEXT_REPLACEMENT_FORWARD_V28 = (
+    "            hidden_states, residual = layer(\n"
+    "                positions=positions,\n"
+    "                hidden_states=hidden_states,\n"
+    "                residual=residual,\n"
+    "            )\n"
+    + FORWARD_BLOCK
+    + "            self._maybe_add_hidden_state(\n"
+    "                aux_hidden_states, layer_idx + 1, hidden_states, residual\n"
+    "            )"
+)
+
+
+def _forward_anchor(src: str):
+    """Pick the forward anchor variant matching the image's actual source."""
+    if NEXT_ANCHOR_FORWARD not in src and NEXT_ANCHOR_FORWARD_V28 in src:
+        return NEXT_ANCHOR_FORWARD_V28, NEXT_REPLACEMENT_FORWARD_V28
+    return NEXT_ANCHOR_FORWARD, NEXT_REPLACEMENT_FORWARD
+
+
+NEXT_PATCHES_BASE = (
+    ("import os", NEXT_ANCHOR_IMPORT, NEXT_REPLACEMENT_IMPORT),
+    ("module steering block", NEXT_ANCHOR_MODULE, NEXT_REPLACEMENT_MODULE),
+    ("__init__ buffers + _load_steering", NEXT_ANCHOR_INIT, NEXT_REPLACEMENT_INIT),
+)
+
 NEXT_PATCHES = (
     ("import os", NEXT_ANCHOR_IMPORT, NEXT_REPLACEMENT_IMPORT),
     ("module steering block", NEXT_ANCHOR_MODULE, NEXT_REPLACEMENT_MODULE),
@@ -654,6 +691,11 @@ def main() -> int:
         if MARK in src:
             print(f"[steering-hotfix] already applied to {path}")
             continue
+        if label == "qwen3_next.py":
+            # v0.28.0 refactored the aux-hidden-state tail into a helper;
+            # pick the forward anchor that matches this image's source.
+            _old, _new = _forward_anchor(src)
+            patches = NEXT_PATCHES_BASE + (("forward apply", _old, _new),)
 
         missing = [name for name, old, _ in patches if old not in src]
         if missing:
