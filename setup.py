@@ -160,6 +160,24 @@ LANES = [
          start_script="start-glm53xl-dspark.sh",
          hotfix="hotfix-glm53xl-steering-projective.py",
          port=8081),
+    dict(name="Inkling-Small TP=2 serving — 2x DGX Spark, day-0 vLLM v0.28.0",
+         example="recipe/inkling/.env.inkling.example",
+         target="recipe/inkling/.env.inkling",
+         steer_key="WEIGHTLESS_STEER_PATH",
+         structure_test="scripts/test-inkling-steering-structure.py",
+         vector_repo="msuiche/Inkling-Small-abliterated-cyber-GLP-41",
+         steer_modes=None,
+         nodes=2,
+         remote_dir="dspark-inkling",
+         recipe_files=[".env.inkling", "start-inkling-sm121.sh",
+                       "files/fa4_rel_attention-sm121.py",
+                       "files/inkling-model-gb10.py",
+                       "files/inkling-model-steered.py"],
+         start_script="start-inkling-sm121.sh",
+         hotfix="hotfix-inkling-steering-projective.py",
+         extra_patches=["hotfix-inkling-gb10-load-reclaim.py",
+                        "hotfix-inkling-sm121-relattn.py"],
+         port=8082),
 ]
 PLACEHOLDER_HINTS = {
     "head-ip": ("Head node IP or hostname", ""),
@@ -424,7 +442,7 @@ def deploy_commands(lane_idx, values, ssh_host=None):
         r = os.path.join(HERE, os.path.dirname(lane["example"]))
         return [
             (f"prepare {head}:{remote}/",
-             ["ssh", head, f"mkdir -p {remote}/patches"]),
+             ["ssh", head, f"mkdir -p {remote}/patches {remote}/files"]),
             ("sync env + recipe files",
              ["scp", *[os.path.join(r, f) for f in lane["recipe_files"]],
               f"{head}:{remote}/"]),
