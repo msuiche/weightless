@@ -71,7 +71,7 @@ P = Path(os.environ.get(
     "WEIGHTLESS_RELATTN_FA4_PY",
     "/usr/local/lib/python3.12/dist-packages/vllm/models/inkling/nvidia/ops/fa4_rel_attention.py",
 ))
-MARK = "# [sm121-relattn-hotfix]"
+MARK = "# [sm121-relattn-hotfix-v2]"
 
 # ---------------------------------------------------------------------------
 # Injected source 1: gate helpers, inserted before ``_get_score_mod``.
@@ -223,6 +223,7 @@ def _sm12_rel_attention_fallback(
         raise ValueError("inkling sm12 fallback: out must be provided")
     window_left = int(window_size[0])
     num_reqs = cache_seqlens.shape[0]
+    capturing = torch.cuda.is_current_stream_capturing()
     if (
         max_seqlen_q == 1
         and q.shape[0] == num_reqs
@@ -231,7 +232,14 @@ def _sm12_rel_attention_fallback(
         decode_fn = _get_triton_decode_fn()
         if decode_fn is not None:
             try:
-                max_kv_len = max(1, int(cache_seqlens.max().item()))
+                # CUDA graph capture forbids device-to-host scalar copies.
+                # The block-table capacity is static and safely upper-bounds
+                # every runtime sequence captured by this graph.
+                max_kv_len = (
+                    max(1, block_table.shape[1] * key_cache.shape[1])
+                    if capturing
+                    else max(1, int(cache_seqlens.max().item()))
+                )
                 return decode_fn(
                     q,
                     key_cache,
@@ -246,6 +254,11 @@ def _sm12_rel_attention_fallback(
                     out=out,
                 )
             except Exception as exc:
+                if capturing:
+                    # The torch fallback below uses Python list/scalar copies
+                    # and is intentionally not graph-capturable. Preserve the
+                    # real Triton error instead of obscuring it downstream.
+                    raise
                 _TRITON_DECODE_BROKEN = True
                 _sm12_logger.warning(
                     "inkling sm12 fallback: Triton decode failed (%r); "
@@ -254,6 +267,10 @@ def _sm12_rel_attention_fallback(
                     exc,
                     exc_info=True,
                 )
+    if capturing:
+        raise RuntimeError(
+            "inkling sm12 fallback: CUDA graph capture requires Triton decode"
+        )
     return _sdpa_rel_attention_varlen(
         q,
         key_cache,

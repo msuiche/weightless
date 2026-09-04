@@ -6,15 +6,18 @@ vLLM v0.28.0 (inkling is day-0 since that release), tensor-parallel across
 vector applied via a bind-mounted pre-patched `model.py` (the same integration
 pattern as the qwen38fn lane).
 
-**STRUCTURE-VALIDATED ONLY (2026-09-02)** — written from the measured qwen38fn
-lane and the Modal validation (4×H100, vLLM 0.28.0: refusal32 0/32 → 30/32 at
-α=0.25, benign 30/32) but not yet booted on the Sparks. First boot: watch it.
+**WORKING (2026-09-04)** — real Inkling-Small-NVFP4 weights booted TP=2 on
+2×GB10 with CUDA graphs enabled. The 4-prompt API smoke passed. Use the SM121
+start script and both hotfixes below; the generic/steered lane is separate.
 
 | file | what it is |
 |---|---|
 | `start-inkling-dspark.sh` | head+worker boot with the wedge-proofing from the qwen38fn saga (preflight free-memory gate + zombie check, drop_caches on both nodes, `--restart no`, capped logs) |
+| `start-inkling-sm121.sh` | verified real-weight GB10 boot: lazy safetensors, load-reclaim and rel-attention patch mounts, ctx 8192 profile |
 | `.env.inkling.example` | full config with site values as `<...>` placeholders |
 | `../../patches/hotfix-inkling-steering-projective.py` | the steering hook for `vllm/models/inkling/nvidia/model.py` — handles Inkling's deferred residual add (`pending` flush via the file's own `_sconv_add_norm` idiom) |
+| `../../patches/hotfix-inkling-gb10-load-reclaim.py` | per-tensor source-page and CUDA-cache reclaim that removes the unified-memory load spike |
+| `../../patches/hotfix-inkling-sm121-relattn.py` | numerics-validated SM121 attention fallback; v2 supports CUDA graph capture |
 
 ## Traps
 
@@ -28,10 +31,12 @@ lane and the Modal validation (4×H100, vLLM 0.28.0: refusal32 0/32 → 30/32 at
 - **drop_caches needs passwordless sudo** on both nodes
   (`/etc/sudoers.d/drop-caches` — see the qwen38fn README trap; the script
   uses `sudo -n` and will fail loudly without it).
-- **NVFP4 is 159 GiB → ~85 GiB/rank at TP=2** — fits 2 Sparks with KV at
-  util 0.835 (the measured GB10 envelope from the qwen38fn lane).
+- **NVFP4 is 159 GiB → 78.3 GiB/rank at TP=2.** Steady state fits, but stock
+  loading does not. Keep lazy safetensors and the load-reclaim hotfix enabled.
+  The verified serving profile is ctx 8192, util 0.82, 2 sequences, 1024
+  batched tokens.
 
-## STATUS 2026-09-03: DGX lane BLOCKED — engine-level, not config
+## Historical status 2026-09-03: DGX lane was blocked
 
 Fifteen controlled boot attempts on 2× DGX Spark (spark-4687 + spark-5bc3,
 vllm/vllm-openai:v0.28.0, TP=2 over RoCE) all die ~28s after weight-load
@@ -76,8 +81,5 @@ FA4 backend in v0.28.0 can run Inkling on GB10; the fix is upstream**
 learning tile_n=64). The gate patch + probes live in
 `~/dspark-inkling/files/` on the head for the day the tml_fa4 side lands.
 
-**Retest path for the DGX lane:** next vLLM release (≥0.28.1), then:
-`bash start-inkling-dspark.sh` (unchanged config; the boot chain, env pins
-and staging in this directory are all correct and were re-verified during
-the eliminations). If it still dies at ~28s post-load, the bug is upstream —
-bisect vLLM's inkling support on 2×GB10, don't touch this recipe.
+The SM121 fallback and load-reclaim hotfixes now bypass both historical
+blockers. See the current working status at the top of this file.

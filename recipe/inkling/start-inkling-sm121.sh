@@ -33,7 +33,12 @@ MAX_MODEL_LEN="${MAX_MODEL_LEN:-32768}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.82}"
 SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-inkling-small-nvfp4}"
 FA4_PATCHED_PY="${FA4_PATCHED_PY:-$SCRIPT_DIR/files/fa4_rel_attention-sm121.py}"
+MODEL_PATCHED_PY="${MODEL_PATCHED_PY:-$SCRIPT_DIR/files/inkling-model-gb10.py}"
 LOAD_FORMAT="${LOAD_FORMAT:-auto}"
+LOAD_STRATEGY_FLAG=""
+if [ "$LOAD_FORMAT" = "safetensors" ]; then
+  LOAD_STRATEGY_FLAG="--safetensors-load-strategy ${SAFETENSORS_LOAD_STRATEGY:-lazy}"
+fi
 
 # --- hardware preflight (from the qwen38fn wedge saga) -----------------------
 need_free_gib() {
@@ -70,6 +75,10 @@ grep -q "sm121-relattn-hotfix" "$FA4_PATCHED_PY" || {
   echo "$FA4_PATCHED_PY lacks the sm121 hotfix marker — refusing to boot stock." >&2; exit 1; }
 ssh -o BatchMode=yes "$WORKER_HOST" "grep -q sm121-relattn-hotfix '$FA4_PATCHED_PY'" || {
   echo "Missing/unpatched $FA4_PATCHED_PY on the worker." >&2; exit 1; }
+[ -f "$MODEL_PATCHED_PY" ] && grep -q "gb10-load-reclaim-hotfix" "$MODEL_PATCHED_PY" || {
+  echo "$MODEL_PATCHED_PY lacks the GB10 load-reclaim hotfix marker." >&2; exit 1; }
+ssh -o BatchMode=yes "$WORKER_HOST" "grep -q gb10-load-reclaim-hotfix '$MODEL_PATCHED_PY'" || {
+  echo "Missing/unpatched $MODEL_PATCHED_PY on the worker." >&2; exit 1; }
 
 # --- refuse to clobber a running stack ---------------------------------------
 docker ps --format '{{.Names}}' | grep -qx "$CONTAINER" && {
@@ -92,8 +101,12 @@ docker run -d --restart no --name $CONTAINER \
   --device /dev/infiniband \
   -v $HF_CACHE:/cache/huggingface \
   -v $FA4_PATCHED_PY:/usr/local/lib/python3.12/dist-packages/vllm/models/inkling/nvidia/ops/fa4_rel_attention.py:ro \
+  -v $MODEL_PATCHED_PY:/usr/local/lib/python3.12/dist-packages/vllm/models/inkling/nvidia/model.py:ro \
   -e HF_HOME=/cache/huggingface -e HF_HUB_OFFLINE=1 \
   -e INKLING_REL_ATTN_BACKEND=${INKLING_REL_ATTN_BACKEND:-triton} \
+  -e INKLING_GB10_LOAD_RECLAIM=${INKLING_GB10_LOAD_RECLAIM:-1} \
+  -e INKLING_LOAD_RECLAIM_MIN_MIB=${INKLING_LOAD_RECLAIM_MIN_MIB:-64} \
+  -e INKLING_LOAD_RECLAIM_SLEEP_MS=${INKLING_LOAD_RECLAIM_SLEEP_MS:-20} \
   \
   -e VLLM_HOST_IP=$hostip \
   -e NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0} -e NCCL_IB_HCA=$NCCL_IB_HCA -e NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX:-3} \
@@ -110,7 +123,7 @@ docker run -d --restart no --name $CONTAINER \
         --master-addr $MASTER_ADDR --master-port $MASTER_PORT \
         --distributed-executor-backend mp \
         --tokenizer-mode inkling --reasoning-parser inkling \
-        --trust-remote-code --load-format $LOAD_FORMAT \
+        --trust-remote-code --load-format $LOAD_FORMAT $LOAD_STRATEGY_FLAG \
         ${AUTOTUNE_FLAG:---no-enable-flashinfer-autotune} \
         --max-num-seqs ${MAX_NUM_SEQS:-4} --max-num-batched-tokens ${MAX_NUM_BATCHED_TOKENS:-2048} \
         --max-model-len $MAX_MODEL_LEN \
