@@ -4,7 +4,7 @@ A **GLP vector** (GGUF Layer Projection — put your model on GLP and it comes
 back weightless) is a few hundred KB of per-layer directions that change
 a model's behaviour at inference time without touching its weights. This document
 specifies the container we write, the one metadata key that makes it safe to
-share, and the two reader implementations.
+share, and the three reader implementations.
 
 The motivating result: on `deepseek-ai/DeepSeek-V4-Flash-0731` a **478 KB** file
 reproduces what a **157 GB** re-uploaded checkpoint achieves on our cyber suites.
@@ -158,7 +158,8 @@ reader needs to tell those apart. Conflating them is how a format rots.
 | `glp.alpha_default` | float32 | Ablation strength. `1.0` removes the component exactly; we ship `4.0`. |
 | `glp.rank` | uint32 | Directions per layer. `1` for everything we have measured. |
 | `glp.orthonormal` | bool | Whether the per-layer basis is orthonormal. Required for rank > 1. |
-| `glp.hook_point` | string | `residual_stream_post_layer`. |
+| `glp.hook_point` | string | Where the projection is applied. See the table below. |
+| `glp.derived_at` | string | Where the direction was *captured*. Absent means "same as `hook_point`". |
 
 `alpha` is a **separate parameter, never folded into the vector**. Projection is
 quadratic in the direction's norm — scaling `d` by `s` scales the removal by `s²`
@@ -170,8 +171,39 @@ must not.
 `attn.wo_b` output instead of the post-layer residual measured **9x weaker**
 (3.8% vs 34.0% refusal at identical direction, layers and alpha). A reader whose
 hook does not match must refuse the file rather than apply it somewhere else.
-Both current readers only implement `residual_stream_post_layer`, which is
-exactly where llama.cpp's `build_cvec()` already runs.
+
+Recognised values:
+
+| value | tensor | readers |
+|---|---|---|
+| `residual_stream_post_layer` | the accumulated residual after the layer's writes are folded in — llama.cpp's `build_cvec()` site, and the vLLM overlay's | vLLM, llama.cpp fork |
+| `ffn_out_pre_residual` | the FFN/MoE write alone, before the residual (on DSpark, hyper-connection) fold | ds4 |
+| `attn_out_pre_residual` | the attention write alone, before the same fold | ds4 |
+
+The two `*_pre_residual` values were added for ds4, which steers the writers
+rather than the folded residual: `ffn_out = moe + shared`, immediately before
+`hc_post_one()`. They are **not** synonyms for `residual_stream_post_layer` and
+a reader must not treat them as interchangeable — the 9x figure above is
+exactly the cost of doing so, since `attn.wo_b` output is the same class of site
+as `attn_out_pre_residual`.
+
+The practical consequence is that a vector is calibrated for one site. A
+producer targeting ds4 should export with the matching `hook_point` and an
+`alpha_default` measured there; a consumer handed a vector for a different site
+should refuse it, and if a caller overrides that refusal the alpha does not
+carry over. Coverage still dominates strength either way, so the same layer
+range is worth reusing across sites even when the alpha is not.
+
+`derived_at` exists because `hook_point` alone conflates two things: where the
+direction was derived and where it should be applied. For a natively derived
+vector they coincide and `derived_at` may be omitted. The moment a vector is
+transferred to another site — derived on the post-layer residual, applied at
+the FFN write — they diverge, and without this key a consumer cannot
+distinguish a transferred vector from a natively derived one. That is the same
+un-checkable ambiguity this spec exists to eliminate. A reader still applies at
+`hook_point` and refuses on a hook mismatch as before; `derived_at !=
+hook_point` is a **warning, not a refusal**, and inspect tooling should surface
+it. `alpha_default` belongs with the apply site, never the derivation site.
 
 ### Provenance
 
@@ -236,6 +268,22 @@ change**, 42-44 tok/s steered versus unsteered, and draft acceptance 2.81 versus
 on this model ranges 2.4 to 5.6 purely by prompt shape).
 
 ## Implementations
+
+**ds4** — `github.com/antirez/ds4`, `ds4_glp.c` / `ds4_glp.h`
+([PR #970](https://github.com/antirez/ds4/pull/970)). A C reader with its own
+GGUF v3 parse, feeding the dense layer-indexed direction buffer ds4's
+`--dir-steering-file` already uses; `direction.N` lands at row `N` and
+uncovered layers are zeroed, which is a no-op under this operation. ds4 arrived
+at the projective op independently — its steering path was already
+`y -= scale * v * dot(v, y)` — so what this adds is only the container: mode,
+hook point, layer-map cross-check, base-model pin. It applies at
+`ffn_out_pre_residual` (`--dir-steering-ffn`) or `attn_out_pre_residual`
+(`--dir-steering-attn`), refuses a mismatch unless
+`--dir-steering-allow-hook-mismatch` is passed, and does not implement
+`residual_stream_post_layer`, so vectors published for the two readers below
+need that override and a re-tuned scale. `--dir-steering-info FILE` is its
+inspect path (the `test-cvec-inspect` equivalent). `dir-steering/tools/f32_to_glp.py`
+is a stdlib-only producer for ds4's own raw vectors.
 
 **vLLM (this repo)** —
 `recipe/overlay/vllm/models/deepseek_v4/nvidia/model.py`. `_load_gguf_control_vector()`
@@ -313,7 +361,8 @@ instead of a data multiplier.
 
 ## Producing one
 
-`evals/to_gguf.py <steer.pt> <out.gguf> [--alpha 4.0]` — writes the metadata
+`derivation/to_gguf.py <steer.pt> <out.gguf> [--alpha 4.0]` (in the
+refusal-research repo) — writes the metadata
 above, then reads the file back and asserts the round-trip: layer ids written
 verbatim, fp32, 1-D, exact tensor equality, and that `mode` and `hook_point`
 survived. It refuses layer 0 rather than emitting `direction.0`.
