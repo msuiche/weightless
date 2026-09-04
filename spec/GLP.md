@@ -167,10 +167,15 @@ quadratic in the direction's norm — scaling `d` by `s` scales the removal by `
 additive path folds strength into the data and is right to; the projective path
 must not.
 
-`hook_point` matters more than it looks. The same direction applied at
-`attn.wo_b` output instead of the post-layer residual measured **9x weaker**
-(3.8% vs 34.0% refusal at identical direction, layers and alpha). A reader whose
-hook does not match must refuse the file rather than apply it somewhere else.
+`hook_point` matters more than it looks. A vector is calibrated for one site,
+and applying it at another degrades silently rather than failing — there is no
+error to catch, only a weaker steer. (The one comparison on record, 34.0% vs
+3.8% refusal, measured the *attention* write against the folded residual at
+equal coverage — a real application-point result, routinely misquoted as
+bounding every non-residual site. It says nothing about the FFN writer, which
+has never been measured, and the 34.0% came from a retired scorer, so it
+cannot be re-audited.) A reader whose hook does not match must refuse the file
+rather than apply it somewhere else.
 
 Recognised values:
 
@@ -183,9 +188,12 @@ Recognised values:
 The two `*_pre_residual` values were added for ds4, which steers the writers
 rather than the folded residual: `ffn_out = moe + shared`, immediately before
 `hc_post_one()`. They are **not** synonyms for `residual_stream_post_layer` and
-a reader must not treat them as interchangeable — the 9x figure above is
-exactly the cost of doing so, since `attn.wo_b` output is the same class of site
-as `attn_out_pre_residual`.
+a reader must not treat them as interchangeable — projecting a writer prevents
+one layer's new deposit while the component accumulated upstream sails through
+untouched, which is a weaker intervention by construction, at an alpha whose
+meaning differs (at the residual, 1.0 removes the component exactly; at a
+writer, 1.0 removes that write's component and >1 injects anti-signal per
+layer).
 
 The practical consequence is that a vector is calibrated for one site. A
 producer targeting ds4 should export with the matching `hook_point` and an

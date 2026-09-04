@@ -201,8 +201,9 @@ def _load_gguf_control_vector(path: str) -> dict:
     if hook is not None and hook != "residual_stream_post_layer":
         raise ValueError(
             f"{path}: glp.hook_point={hook!r} does not match this hook "
-            f"(residual_stream_post_layer). The same vector at the wrong "
-            f"hook point measured ~9x weaker; refusing to apply."
+            f"(residual_stream_post_layer). The file's alpha was calibrated "
+            f"for that hook; applying it here degrades silently rather "
+            f"than erroring; refusing to apply."
         )
 
     logger.info(
