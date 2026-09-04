@@ -214,9 +214,9 @@ docker run -d --restart no --name $CONTAINER \
         --nnodes 2 --node-rank $rank \
         --master-addr $MASTER_ADDR --master-port $MASTER_PORT \
         --distributed-executor-backend mp \
-        --enable-expert-parallel --all2all-backend allgather_reducescatter \
         --load-format safetensors --safetensors-load-strategy lazy \
-        --compilation-config '{"mode":0,"cudagraph_mode":"FULL_DECODE_ONLY"}' \
+        --max-num-seqs ${MAX_NUM_SEQS:-8} \
+        --max-num-batched-tokens ${MAX_NUM_BATCHED_TOKENS:-8192} \
         --no-enable-prefix-caching \
         --max-model-len $MAX_MODEL_LEN \
         --gpu-memory-utilization $GPU_MEMORY_UTILIZATION \
