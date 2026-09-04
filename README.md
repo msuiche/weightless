@@ -203,7 +203,7 @@ WEIGHTLESS_STEER_LAYERS=$(seq -s, 10 38)
 Confirm from the boot log — **check that `layers=` reads 29, not 1**:
 
 ```
-weightless GLP steering active: hook=post_layer alpha=4.000 ... layers=29 [10, ...]
+weightless GLP steering active: hook=ffn_out_pre_residual alpha=4.000 ... layers=29 [10, ...]
 ```
 
 A previous revision dedented the per-layer assignment out of its loop and

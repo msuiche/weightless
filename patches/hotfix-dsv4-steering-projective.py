@@ -8,12 +8,27 @@ weightless/spec/GLP.md) to the Anemll 0.1.1 image's vLLM
 
     h <- h - alpha * (h . d_hat) d_hat
 
-on the post-layer residual stream (hyper-connection streams steered
-independently), layers/alpha/vector gated by env:
+on the FFN writer output, pre-fold (``ffn_out``, the pending write the
+decoder layer returns before the mHC fold lands in the next layer's fused
+post/pre call). layers/alpha/vector gated by env:
 
     WEIGHTLESS_STEER_PATH    .gguf (spec-conformant cvec) or .pt {layer: tensor}
     WEIGHTLESS_STEER_ALPHA   float, default 1.0 in code; deployment pins 4.0
+                               (keysdir vector) or 6.0 (GLP-29 cyber, 2026-09-04)
     WEIGHTLESS_STEER_LAYERS  optional comma list restricting layer ids
+
+2026-09-04 hook-site correction: this hotfix was documented as steering the
+post-layer residual stream. It does not, and never did on this tree — the
+model-loop anchor's ``hidden_states`` IS the layer's pending FFN write
+(shape-probe verified in-image against the 0.25.2 mHC kernel signatures; the
+same return convention exists in the v0.27 tree). Every published vLLM-lane
+DSV4 number was measured at this FFN-writer anchor, and the measured site
+ordering on DSV4-Flash-0731 is FFN >> residual >> attention, so the anchor
+stays; only the label was wrong. The declared hook is now
+``ffn_out_pre_residual`` and a ``residual_stream_post_layer`` file is the
+mismatch case — it fails closed. Vectors captured at the residual and applied
+here are transferred vectors: legal, but ``glp.derived_at`` must then differ
+from ``glp.hook_point`` and the loader warns loudly.
 
 Differences from the v0.27 patch:
 
@@ -21,7 +36,7 @@ Differences from the v0.27 patch:
   is a small embedded parser (GGUF v3, F32 1-D tensors only) instead of
   ``gguf.GGUFReader``. All spec checks are unchanged: glp.mode is
   enforced (missing or non-"project" is fatal), glp.hook_point must be
-  residual_stream_post_layer, direction.0 is rejected, and
+  ffn_out_pre_residual, direction.0 is rejected, and
   glp.layer_ids_zero_based is cross-checked against the tensor names.
 - Everything else is verbatim: dense zero-padded _steer_stack indexed by
   layer id, unconditional per-layer apply (never a Python ``if``), alpha as
@@ -188,12 +203,12 @@ def _load_gguf_control_vector(path: str) -> dict:
         )
 
     hook = meta.get("glp.hook_point")
-    if hook is not None and hook != "residual_stream_post_layer":
+    if hook is not None and hook != "ffn_out_pre_residual":
         raise ValueError(
             f"{path}: glp.hook_point={hook!r} does not match this hook "
-            f"(residual_stream_post_layer). The file's alpha was calibrated "
-            f"for that hook; applying it here degrades silently rather "
-            f"than erroring; refusing to apply."
+            f"(ffn_out_pre_residual — the pending FFN write, pre-fold; see "
+            f"the 2026-09-04 site correction in the hotfix docstring). "
+            f"Refusing to apply at the wrong site."
         )
 
     # A transferred vector (captured at one site, calibrated for another) is
@@ -299,11 +314,15 @@ MODULE_BLOCK = (
     + MARK
     + "\n"
     "\n"
-    "# Recorded for provenance in the startup log. Only \"post_layer\" is implemented\n"
-    "# here, which is the shipped setting and the one every measurement was taken at.\n"
-    "# On this architecture the site matters about 9x: the same direction applied to\n"
-    "# the attention writer alone left 34.0% refusal, against 3.8% post-layer.\n"
-    "_WEIGHTLESS_STEER_HOOK = (os.environ.get(\"WEIGHTLESS_STEER_HOOK\") or \"post_layer\").strip()\n"
+    "# Recorded for provenance in the startup log. The only site implemented at\n"
+    "# this anchor is \"ffn_out_pre_residual\": on this tree the model loop's\n"
+    "# hidden_states IS the layer's pending FFN write (the mHC fold is deferred to\n"
+    "# the next layer's fused post/pre call). Every published vLLM-lane DSV4\n"
+    "# number was measured here. Measured 2026-09-04 (hook-site experiment, same\n"
+    "# direction/layers): FFN writer >> post-layer residual >> attention writer;\n"
+    "# FFN window alpha 4-6, residual garbles at 4.0, attention ~4-5/32 at 4.0.\n"
+    "# WEIGHTLESS_STEER_HOOK set to anything else fails closed in _load_steering.\n"
+    "_WEIGHTLESS_STEER_HOOK = (os.environ.get(\"WEIGHTLESS_STEER_HOOK\") or \"ffn_out_pre_residual\").strip()\n"
     "_GLP_HOOK_ALPHA = float(os.environ.get(\"WEIGHTLESS_STEER_ALPHA\", \"1.0\") or 1.0)\n"
     "# layer id -> (k, hidden) orthonormal rows. Populated for inspection and for\n"
     "# offline tooling; NOT read by the forward path. The pre-fold writer-isolation\n"
@@ -366,6 +385,13 @@ INIT_BLOCK = '''\
         path = os.environ.get("WEIGHTLESS_STEER_PATH", "").strip()
         if not path:
             return
+        if _WEIGHTLESS_STEER_HOOK != "ffn_out_pre_residual":
+            raise RuntimeError(
+                f"WEIGHTLESS_STEER_HOOK={_WEIGHTLESS_STEER_HOOK!r} is not "
+                f"implemented at this anchor; the only site here is "
+                f"ffn_out_pre_residual (the pending FFN write, pre-fold). "
+                f"Refusing to serve with a silently wrong hook site."
+            )
         try:
             if path.endswith(".gguf"):
                 raw = _load_gguf_control_vector(path)
@@ -458,9 +484,12 @@ FORWARD_BLOCK = '''\
             # Unconditional per-layer projection: h <- h - alpha (h.d) d. Rows
             # are zero for layers we do not steer, so this is a numeric no-op
             # there while the traced graph stays identical for every layer set.
-            # hidden_states is (tokens, hc_mult, hidden_size) here, and the
-            # ellipsis contracts only the last axis, so the component is removed
-            # from each hyper-connection stream independently.
+            # hidden_states at this anchor is the layer's PENDING FFN WRITE,
+            # shape (tokens, hidden_size) — the mHC fold of that write into the
+            # hyper-connection streams is deferred to the next layer's fused
+            # post/pre call (verified 2026-09-04 against the 0.25.2 kernel
+            # signatures; an earlier version of this comment claimed
+            # (tokens, hc_mult, hidden_size) — that was wrong).
             steer_dirs = self._steer_stack[idx]
             steer_coef = torch.einsum("...h,kh->...k", hidden_states, steer_dirs)
             hidden_states = hidden_states - self._steer_alpha * torch.einsum(
