@@ -224,6 +224,18 @@ def _load_gguf_control_vector(path: str) -> dict:
             f"hook point measured ~9x weaker; refusing to apply."
         )
 
+    # A transferred vector (captured at one site, calibrated for another) is
+    # legal but must not be silent: derived_at != hook_point means the
+    # direction was estimated on a different distribution than the one it is
+    # about to edit. Warning, never a refusal (GLP.md); alpha_default belongs
+    # to the apply site.
+    derived_at = meta.get("glp.derived_at")
+    if derived_at and hook and derived_at != hook:
+        logger.warning(
+            "%s: transferred vector -- glp.derived_at=%r, apply hook %r",
+            path, derived_at, hook,
+        )
+
     logger.info(
         "weightless GLP vector: mode=%s spec_version=%s base_model=%s rev=%s",
         mode,
