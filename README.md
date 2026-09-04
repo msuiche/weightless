@@ -55,7 +55,10 @@ The model weights are never redistributed — what this repo ships is the
   (`patches/hotfix-*.py`) that loads the GLP file and installs the
   projective hook — no image build, no forked runtime. Structural guard
   tests in `scripts/`, hardware-validated numbers in each lane's README.
-- **Quant-friendly.** The hook steers the residual stream at runtime, so it
+- **Quant-friendly.** The hook steers activations at runtime (the
+  calibrated site per lane: post-layer residual where the runtime
+  materialises it, the pre-fold FFN write on the DSV4 lane, 2026-09-04
+  site correction), so it
   works on quantized checkpoints (NVFP4 verified on both lanes,
   bf16→NVFP4 transfer measured) as long as the base architecture is intact.
   The one exception is REAP-pruned builds: deleting experts changes the

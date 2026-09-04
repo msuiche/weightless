@@ -12,7 +12,7 @@ Always-on checks (no reference sources needed):
   1. the hotfix parses, exposes the 4-anchor PATCHES table, and its embedded
      code blocks (GGUF_SRC / INIT_BLOCK / FORWARD_BLOCK) are extractable;
   2. the embedded GGUF loader parses and keeps the spec enforcement
-     (dspark.mode=project, residual_stream_post_layer, direction.0
+     (dspark.mode=project, ffn_out_pre_residual, direction.0
      rejection) — an additive reader must refuse our files;
   3. the per-layer assignments in the injected INIT_BLOCK are INSIDE the
      per-layer loop (the dedent regression guard);
@@ -46,7 +46,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 HOTFIX = REPO / "patches/hotfix-dsv4-steering-projective.py"
 
 PER_LAYER_TARGETS = ("self._steer_dirs[layer_id]", "_GLP_HOOK_DIRS[layer_id]")
-SPEC_TOKENS = ("glp.mode", "residual_stream_post_layer", "direction.0")
+SPEC_TOKENS = ("glp.mode", "ffn_out_pre_residual", "direction.0")
 
 
 def extract_strings(tree: ast.AST) -> dict:

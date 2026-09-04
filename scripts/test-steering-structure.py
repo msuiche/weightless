@@ -19,6 +19,8 @@ leaves 0.0%. Nothing in the logs distinguishes the two, because the direction
 loads fine and the model answers fine.
 
 Run: python3 scripts/test-steering-structure.py [path/to/model.py]
+Default target: the live source branch checkout at ../vllm (the tree the
+0001 patch regenerates from). Exits 2 (SKIP) when no model.py is available.
 No GPU, no torch, no vLLM import -- this parses the source.
 """
 
@@ -29,12 +31,12 @@ import pathlib
 import sys
 
 DEFAULT = (
-    pathlib.Path(__file__).resolve().parent.parent
-    / "recipe/overlay/vllm/models/deepseek_v4/nvidia/model.py"
+    pathlib.Path(__file__).resolve().parent.parent.parent
+    / "vllm/vllm/models/deepseek_v4/nvidia/model.py"
 )
 
 # Assignments that are per-layer and must therefore live inside the per-layer loop.
-PER_LAYER_TARGETS = ("_steer_dirs[_lid]", "_GLP_HOOK_DIRS[_lid]")
+PER_LAYER_TARGETS = ("self._steer_dirs[layer_id]", "_GLP_HOOK_DIRS[layer_id]")
 
 # Module-level entry points the overlay guard also asserts on.
 REQUIRED_SYMBOLS = ("_load_gguf_control_vector", "_WEIGHTLESS_STEER_HOOK")
@@ -45,7 +47,8 @@ def find_layer_loop(tree: ast.AST) -> ast.For | None:
         if (
             isinstance(node, ast.For)
             and isinstance(node.target, ast.Name)
-            and node.target.id == "_lid"
+            and node.target.id in ("_lid", "layer_id")
+            and isinstance(node.iter, ast.Call)
         ):
             return node
     return None
@@ -102,4 +105,9 @@ def main(path: pathlib.Path) -> int:
 
 if __name__ == "__main__":
     target = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT
+    if not target.is_file():
+        print(f"  [SKIP] no model.py at {target}")
+        print("         (clone the vllm source branch next to this repo,")
+        print("          or pass a path -- see the docstring)")
+        sys.exit(2)
     sys.exit(main(target))

@@ -1,5 +1,5 @@
 diff --git a/vllm/models/deepseek_v4/nvidia/model.py b/vllm/models/deepseek_v4/nvidia/model.py
-index 8925890..d9b6ff7 100644
+index 8925890..43f6c95 100644
 --- a/vllm/models/deepseek_v4/nvidia/model.py
 +++ b/vllm/models/deepseek_v4/nvidia/model.py
 @@ -1,5 +1,6 @@
@@ -9,7 +9,7 @@ index 8925890..d9b6ff7 100644
  import typing
  from collections.abc import Callable, Iterable
  from itertools import islice
-@@ -84,6 +85,155 @@ from vllm.sequence import IntermediateTensors
+@@ -84,6 +85,172 @@ from vllm.sequence import IntermediateTensors
  from vllm.utils.math_utils import cdiv
  from vllm.v1.attention.backends.registry import AttentionBackendEnum
  from vllm.v1.worker.ubatching import dbo_current_ubatch_id
@@ -20,7 +20,16 @@ index 8925890..d9b6ff7 100644
 +# ---------------------------------------------------------------------------
 +# Projective activation steering (DSpark).
 +#
-+# h <- h - alpha * (h . d_hat) d_hat on the residual stream at chosen layers.
++# h <- h - alpha * (h . d_hat) d_hat on each layer's pending FFN write,
++# pre-fold (ffn_out_pre_residual): the decoder layer returns its raw FFN
++# output and defers the hyper-connection fold into the next layer's fused
++# post/pre call, so the tensor at the anchor below is (tokens, hidden),
++# NOT the post-layer residual stream. Site correction 2026-09-04: every
++# published number for this lane was measured here with a residual-derived
++# (transferred) direction, and a controlled arm comparison measured
++# FFN writer >> true residual >> attention writer on this checkpoint —
++# alpha is calibrated for this site and does not transfer.
++#
 +# Activation space rather than weight space on purpose: on this checkpoint the
 +# fp8 requantisation floor is ~39% of a lambda=3.5 weight edit, so small
 +# coefficients are not representable in the weights at all.
@@ -28,15 +37,15 @@ index 8925890..d9b6ff7 100644
 +# Everything here is inert unless WEIGHTLESS_STEER_PATH is set.
 +# ---------------------------------------------------------------------------
 +
-+# Recorded for provenance in the startup log. Only "post_layer" is implemented
-+# here, which is the shipped setting and the one every measurement was taken at.
-+# On this architecture the site matters about 9x: the same direction applied to
-+# the attention writer alone left 34.0% refusal, against 3.8% post-layer.
-+_WEIGHTLESS_STEER_HOOK = (os.environ.get("WEIGHTLESS_STEER_HOOK") or "post_layer").strip()
++# Recorded for provenance in the startup log. Only "ffn_out_pre_residual" is
++# implemented here — the layer's FFN write before the HC fold, which is where
++# every measurement for this lane was taken. Anything else fails closed in
++# _load_steering.
++_WEIGHTLESS_STEER_HOOK = (os.environ.get("WEIGHTLESS_STEER_HOOK") or "ffn_out_pre_residual").strip()
 +_GLP_HOOK_ALPHA = float(os.environ.get("WEIGHTLESS_STEER_ALPHA", "1.0") or 1.0)
 +# layer id -> (k, hidden) orthonormal rows. Populated for inspection and for
-+# offline tooling; NOT read by the forward path. The pre-fold writer-isolation
-+# hooks that used it are deliberately not ported: they branch on
++# offline tooling; NOT read by the forward path. The writer-isolation hooks
++# that used it are deliberately not ported: they branch on
 +# _WEIGHTLESS_STEER_HOOK inside the traced region, and that choice is not part of
 +# vLLM's compile cache key, so a cached artifact would silently ignore a changed
 +# hook site. Reintroduce them behind a separate image if that experiment is
@@ -96,11 +105,19 @@ index 8925890..d9b6ff7 100644
 +        )
 +
 +    hook = _str_field("glp.hook_point")
-+    if hook is not None and hook != "residual_stream_post_layer":
++    if hook is not None and hook != "ffn_out_pre_residual":
 +        raise ValueError(
 +            f"{path}: glp.hook_point={hook!r} does not match this hook "
-+            f"(residual_stream_post_layer). The same vector at the wrong hook "
-+            f"point measured ~9x weaker; refusing to apply."
++            f"(ffn_out_pre_residual -- the layer's pending FFN write before "
++            f"the HC fold). The file's alpha was calibrated for its own "
++            f"site; applying it here degrades silently rather than failing, "
++            f"so this refuses."
++        )
++    derived_at = _str_field("glp.derived_at")
++    if derived_at and hook and derived_at != hook:
++        logger.warning(
++            "%s: transferred vector — glp.derived_at=%r, apply hook %r",
++            path, derived_at, hook,
 +        )
 +
 +    logger.info(
@@ -165,7 +182,7 @@ index 8925890..d9b6ff7 100644
  
  
  class DeepseekV4MLP(nn.Module):
-@@ -1105,6 +1255,117 @@ class DeepseekV4Model(nn.Module, EagleModelMixin):
+@@ -1105,6 +1272,124 @@ class DeepseekV4Model(nn.Module, EagleModelMixin):
          else:
              self._mtp_hidden_buffer = None
  
@@ -214,6 +231,13 @@ index 8925890..d9b6ff7 100644
 +        path = os.environ.get("WEIGHTLESS_STEER_PATH", "").strip()
 +        if not path:
 +            return
++        if _WEIGHTLESS_STEER_HOOK != "ffn_out_pre_residual":
++            raise ValueError(
++                f"WEIGHTLESS_STEER_HOOK={_WEIGHTLESS_STEER_HOOK!r}: this image "
++                f"implements only ffn_out_pre_residual (the layer's pending FFN "
++                f"write before the HC fold). Refusing to steer at an "
++                f"unvalidated site."
++            )
 +        try:
 +            if path.endswith(".gguf"):
 +                raw = _load_gguf_control_vector(path)
@@ -283,16 +307,19 @@ index 8925890..d9b6ff7 100644
      def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
          return self.embed_tokens(input_ids)
  
-@@ -1172,6 +1433,17 @@ class DeepseekV4Model(nn.Module, EagleModelMixin):
+@@ -1172,6 +1457,20 @@ class DeepseekV4Model(nn.Module, EagleModelMixin):
                  res_mix,
                  residual,
              )
 +            # Unconditional per-layer projection: h <- h - alpha (h.d) d. Rows
 +            # are zero for layers we do not steer, so this is a numeric no-op
 +            # there while the traced graph stays identical for every layer set.
-+            # hidden_states is (tokens, hc_mult, hidden_size) here, and the
-+            # ellipsis contracts only the last axis, so the component is removed
-+            # from each hyper-connection stream independently.
++            # hidden_states here is (tokens, hidden): the layer's pending FFN
++            # write, pre-fold (ffn_out_pre_residual). The HC fold of it into the
++            # 4-stream stack is deferred to the next layer's fused post/pre
++            # call — the post-layer residual is never materialized in this
++            # loop. This is the calibrated site for this lane (2026-09-04 site
++            # correction); see the module header.
 +            steer_dirs = self._steer_stack[idx]
 +            steer_coef = torch.einsum("...h,kh->...k", hidden_states, steer_dirs)
 +            hidden_states = hidden_states - self._steer_alpha * torch.einsum(
