@@ -147,7 +147,7 @@ LANES = [
          hotfix="hotfix-glm53-steering-projective.py",
          extra_patches=["vendor/sparse_attn_indexer_kpool_sm121.py"],
          port=8080),
-    dict(name="GLM-5.3 743B TP=4 serving — 4x DGX Spark, Int4-Int8Mix recipe",
+    dict(name="GLM-5.3 743B TP=4 serving — multi-node server / cloud, Int4-Int8Mix recipe",
          example="recipe/glm53xl/.env.glm53xl.example",
          target="recipe/glm53xl/.env.glm53xl",
          steer_key="WEIGHTLESS_STEER_PATH",
