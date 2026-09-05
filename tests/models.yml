@@ -21,3 +21,21 @@ providers:
           supportsToolChoice: false
           requiresReasoningContentForToolCalls: true
           requiresAssistantContentForToolCalls: true
+  inkling:
+    # Inkling-Small NVFP4 on the 2x DGX Spark rig (sm121 lane,
+    # recipe/inkling/start-inkling-sm121.sh). API on the head at :8082.
+    baseUrl: http://localhost:8082/v1
+    auth: none
+    api: openai-completions
+    models:
+      - id: inkling-small-nvfp4
+        name: Inkling-Small NVFP4 (2x DGX Spark TP=2)
+        reasoning: true
+        input: [text]
+        contextWindow: 32768
+        maxTokens: 8192
+        compat:
+          supportsDeveloperRole: false
+          supportsReasoningEffort: false
+          maxTokensField: max_tokens
+          supportsToolChoice: false

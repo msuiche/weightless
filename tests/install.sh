@@ -12,13 +12,20 @@ dst="$HOME/.omp/agent/models.yml"
 mkdir -p "$(dirname "$dst")"
 
 if [ -f "$dst" ]; then
-  if grep -q "^  dspark:" "$dst"; then
-    echo "dspark provider already present in $dst"
-  else
-    cp "$dst" "$dst.bak.$(date +%s)"
-    tail -n +2 "$src" >> "$dst"  # drop our 'providers:' header, append the block
-    echo "merged dspark provider into $dst (backup: $dst.bak.*)"
-  fi
+  merged=""
+  for prov in dspark inkling; do
+    if grep -q "^  ${prov}:" "$dst"; then
+      echo "${prov} provider already present in $dst"
+    else
+      [ -n "$merged" ] || { cp "$dst" "$dst.bak.$(date +%s)"; merged=1; }
+      awk -v p="${prov}" '
+        $0 == "  " p ":" { inb=1; print; next }
+        inb && /^  [^ ]/ { inb=0 }
+        inb { print }
+      ' "$src" >> "$dst"
+      echo "merged ${prov} provider into $dst"
+    fi
+  done
 else
   cp "$src" "$dst"
   echo "installed $dst"
