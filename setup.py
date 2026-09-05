@@ -162,6 +162,7 @@ LANES = [
                        "files/inkling-model-gb10.py",
                        "files/inkling-model-steered.py"],
          start_script="start-inkling-sm121.sh",
+         steering_supported=False,
          hotfix="hotfix-inkling-steering-projective.py",
          extra_patches=["hotfix-inkling-gb10-load-reclaim.py",
                         "hotfix-inkling-sm121-relattn.py"],
@@ -625,6 +626,43 @@ def probe_models(base):
         return None, str(e)
 
 
+def probe_generation(base, model):
+    """Readiness includes a completed answer, not just a live HTTP process."""
+    if DEMO:
+        return "pong", None
+    payload = {"model": model, "messages": [{"role": "user", "content": "Reply with exactly: pong"}],
+               "max_tokens": 1024, "temperature": 0}
+    try:
+        request = urllib.request.Request(base.rstrip("/") + "/chat/completions",
+                                         json.dumps(payload).encode(), {"Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=180) as response:
+            data = json.load(response)
+        content = (data["choices"][0]["message"].get("content") or "").strip()
+        if not content:
+            if data["choices"][0].get("finish_reason") == "length":
+                return None, "generation exhausted its output budget before answering; retry with a larger budget"
+            return None, "generation returned no answer"
+        return content, None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def served_context(base, model):
+    """Use the running server's window rather than its model's theoretical limit."""
+    if DEMO:
+        return None
+    try:
+        with urllib.request.urlopen(base.rstrip("/") + "/models", timeout=10) as response:
+            data = json.load(response)
+        for entry in data.get("data", []):
+            value = entry.get("max_model_len")
+            if entry.get("id") == model and isinstance(value, int) and value > 0:
+                return value
+    except Exception:
+        pass
+    return None
+
+
 def yaml_block(text, key, indent=0):
     """Locate an ordinary YAML mapping entry and its indented body."""
     match = re.search(rf"(?m)^{' ' * indent}{re.escape(key)}:[^\n]*(?:\n|$)", text)
@@ -661,11 +699,41 @@ def render_provider(head_host="localhost"):
                   body[slice(*block)])
 
 
-def install_provider(head_host="localhost"):
+def model_profile(model):
+    """Read context, output and tools from the same template omp installs."""
+    text = render_provider()
+    entries = re.split(r"(?m)^      - id: +", text)[1:]
+    for entry in entries:
+        name, _, body = entry.partition("\n")
+        if name.strip() != model:
+            continue
+        def integer(key, default):
+            match = re.search(rf"(?m)^        {key}: +(\d+)", body)
+            return int(match.group(1)) if match else default
+        return {"context_length": integer("contextWindow", 65536),
+                "max_tokens": integer("maxTokens", 8192),
+                "supports_tools": not re.search(r"(?m)^        supportsTools: +false\b", body)}
+    return {"context_length": 65536, "max_tokens": 8192, "supports_tools": True}
+
+
+def install_provider(head_host="localhost", model=None, context_length=None, base_url=None):
     """Replace or append the complete provider, preserving other configuration."""
     if DEMO:
         return f"demo: configured omp '{PROVIDER}' provider (all local lanes)"
     block = render_provider(head_host)
+    if model:
+        pattern = rf"(?ms)^      - id: +{re.escape(model)}\n.*?(?=^      - id:|\Z)"
+        def update_model(match):
+            entry = match.group(0)
+            if context_length:
+                limit = min(model_profile(model)["max_tokens"], max(1, context_length // 4))
+                for key, value in (("contextWindow", context_length), ("maxTokens", limit)):
+                    entry = re.sub(rf"(?m)^(        {key}: +)\d+",
+                                   lambda m: m.group(1) + str(value), entry)
+            if base_url:
+                entry = re.sub(r"(?m)^        baseUrl:.*$", lambda m: "        baseUrl: " + json.dumps(base_url), entry)
+            return entry
+        block = re.sub(pattern, update_model, block, count=1)
     existing = ""
     if os.path.exists(OMP_MODELS):
         with open(OMP_MODELS) as f:
@@ -690,7 +758,7 @@ def install_provider(head_host="localhost"):
     return f"configured provider '{PROVIDER}' in {OMP_MODELS} (all local lanes)"
 
 
-def install_hermes(head_host, model):
+def install_hermes(head_host, model, context_length=None, base_url=None):
     """Update Hermes model settings, keeping unrelated keys and mappings."""
     if DEMO:
         return f"demo: configured hermes (model {model})"
@@ -708,12 +776,14 @@ def install_hermes(head_host, model):
     # Preserve the user's indentation and any extra model options.
     indents = re.findall(r"(?m)^( +)[^ #\n][^\n]*:", body)
     indent = min(map(len, indents)) if indents else 2
+    profile = model_profile(model)
+    context_length = context_length or profile["context_length"]
     settings = {
         "default": json.dumps(model),
         "provider": "custom",
-        "base_url": json.dumps(f"http://{url_host(head_host)}:8000/v1"),
-        "context_length": "65536",
-        "max_tokens": "8192",
+        "base_url": json.dumps(base_url or f"http://{url_host(head_host)}:8000/v1"),
+        "context_length": str(context_length),
+        "max_tokens": str(min(profile["max_tokens"], max(1, context_length // 4))),
     }
     # A scalar or empty model entry becomes a mapping.
     if not re.match(r"^model:[ \t]*(?:#[^\n]*)?(?:\n|$)", body):
@@ -819,7 +889,7 @@ def run_suite(io, base, model):
         name = os.path.basename(t)
         io.begin(f"… {name} running")
         try:
-            r = subprocess.run(["sh", t], env=env, capture_output=True,
+            r = subprocess.run(["bash", t], env=env, capture_output=True,
                                text=True, timeout=600)
         except subprocess.TimeoutExpired:
             io.end(f"✗ {name} — timed out after 600s", "err")
@@ -1166,8 +1236,12 @@ def lane_chain(io, lane_idx):
         else:
             values[p] = io.text(f"{prompt} ({p}): ", default)
 
-    # 2. steering (default on)
-    steering = io.confirm("Enable refusal steering (GLP vector patch)?", True)
+    # Only expose steering when the selected launcher actually applies it.
+    steering = False
+    if lane.get("steering_supported", True):
+        steering = io.confirm("Enable refusal steering (GLP vector patch)?", True)
+    else:
+        io.info("This Inkling SM121 launcher serves unsteered; the separate steered launcher is not boot-validated.")
     steer_mode = None
     if steering and lane["steer_modes"]:
         labels = [d for _, d in lane["steer_modes"]]
@@ -1295,7 +1369,8 @@ def diagnose_chain(io, base=None):
     """Layered failure isolation for an endpoint that won't answer, with an
     optional remote check/boot over ssh."""
     base = base or io.text("Base URL to diagnose: ", default_base())
-    u = urllib.parse.urlparse(base if "://" in base else "http://" + base)
+    base = normalize_base(base)
+    u = urllib.parse.urlparse(base)
     host = u.hostname or base
     port = u.port or (443 if u.scheme == "https" else 80)
     io.header(f"diagnosing {host}:{port}")
@@ -1321,13 +1396,23 @@ def diagnose_chain(io, base=None):
         return 1
 
     # layer 3: HTTP /models
-    ids, err = probe_models(f"{u.scheme or 'http'}://{host}:{port}/v1")
+    ids, err = probe_models(base)
     if ids is None:
         io.err(f"HTTP: /v1/models failed ({err})")
         io.info("something listens but it is not a healthy OpenAI server — check container logs")
         remote_diagnose(io, host)
         return 1
     io.ok(f"HTTP: /v1/models answers — serving: {', '.join(ids)}")
+    if not ids:
+        io.err("No model is ready. A running router alone is not a serving engine.")
+        return 1
+    model = ids[io.menu("Model to diagnose:", ids)] if len(ids) > 1 else ids[0]
+    io.info("Checking generation (up to 180 seconds)...")
+    content, error = probe_generation(base, model)
+    if error:
+        io.err(f"Generation failed: {error}. Inspect worker logs even if /health passes.")
+        return 1
+    io.ok(f"Generation: {content[:80]}")
     return 0
 
 
@@ -1347,7 +1432,7 @@ def remote_diagnose(io, host):
     target = f"{saved.get('user', os.environ.get('USER', ''))}@{ssh_host}"
     io.info(f"ssh target: {target}")
     probe = ("docker ps -a --format '{{.Names}} {{.Status}}' "
-             "| grep -i -E 'deepseek|qwen|vllm' || echo '(no serving container)'; "
+             "| grep -i -E 'deepseek|qwen|vllm|inkling|glm' || echo '(no serving container)'; "
              "nvidia-smi --query-gpu=clocks.sm,power.draw,utilization.gpu "
              "--format=csv,noheader 2>/dev/null || echo '(no GPU?)'")
     io.info(f"$ ssh {target} '<container + GPU status>'")
@@ -1369,6 +1454,15 @@ def remote_diagnose(io, host):
                 io.err(f"boot FAILED ({rc})")
 
 
+def normalize_base(base):
+    base = base.strip().rstrip("/")
+    if "://" not in base:
+        base = "http://" + base
+    if not urllib.parse.urlparse(base).path:
+        base += "/v1"
+    return base
+
+
 def tests_chain(io, head_host=None, lane_idx=None):
     preferred_model = None
     if lane_idx is not None:
@@ -1377,10 +1471,16 @@ def tests_chain(io, head_host=None, lane_idx=None):
             env = dict(re.findall(r"(?m)^([A-Z_]+)=(\S+)", f.read()))
         head_host = head_host or env.get("MASTER_ADDR") or "localhost"
         preferred_model = env.get("SERVED_MODEL_NAME", "").strip("\"'")
-        endpoint = f"http://{url_host(head_host)}:{env.get('VLLM_PORT') or lane['port']}/v1"
+        port = env.get('VLLM_PORT') or lane['port']
+        endpoint = f"http://{url_host(head_host)}:{port}/v1"
+        if preferred_model == "inkling-small-nvfp4":
+            router_base = f"http://{url_host(head_host)}:8000/v1"
+            router_ids, _ = probe_models(router_base)
+            if preferred_model in (router_ids or []):
+                endpoint = router_base
     else:
         endpoint = default_base()
-    base = io.text("Base URL of the OpenAI-compatible server: ", endpoint)
+    base = normalize_base(io.text("Base URL of the OpenAI-compatible server: ", endpoint))
     io.info(f"probing {base}/models ...")
     ids, err = probe_models(base)
     while ids is None:
@@ -1397,7 +1497,7 @@ def tests_chain(io, head_host=None, lane_idx=None):
             if ids is not None:
                 io.ok("endpoint is up now")
         elif choice == 1:
-            base = io.text("Base URL: ", base)
+            base = normalize_base(io.text("Base URL: ", base))
             io.info(f"probing {base}/models ...")
             ids, err = probe_models(base)
         else:
@@ -1413,14 +1513,23 @@ def tests_chain(io, head_host=None, lane_idx=None):
     else:
         model = ids[io.menu("Model to test:", ids)] if len(ids) > 1 else ids[0]
     io.ok(f"model: {model}")
+    io.info("Testing a completed answer (first request may need kernel warmup)...")
+    content, error = probe_generation(base, model)
+    if error:
+        io.err(f"generation failed: {error} — client defaults were not changed")
+        return 1
+    io.ok(f"generation: {content[:80]}")
+    context_length = served_context(base, model) or model_profile(model)["context_length"]
+    io.info(f"Serving context: {context_length:,} tokens")
     head_host = urllib.parse.urlparse(base).hostname or head_host or "localhost"
     configure_omp = io.confirm("Configure omp (weightless provider)?", True)
     configure_hermes = io.confirm("Configure hermes (~/.hermes/config.yaml)?", True)
     if configure_omp:
-        io.ok(install_provider(head_host))
+        io.ok(install_provider(head_host, model=model, context_length=context_length, base_url=base))
         omp_roles_chain(io, model)
     if configure_hermes:
-        io.ok(install_hermes(head_host, model))
+        io.ok(install_hermes(head_host, model, context_length=context_length, base_url=base))
+        io.info("Hermes configuration updated on this machine. Restart an existing gateway; saved /model session overrides take precedence.")
     if io.confirm("Run the test suite now?", True):
         return run_suite(io, base, model)
     io.info(f"done — later: sh {os.path.join(HERE, 'tests', 'run.sh')}")
@@ -1520,9 +1629,9 @@ def completion(io, rc):
     """End-of-run summary. A boxed 'done' on success, a pointer on failure."""
     io.info("")
     if rc == 0:
-        box(io, "Congratulations!", [
-            "you're all set — steering validated, endpoint live,",
-            "agent client setup finished. Happy hacking.",
+        box(io, "Setup complete", [
+            "Selected setup steps completed.",
+            "Check the test results above for skips and limitations.",
         ], border="ok", title_kind="head")
     else:
         io.warn("setup finished with errors — scroll up for the red rows")

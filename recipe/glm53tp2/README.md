@@ -159,13 +159,11 @@ starts rank 1, waits 25 seconds, then starts rank 0. Readiness polls
 **`/health`**, not `/v1/models` (which can return 200 with a dead engine).
 Allow roughly 15 minutes and inspect both logs if it fails.
 
-The `setup.py` lane entry supports env generation, the existing steering
-structure test, and deploy-command construction. **Wizard SSH deployment
-has an existing integration gap:** `remote_preflight()` uses separate
-index-keyed `DEPLOY_MAP` / `CONTAINER_GREP` tables that lack this new lane
-(and Inkling). Selecting that path raises `KeyError`; skip wizard SSH
-deployment and launch from the head as above. This change is restricted
-to a `LANES` entry; those tables are outside the permitted edit scope.
+The `setup.py` wizard includes this lane in its SSH preflight and deployment
+maps. It supports env generation, the steering structure test, deployment,
+and client configuration. Client setup verifies generation and reads the
+running server's context limit; Hermes is not restricted to a blanket 65K
+window. This lane still needs its first hardware boot and long-prompt tests.
 
 After `/health` passes, test real generation and tool calling:
 

@@ -14,13 +14,13 @@ providers:
         input: [text]
         contextWindow: 65536
         maxTokens: 8192
-        # Inkling's chat template has no tool tokens — tools unsupported.
-        supportsTools: false
+        # Requires --enable-auto-tool-choice --tool-call-parser inkling.
+        supportsTools: true
         compat:
           supportsDeveloperRole: false
           supportsReasoningEffort: false
           maxTokensField: max_tokens
-          supportsToolChoice: false
+          supportsToolChoice: true
       - id: deepseek-v4-flash-dspark
         name: DeepSeek V4 Flash GLP-29 (2x DGX Spark TP=2, :8888)
         baseUrl: http://localhost:8888/v1

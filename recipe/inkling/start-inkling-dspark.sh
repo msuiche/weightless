@@ -114,6 +114,7 @@ docker run -d --restart no --name $CONTAINER \
         --master-addr $MASTER_ADDR --master-port $MASTER_PORT \
         --distributed-executor-backend mp \
         --tokenizer-mode inkling --reasoning-parser inkling \
+        --enable-auto-tool-choice --tool-call-parser inkling \
         --trust-remote-code \
         --speculative-config '"'"'{"method":"mtp","num_speculative_tokens":3}'"'"' \
         --max-num-seqs ${MAX_NUM_SEQS:-8} --max-num-batched-tokens ${MAX_NUM_BATCHED_TOKENS:-8192} \

@@ -35,15 +35,21 @@ def upstream_models():
     """Merge /v1/models from every lane that answers within 1s."""
     out = []
     for port in sorted(set(ROUTES.values())):
+        c = http.client.HTTPConnection(UPSTREAM_HOST, port, timeout=1)
         try:
-            c = http.client.HTTPConnection(UPSTREAM_HOST, port, timeout=1)
+            c.request("GET", "/health")
+            health = c.getresponse()
+            health.read()
+            if health.status != 200:
+                continue
             c.request("GET", "/v1/models")
             r = c.getresponse()
             if r.status == 200:
                 out.extend(json.loads(r.read()).get("data", []))
-            c.close()
         except Exception:
             pass
+        finally:
+            c.close()
     return out
 
 
@@ -64,12 +70,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.rstrip("/") in ("/v1/models",):
             data = upstream_models()
-            if not data:  # nothing live: still advertise the lanes
-                data = [{"id": m, "object": "model", "owned_by": "weightless"}
-                        for m in sorted(ROUTES)]
             self._send_json(200, {"object": "list", "data": data})
         elif self.path in ("/health", "/"):
-            self._send_json(200, {"status": "ok", "lanes": sorted(ROUTES)})
+            models = upstream_models()
+            self._send_json(200 if models else 503,
+                            {"status": "ok" if models else "unavailable",
+                             "models": [m["id"] for m in models], "lanes": sorted(ROUTES)})
         else:
             self._send_json(404, {"error": "unknown path"})
 
@@ -78,9 +84,15 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else b""
         model = None
         try:
-            model = json.loads(body or b"{}").get("model")
-        except Exception:
-            pass
+            payload = json.loads(body or b"{}")
+            if not isinstance(payload, dict):
+                raise ValueError("request body must be a JSON object")
+            model = payload.get("model")
+            if not isinstance(model, str):
+                raise ValueError("model must be a string")
+        except ValueError as error:
+            self._send_json(400, {"error": str(error)})
+            return
         port = ROUTES.get(model)
         if port is None:
             self._send_json(400, {

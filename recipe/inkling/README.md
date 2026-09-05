@@ -1,19 +1,32 @@
-# Inkling-Small TP=2 lane — NVFP4 on 2x DGX Spark + GLP-41 steering
+# Inkling-Small TP=2 lane — NVFP4 on 2x DGX Spark
 
 Inkling-Small (`thinkingmachines/Inkling-Small-NVFP4`, 159 GiB) on stock
 vLLM v0.28.0 (inkling is day-0 since that release), tensor-parallel across
-**both** Sparks (head + worker over RoCE), with the GLP-41 projective refusal
-vector applied via a bind-mounted pre-patched `model.py` (the same integration
-pattern as the qwen38fn lane).
+**both** Sparks (head + worker over RoCE), with SM121 attention and GB10 load
+reclaim patches. The SM121 launcher serves unsteered. GLP-41 belongs to the
+separate experimental launcher and is not applied by selecting a vector in
+the SM121 environment file.
 
 **WORKING (2026-09-04)** — real Inkling-Small-NVFP4 weights booted TP=2 on
 2×GB10 with CUDA graphs enabled. The 4-prompt API smoke passed. Use the SM121
 start script and both hotfixes below; the generic/steered lane is separate.
 
+**Agent validation (2026-09-05):** at ctx 65536 / util 0.78 with both native
+tool-parser flags, all four endpoint smoke tests passed through the router
+(model discovery, chat, structured tool call, Mac omp file creation). Hermes
+on the DGX head also created and read back a scratch file. Large first prompts
+can take minutes, especially with competing requests; subsequent Hermes model
+calls in that test took 6.9 and 4.5 seconds. Larger context remains unvalidated.
+The later normal Mac omp probe completed in 2.0 seconds with the prompt cache
+warm. A fresh Hermes CLI session created and read a file in 35.7 seconds after
+automatic title generation was disabled. These measurements are not cold-start
+guarantees: the user's preceding gateway request took 126 seconds with competing
+requests and title retries.
+
 | file | what it is |
 |---|---|
 | `start-inkling-dspark.sh` | head+worker boot with the wedge-proofing from the qwen38fn saga (preflight free-memory gate + zombie check, drop_caches on both nodes, `--restart no`, capped logs) |
-| `start-inkling-sm121.sh` | verified real-weight GB10 boot: lazy safetensors, load-reclaim and rel-attention patch mounts, ctx 8192 profile |
+| `start-inkling-sm121.sh` | real-weight GB10 boot: lazy safetensors, load-reclaim and rel-attention patch mounts, native tool parser |
 | `.env.inkling.example` | full config with site values as `<...>` placeholders |
 | `../../patches/hotfix-inkling-steering-projective.py` | the steering hook for `vllm/models/inkling/nvidia/model.py` — handles Inkling's deferred residual add (`pending` flush via the file's own `_sconv_add_norm` idiom) |
 | `../../patches/hotfix-inkling-gb10-load-reclaim.py` | per-tensor source-page and CUDA-cache reclaim that removes the unified-memory load spike |
@@ -33,8 +46,19 @@ start script and both hotfixes below; the generic/steered lane is separate.
   uses `sudo -n` and will fail loudly without it).
 - **NVFP4 is 159 GiB → 78.3 GiB/rank at TP=2.** Steady state fits, but stock
   loading does not. Keep lazy safetensors and the load-reclaim hotfix enabled.
-  The verified serving profile is ctx 8192, util 0.82, 2 sequences, 1024
-  batched tokens.
+  The original short-prompt profile was ctx 8192 and util 0.82. The example
+  now matches the agent-client profile: ctx 65536, util 0.78, 2 sequences,
+  1024 batched tokens. Validate long prompts before increasing context.
+- **Native tools require both parser flags:** `--enable-auto-tool-choice
+  --tool-call-parser inkling`, alongside `--reasoning-parser inkling`.
+  Omitting them causes Hermes's `tool_choice: auto` requests to fail with
+  HTTP 400. The native Inkling parser handles `content_invoke_tool_json`;
+  earlier claims that the model was chat-only were incorrect.
+- **Test generation after readiness.** `/health` can pass while a first
+  request is compiling kernels or processing a long prompt. Use
+  `WEIGHTLESS_BASE_URL=http://HEAD:8000/v1 WEIGHTLESS_MODEL=inkling-small-nvfp4
+  bash tests/run.sh` from the repository root. Port 8000 also tests the
+  router's streaming path.
 
 ## Historical status 2026-09-03: DGX lane was blocked
 

@@ -123,6 +123,7 @@ docker run -d --restart no --name $CONTAINER \
         --master-addr $MASTER_ADDR --master-port $MASTER_PORT \
         --distributed-executor-backend mp \
         --tokenizer-mode inkling --reasoning-parser inkling \
+        --enable-auto-tool-choice --tool-call-parser inkling \
         --trust-remote-code --load-format $LOAD_FORMAT $LOAD_STRATEGY_FLAG \
         ${AUTOTUNE_FLAG:---no-enable-flashinfer-autotune} \
         --max-num-seqs ${MAX_NUM_SEQS:-4} --max-num-batched-tokens ${MAX_NUM_BATCHED_TOKENS:-2048} \
@@ -138,8 +139,8 @@ echo "Starting head rank 0 (API :$VLLM_PORT)..."
 eval "$(build_cmd 0 api "$MASTER_ADDR")"
 echo "Waiting for the API (load takes ~10 min; watch: docker logs -f $CONTAINER)"
 for _ in $(seq 1 120); do
-  curl -sf -m 5 "http://localhost:$VLLM_PORT/v1/models" >/dev/null 2>&1 && {
-    echo "API UP on :$VLLM_PORT"; exit 0; }
+  curl -sf -m 5 "http://localhost:$VLLM_PORT/health" >/dev/null 2>&1 && {
+    echo "Engine ready on :$VLLM_PORT; verify generation and tool calls (first request may need kernel warmup)."; exit 0; }
   sleep 15
 done
 echo "Timed out waiting for the API — check docker logs $CONTAINER" >&2

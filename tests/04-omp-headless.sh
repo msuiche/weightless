@@ -3,17 +3,12 @@
 # to create a file in a scratch dir. Exercises tool schemas, streaming, and
 # the edit/write path end to end.
 set -u
-SELECTOR="${WEIGHTLESS_OMP_MODEL:-dspark/deepseek-v4-flash-dspark}"
+SELECTOR="${WEIGHTLESS_OMP_MODEL:-weightless/${WEIGHTLESS_MODEL:-deepseek-v4-flash-dspark}}"
 
 if ! command -v omp >/dev/null 2>&1; then
   echo "SKIP: omp not installed (curl -fsSL https://omp.sh/install | sh)"
   exit 2
 fi
-if ! grep -q "^  dspark:" "$HOME/.omp/agent/models.yml" 2>/dev/null; then
-  echo "FAIL: dspark provider missing from ~/.omp/agent/models.yml — run tests/install.sh first"
-  exit 1
-fi
-
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
