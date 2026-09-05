@@ -204,6 +204,21 @@ LANES = [
          hotfix="hotfix-glm53-steering-projective.py",
          extra_patches=["vendor/sparse_attn_indexer_kpool_sm121.py"],
          port=8080),
+    dict(name="Nemotron-3.5-Lightning TP=1 — single DGX Spark, NVFP4",
+         example="recipe/nemotron35/.env.nemotron35.example",
+         target="recipe/nemotron35/.env.nemotron35",
+         steer_key="WEIGHTLESS_GLP",
+         vector_repo="msuiche/Nemotron-3.5-Lightning-30B-A3B-abliterated-cyber-GLP-51-L1-51-a1.0",
+         steer_modes=None,
+         nodes=1,
+         remote_dir="nemotron35-glp",
+         recipe_files=[".env.nemotron35", "serve-nemotron35.sh"],
+         start_script="serve-nemotron35.sh",
+         hotfix="hotfix-nemotron35-steering-projective.py",
+         model_repo="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
+         docker_image="vllm/vllm-openai:v0.28.0",
+         image_key="NEMOTRON_IMAGE",
+         port=8083),
 ]
 PLACEHOLDER_HINTS = {
     "head-ip": ("Head node IP or hostname", ""),
@@ -527,7 +542,8 @@ def asset_commands(lane_idx, values, ssh_host=None):
     cache = env.get("HF_CACHE", f"/home/{user}/.cache/huggingface")
     workers = lane_workers(lane_idx, env)
     worker_cache = env.get("WORKER_HF_CACHE", cache)
-    repo = env.get("MODEL") or env.get("WEIGHTLESS_MODEL") or lane["model_repo"]
+    repo = (env.get("MODEL") or env.get("WEIGHTLESS_MODEL")
+            or env.get("MODEL_ID") or lane["model_repo"])
     model_dir = "models--" + repo.replace("/", "--")
     image = env.get(lane["image_key"], lane["docker_image"])
     q = shlex.quote
@@ -543,7 +559,8 @@ def asset_commands(lane_idx, values, ssh_host=None):
                 'python3 -m venv "$HOME/.cache/weightless-hf" && '
                 '"$HOME/.cache/weightless-hf/bin/pip" install huggingface_hub || exit 1; fi; '
                 '"$HOME/.cache/weightless-hf/bin/hf" download ')
-    revision = env.get("DSPARK_REVISION") if lane_idx == 0 else None
+    revision = (env.get("DSPARK_REVISION") if lane_idx == 0
+                else env.get("MODEL_REVISION") if lane_idx == 7 else None)
     args = [repo, "--cache-dir", cache]
     if revision:
         args += ["--revision", revision]
@@ -681,6 +698,24 @@ def deploy_commands(lane_idx, values, ssh_host=None):
                 ["ssh", head, f"ssh {user}@{worker} mkdir -p {remote}/files && "
                               f"scp {staged} {user}@{worker}:{remote}/files/"]))
         return sync_steps
+    if lane_idx == 7:
+        # Nemotron single-node: repo-shaped remote (recipe/ + patches/), the
+        # serve script resolves the hotfix at ../../patches/.
+        host = f"{user}@{ssh_host or values.get('head-ip', '<node-host>')}"
+        remote = LANES[7]["remote_dir"]
+        return [
+            (f"prepare {host}:{remote}/ (repo-shaped: recipe + patches)",
+             ["ssh", host, f"mkdir -p {remote}/recipe/nemotron35 {remote}/patches"]),
+            ("sync serve script + env",
+             ["scp", os.path.join(HERE, "recipe", "nemotron35", "serve-nemotron35.sh"),
+              os.path.join(HERE, "recipe", "nemotron35", ".env.nemotron35"),
+              f"{host}:{remote}/recipe/nemotron35/"]),
+            ("sync steering hotfix",
+             ["scp", os.path.join(HERE, "patches", "hotfix-nemotron35-steering-projective.py"),
+              f"{host}:{remote}/patches/"]),
+            ("boot the container",
+             ["ssh", host, f"bash {remote}/recipe/nemotron35/serve-nemotron35.sh"]),
+        ]
     host = f"{user}@{ssh_host or '<node-host>'}"
     remote = "dspark-deploy"
     return [
@@ -706,7 +741,7 @@ def vector_paths(lane_idx):
         return None
     with open(env_path) as f:
         env = dict(re.findall(r"(?m)^([A-Z_]+)=(\S+)", f.read()))
-    steer = env.get("WEIGHTLESS_STEER_PATH", "")
+    steer = env.get(LANES[lane_idx]["steer_key"], "")
     if not steer:
         return None
     fname = os.path.basename(steer)
@@ -755,9 +790,12 @@ DEPLOY_MAP = {
         ("recipe/glm53tp2/start-glm53-flash-tp2.sh", "dspark-glm53tp2/start-glm53-flash-tp2.sh"),
         ("patches/hotfix-glm53-steering-projective.py", "dspark-glm53tp2/patches/hotfix-glm53-steering-projective.py"),
         ("patches/vendor/sparse_attn_indexer_kpool_sm121.py", "dspark-glm53tp2/patches/sparse_attn_indexer_kpool_sm121.py")],
+    7: [("recipe/nemotron35/.env.nemotron35", "nemotron35-glp/recipe/nemotron35/.env.nemotron35"),
+        ("recipe/nemotron35/serve-nemotron35.sh", "nemotron35-glp/recipe/nemotron35/serve-nemotron35.sh"),
+        ("patches/hotfix-nemotron35-steering-projective.py", "nemotron35-glp/patches/hotfix-nemotron35-steering-projective.py")],
 }
 CONTAINER_GREP = {0: "deepseek", 1: "qwen38", 2: "qwen38fn", 3: "glm53", 4: "glm5xl",
-                  5: "inkling-sm121", 6: "glm53tp2"}
+                  5: "inkling-sm121", 6: "glm53tp2", 7: "nemotron35"}
 
 
 def current_lanes(output):

@@ -259,6 +259,29 @@ class AssetAndParkingTests(unittest.TestCase):
         self.assertIn("rsync -aL", qwen)
         self.assertEqual(setup.validate_lane_env(setup.LANES[1], ""), ([], []))
 
+    def test_nemotron35_single_node_lane(self):
+        lane = setup.LANES[7]
+        self.assertEqual(lane["steer_key"], "WEIGHTLESS_GLP")
+        env = setup.lane_env(7, self.values)
+        self.assertEqual(env["NEMOTRON_IMAGE"], "vllm/vllm-openai:v0.28.0")
+        self.assertEqual(env["SPECULATIVE_MODE"], "none")  # MTP is not steered
+        self.assertIn("/home/tester/.cache/huggingface/", env["WEIGHTLESS_GLP"])
+        plan = setup.asset_commands(7, self.values, "head.local")
+        commands = "\n".join(shlex.join(argv) for _, argv in plan)
+        self.assertIn("nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4", commands)
+        self.assertIn("--revision cc84af2fe71647d87f4486c064f320e1e7535243", commands)
+        self.assertIn("Nemotron-3.5-Lightning-30B-A3B-abliterated-GLP-51-L1-51-a1.0.gguf",
+                      commands)
+        self.assertNotIn("rsync model cache", commands)  # single node
+        deploy = setup.deploy_commands(7, self.values, "head.local")
+        text = "\n".join(shlex.join(argv) for _, argv in deploy)
+        self.assertIn("nemotron35-glp/recipe/nemotron35", text)
+        self.assertIn("nemotron35-glp/patches", text)
+        self.assertIn("serve-nemotron35.sh", deploy[-1][1][-1])
+        self.assertEqual(setup.CONTAINER_GREP[7], "nemotron35")
+        self.assertIn((7, "nemotron35"),
+                      setup.current_lanes("nemotron35\ninkling-sm121\n"))
+
     def test_saved_env_overrides_cache_workers_image_and_disabled_steering(self):
         path = Path(self.tmp.name) / setup.LANES[6]["target"]
         path.write_text('HF_CACHE="/srv/hf cache" # custom mount\nWORKER_HF_CACHE=/srv/worker-hf\n'
