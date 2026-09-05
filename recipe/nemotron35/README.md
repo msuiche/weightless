@@ -1,0 +1,81 @@
+# Nemotron 3.5 Lightning — single DGX Spark
+
+Stock `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` serving recipe.
+**Stock generation and a tool-call/result loop passed on one Modal H100;
+DGX boot validation is still pending.**
+No GLP artifact is supplied, and steering support is not claimed.
+
+NVIDIA documents one-Spark deployment with vLLM 0.27.1, Marlin W4A16 compute
+for the NVFP4 weights, FP8 KV cache, and a separate DSpark draft model.
+The model has 30B total / 3B active parameters and a hybrid Mamba/attention/MoE
+architecture. NVIDIA reports a 1M context window; this recipe starts at 65,536
+tokens until memory, long prompts, and tool calls have been tested locally.
+Source: [NVIDIA model card and Spark recipe](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4#1x-dgx-spark-gb10),
+checked 2026-09-05.
+
+## Modal compatibility result — 2026-09-05
+
+On one NVIDIA H100 80GB, the pinned target and vLLM 0.27.1 passed two exact-answer
+prompts (`NEMOTRON_OK`, `42`, both clean `stop`), a structured
+`get_weather({"city":"Paris"})` call, and a final response correctly using the
+synthetic tool result (21°C, sunny). Readiness took 280.2 seconds; the whole
+smoke took 326.6 seconds. Tool generation took 6.89 seconds and the tool-result
+continuation 2.30 seconds.
+
+This tested **8,192 context, eager execution, four maximum sequences, no draft**,
+Marlin, FP8 KV, FlashInfer Mamba, and FP16 Mamba SSM cache. The DGX launcher uses
+65K context and DSpark by default; those differences and GB10 hardware still
+need validation. These timings are smoke-test latency, not throughput benchmarks.
+The model's default thinking mode remained enabled. No steering was applied.
+Complete outputs and server logs are retained in the local experiment directory
+`refusal-research/experiments/20260905-nemotron35-stock-smoke/out/`.
+
+## Configure and launch
+
+Use an available Spark. The running two-node Inkling deployment occupies both
+GPUs; this recipe does not stop it, change the router, or modify client defaults.
+
+```sh
+cd recipe/nemotron35
+cp .env.nemotron35.example .env.nemotron35
+# Edit the image, cache, port, and context for this host.
+bash serve-nemotron35.sh --dry-run
+bash serve-nemotron35.sh
+docker logs -f nemotron35
+```
+
+Docker needs NVIDIA GPU support. The image downloads the public target and draft
+into `HF_CACHE` on first boot. Set `MODEL_REVISION` to a reviewed Hugging Face
+commit for reproducible target weights; the example pins the revision checked
+on 2026-09-05. DSpark's
+draft follows its repository default. Set `SPECULATIVE_MODE=none` to evaluate
+the target alone. Existing named containers are never removed by the launcher.
+
+Tool calls use NVIDIA's `qwen3_coder` parser and `--enable-auto-tool-choice`;
+reasoning uses `nemotron_v3`. The endpoint is `http://<spark-host>:8083/v1` and
+its model ID is `nemotron35-lightning-nvfp4`.
+
+## Verify before adding clients
+
+```sh
+curl --fail http://localhost:8083/health
+cd ../..
+export WEIGHTLESS_BASE_URL=http://localhost:8083/v1
+export WEIGHTLESS_MODEL=nemotron35-lightning-nvfp4
+bash tests/01-endpoint.sh
+bash tests/02-chat.sh
+bash tests/03-tool-call.sh
+```
+
+These check model discovery, actual text generation, and a structured tool call.
+After configuring omp for this endpoint, run `tests/04-omp-headless.sh` with
+`WEIGHTLESS_OMP_MODEL` set to its provider/model ID. Test a fresh Hermes session
+with file creation/readback too. Read the live `/v1/models` limit before setting
+client context. Increasing `MAX_MODEL_LEN` requires a fresh launch and renewed
+long-prompt tests; an upstream 1M report is not a local validation result.
+
+Local launcher regression checks, without Docker or a GPU:
+
+```sh
+python3 recipe/nemotron35/test_launcher.py
+```
