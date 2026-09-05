@@ -5,12 +5,13 @@
 # files/fa4_rel_attention-sm121.py and bind-mounted over the container's
 # vllm/models/inkling/nvidia/ops/fa4_rel_attention.py).
 #
-# BRING-UP LANE: steering OFF (stock model.py, no WEIGHTLESS_STEER_* env),
-# no MTP speculative config,. Decode routes to the ROCm-lane
+# Optional GLP steering uses a model.py with BOTH steering and GB10 reclaim
+# patches. No MTP speculative config. Decode routes to the ROCm-lane
 # Triton split-KV kernel; prefill/extend to the torch SDPA fallback.
 #
 # Usage: bash start-inkling-sm121.sh            # real weights
 #        LOAD_FORMAT=dummy bash start-inkling-sm121.sh   # dummy weights
+#        bash start-inkling-sm121.sh --check-steering    # validate staged files without restart
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -33,12 +34,53 @@ MAX_MODEL_LEN="${MAX_MODEL_LEN:-32768}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.82}"
 SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-inkling-small-nvfp4}"
 FA4_PATCHED_PY="${FA4_PATCHED_PY:-$SCRIPT_DIR/files/fa4_rel_attention-sm121.py}"
-MODEL_PATCHED_PY="${MODEL_PATCHED_PY:-$SCRIPT_DIR/files/inkling-model-gb10.py}"
+if [ -n "${WEIGHTLESS_STEER_PATH:-}" ]; then
+  MODEL_PATCHED_PY="${MODEL_PATCHED_PY:-$SCRIPT_DIR/files/inkling-model-gb10-steered.py}"
+else
+  MODEL_PATCHED_PY="${MODEL_PATCHED_PY:-$SCRIPT_DIR/files/inkling-model-gb10.py}"
+fi
 LOAD_FORMAT="${LOAD_FORMAT:-auto}"
 LOAD_STRATEGY_FLAG=""
 if [ "$LOAD_FORMAT" = "safetensors" ]; then
   LOAD_STRATEGY_FLAG="--safetensors-load-strategy ${SAFETENSORS_LOAD_STRATEGY:-lazy}"
 fi
+
+# Check the exact files on both ranks before touching the running stack.
+for pair in "$FA4_PATCHED_PY:sm121-relattn-hotfix" "$MODEL_PATCHED_PY:gb10-load-reclaim-hotfix"; do
+  file="${pair%:*}"; marker="${pair##*:}"
+  [ -f "$file" ] && grep -q "$marker" "$file" || {
+    echo "Missing $file or required marker $marker" >&2; exit 1; }
+  printf -v quoted_file '%q' "$file"
+  local_hash=$(sha256sum "$file" | cut -d ' ' -f 1)
+  remote_hash=$(ssh -o BatchMode=yes "$WORKER_HOST" "sha256sum $quoted_file" | cut -d ' ' -f 1)
+  [ "$local_hash" = "$remote_hash" ] || {
+    echo "Patch differs on worker: $file" >&2; exit 1; }
+done
+
+STEER_ARGS=""
+if [ -n "${WEIGHTLESS_STEER_PATH:-}" ]; then
+  grep -qF '[steering-hotfix] projective activation steering (Inkling)' "$MODEL_PATCHED_PY" || {
+    echo "$MODEL_PATCHED_PY lacks the Inkling steering patch" >&2; exit 1; }
+  [ -f "$WEIGHTLESS_STEER_PATH" ] || { echo "Missing vector $WEIGHTLESS_STEER_PATH" >&2; exit 1; }
+  WEIGHTLESS_STEER_ALPHA="${WEIGHTLESS_STEER_ALPHA:-0.1}"
+  python3 - "$WEIGHTLESS_STEER_ALPHA" <<'PY'
+import math, sys
+alpha = float(sys.argv[1])
+if not math.isfinite(alpha) or not 0 < alpha <= 0.25:
+    sys.exit("Inkling GLP-41 requires 0 < alpha <= 0.25; use 0.1 for SM121 agent serving")
+PY
+  printf -v quoted_vector '%q' "$WEIGHTLESS_STEER_PATH"
+  local_hash=$(sha256sum "$WEIGHTLESS_STEER_PATH" | cut -d ' ' -f 1)
+  remote_hash=$(ssh -o BatchMode=yes "$WORKER_HOST" "sha256sum $quoted_vector" | cut -d ' ' -f 1)
+  [ "$local_hash" = "$remote_hash" ] || { echo "Steering vector differs on worker" >&2; exit 1; }
+  printf -v STEER_ARGS '%q ' -v "$WEIGHTLESS_STEER_PATH:/opt/weightless/steering.gguf:ro" \
+    -e WEIGHTLESS_STEER_PATH=/opt/weightless/steering.gguf \
+    -e "WEIGHTLESS_STEER_ALPHA=$WEIGHTLESS_STEER_ALPHA"
+  echo "GLP steering staged on both ranks: $(basename "$WEIGHTLESS_STEER_PATH") alpha=$WEIGHTLESS_STEER_ALPHA sha256=$local_hash"
+else
+  echo "GLP steering disabled (WEIGHTLESS_STEER_PATH is empty)."
+fi
+[ "${1:-}" = "--check-steering" ] && exit 0
 
 # --- hardware preflight (from the qwen38fn wedge saga) -----------------------
 need_free_gib() {
@@ -69,17 +111,6 @@ done
 sync && echo 3 | sudo -n tee /proc/sys/vm/drop_caches > /dev/null
 ssh -o BatchMode=yes "$WORKER_HOST" "sync && echo 3 | sudo -n tee /proc/sys/vm/drop_caches > /dev/null"
 
-# --- patch staging preflight ---------------------------------------------------
-[ -f "$FA4_PATCHED_PY" ] || { echo "Missing $FA4_PATCHED_PY" >&2; exit 1; }
-grep -q "sm121-relattn-hotfix" "$FA4_PATCHED_PY" || {
-  echo "$FA4_PATCHED_PY lacks the sm121 hotfix marker — refusing to boot stock." >&2; exit 1; }
-ssh -o BatchMode=yes "$WORKER_HOST" "grep -q sm121-relattn-hotfix '$FA4_PATCHED_PY'" || {
-  echo "Missing/unpatched $FA4_PATCHED_PY on the worker." >&2; exit 1; }
-[ -f "$MODEL_PATCHED_PY" ] && grep -q "gb10-load-reclaim-hotfix" "$MODEL_PATCHED_PY" || {
-  echo "$MODEL_PATCHED_PY lacks the GB10 load-reclaim hotfix marker." >&2; exit 1; }
-ssh -o BatchMode=yes "$WORKER_HOST" "grep -q gb10-load-reclaim-hotfix '$MODEL_PATCHED_PY'" || {
-  echo "Missing/unpatched $MODEL_PATCHED_PY on the worker." >&2; exit 1; }
-
 # --- refuse to clobber a running stack ---------------------------------------
 docker ps --format '{{.Names}}' | grep -qx "$CONTAINER" && {
   echo "$CONTAINER already running on the head — docker rm -f it first." >&2; exit 3; }
@@ -107,7 +138,7 @@ docker run -d --restart no --name $CONTAINER \
   -e INKLING_GB10_LOAD_RECLAIM=${INKLING_GB10_LOAD_RECLAIM:-1} \
   -e INKLING_LOAD_RECLAIM_MIN_MIB=${INKLING_LOAD_RECLAIM_MIN_MIB:-64} \
   -e INKLING_LOAD_RECLAIM_SLEEP_MS=${INKLING_LOAD_RECLAIM_SLEEP_MS:-20} \
-  \
+  $STEER_ARGS \
   -e VLLM_HOST_IP=$hostip \
   -e NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0} -e NCCL_IB_HCA=$NCCL_IB_HCA -e NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX:-3} \
   -e NCCL_IB_AUTO_DETECT=0 \

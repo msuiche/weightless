@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 02-chat: a basic chat completion returns non-empty content.
+# 02-chat: a basic chat completion follows an exact-answer instruction.
 # (Generous max_tokens: a thinking model can burn tokens on reasoning first.)
 set -u
 BASE="${WEIGHTLESS_BASE_URL:-http://localhost:8888/v1}"
@@ -19,8 +19,8 @@ m = d["choices"][0]["message"]
 print((m.get("content") or "").strip())
 ' 2>/dev/null) || { echo "FAIL: unparseable response"; echo "$resp" | head -c 800; exit 1; }
 
-if [ -z "$content" ]; then
-  echo "FAIL: empty content"
+if [ "$content" != "pong" ]; then
+  echo "FAIL: expected exactly pong, got incorrect or leaked reasoning content"
   echo "$resp" | head -c 800
   exit 1
 fi

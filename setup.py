@@ -160,9 +160,9 @@ LANES = [
          recipe_files=[".env.inkling", "start-inkling-sm121.sh",
                        "files/fa4_rel_attention-sm121.py",
                        "files/inkling-model-gb10.py",
-                       "files/inkling-model-steered.py"],
+                       "files/inkling-model-gb10-steered.py"],
          start_script="start-inkling-sm121.sh",
-         steering_supported=False,
+         steering_supported=True,
          hotfix="hotfix-inkling-steering-projective.py",
          extra_patches=["hotfix-inkling-gb10-load-reclaim.py",
                         "hotfix-inkling-sm121-relattn.py"],
@@ -480,6 +480,12 @@ def deploy_commands(lane_idx, values, ssh_host=None):
             ("boot the stack (start script syncs the worker itself)",
              ["ssh", head, f"cd {remote} && bash {lane['start_script']}"]),
         ]
+        if lane_idx == 5:
+            worker = values.get("worker-ip", "<worker-ip>")
+            staged = " ".join(f"{remote}/{f}" for f in lane["recipe_files"] if f.startswith("files/"))
+            sync_steps.insert(-1, ("sync Inkling patches to worker",
+                ["ssh", head, f"ssh {user}@{worker} mkdir -p {remote}/files && "
+                              f"scp {staged} {user}@{worker}:{remote}/files/"]))
         return sync_steps
     host = f"{user}@{ssh_host or '<node-host>'}"
     remote = "dspark-deploy"
@@ -549,7 +555,8 @@ DEPLOY_MAP = {
         ("patches/hotfix-inkling-gb10-load-reclaim.py", "dspark-inkling/hotfix-inkling-gb10-load-reclaim.py"),
         ("patches/hotfix-inkling-sm121-relattn.py", "dspark-inkling/hotfix-inkling-sm121-relattn.py"),
         ("recipe/inkling/files/fa4_rel_attention-sm121.py", "dspark-inkling/files/fa4_rel_attention-sm121.py"),
-        ("recipe/inkling/files/inkling-model-gb10.py", "dspark-inkling/files/inkling-model-gb10.py")],
+        ("recipe/inkling/files/inkling-model-gb10.py", "dspark-inkling/files/inkling-model-gb10.py"),
+        ("recipe/inkling/files/inkling-model-gb10-steered.py", "dspark-inkling/files/inkling-model-gb10-steered.py")],
     6: [("recipe/glm53tp2/.env.glm53tp2", "dspark-glm53tp2/.env.glm53tp2"),
         ("recipe/glm53tp2/start-glm53-flash-tp2.sh", "dspark-glm53tp2/start-glm53-flash-tp2.sh"),
         ("patches/hotfix-glm53-steering-projective.py", "dspark-glm53tp2/patches/hotfix-glm53-steering-projective.py"),
@@ -1241,7 +1248,7 @@ def lane_chain(io, lane_idx):
     if lane.get("steering_supported", True):
         steering = io.confirm("Enable refusal steering (GLP vector patch)?", True)
     else:
-        io.info("This Inkling SM121 launcher serves unsteered; the separate steered launcher is not boot-validated.")
+        io.info("The selected launcher does not support steering.")
     steer_mode = None
     if steering and lane["steer_modes"]:
         labels = [d for _, d in lane["steer_modes"]]

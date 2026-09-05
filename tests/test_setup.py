@@ -24,6 +24,17 @@ router = load("router", ROOT / "scripts/dspark-router.py")
 
 
 class SetupTests(unittest.TestCase):
+    def test_chat_smoke_rejects_reasoning_leaked_into_answer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            curl = Path(tmp) / "curl"
+            curl.write_text('#!/bin/sh\nprintf "%s\\n" "$TEST_CHAT_RESPONSE"\n')
+            curl.chmod(0o755)
+            env = dict(os.environ, PATH=tmp + os.pathsep + os.environ["PATH"])
+            for content, expected in [("pong", 0), ("We need to answer pong. Let me think.", 1), ("", 1)]:
+                env["TEST_CHAT_RESPONSE"] = json.dumps({"choices": [{"message": {"content": content}}]})
+                result = subprocess.run(["bash", str(ROOT / "tests/02-chat.sh")], env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+
     def test_endpoint_smoke_parses_formatted_json_and_exact_model_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             curl = Path(tmp) / "curl"
@@ -116,7 +127,16 @@ class SetupTests(unittest.TestCase):
         text = (ROOT / lane["example"]).read_text()
         self.assertIn("MAX_MODEL_LEN=65536", text)
         self.assertIn("GPU_MEMORY_UTILIZATION=0.78", text)
-        self.assertFalse(lane["steering_supported"])
+        self.assertTrue(lane["steering_supported"])
+
+    def test_inkling_deploy_stages_combined_patch_on_both_nodes_before_boot(self):
+        steps = setup.deploy_commands(5, {"user": "tester", "head-ip": "head", "worker-ip": "worker"})
+        transfers = [args for _, args in steps if args[0] == "scp"]
+        self.assertTrue(any(any("inkling-model-gb10-steered.py" in arg for arg in args) for args in transfers))
+        worker = next(i for i, (desc, _) in enumerate(steps) if desc == "sync Inkling patches to worker")
+        self.assertLess(worker, len(steps) - 1)
+        self.assertIn("tester@worker", steps[worker][1][-1])
+        self.assertIn("inkling-model-gb10-steered.py", steps[worker][1][-1])
 
     def test_legacy_provider_is_not_required_by_omp_smoke(self):
         text = (ROOT / "tests/04-omp-headless.sh").read_text()

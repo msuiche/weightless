@@ -68,7 +68,7 @@ sh tests/run.sh
 | test | what it proves |
 |---|---|
 | `01-endpoint.sh` | `/v1/models` answers and lists our model id |
-| `02-chat.sh` | a chat completion returns non-empty content |
+| `02-chat.sh` | a chat completion follows the exact `pong` instruction, without reasoning leaking into the answer |
 | `03-tool-call.sh` | the model emits a well-formed tool call (omp's foundation) |
 | `04-omp-headless.sh` | `omp -p` drives our endpoint to create a file in a scratch dir |
 
@@ -84,7 +84,7 @@ fails the suite on real failures.
 Offline setup and router regression tests:
 
 ```sh
-python3 -m unittest discover -s tests -p 'test_setup.py'
+python3 -m unittest discover -s tests -p 'test*.py'
 ```
 
 `tests/models.yml` is the omp provider definition. The `compat` block mirrors

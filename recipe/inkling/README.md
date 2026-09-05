@@ -3,15 +3,15 @@
 Inkling-Small (`thinkingmachines/Inkling-Small-NVFP4`, 159 GiB) on stock
 vLLM v0.28.0 (inkling is day-0 since that release), tensor-parallel across
 **both** Sparks (head + worker over RoCE), with SM121 attention and GB10 load
-reclaim patches. The SM121 launcher serves unsteered. GLP-41 belongs to the
-separate experimental launcher and is not applied by selecting a vector in
-the SM121 environment file.
+reclaim patches. The SM121 launcher supports GLP-41 at α=0.1 using a combined
+steering + load-reclaim model patch. An empty `WEIGHTLESS_STEER_PATH` selects
+the unsteered model patch.
 
 **WORKING (2026-09-04)** — real Inkling-Small-NVFP4 weights booted TP=2 on
 2×GB10 with CUDA graphs enabled. The 4-prompt API smoke passed. Use the SM121
 start script and both hotfixes below; the generic/steered lane is separate.
 
-**Agent validation (2026-09-05):** at ctx 65536 / util 0.78 with both native
+**Unsteered agent validation (2026-09-05):** at ctx 65536 / util 0.78 with both native
 tool-parser flags, all four endpoint smoke tests passed through the router
 (model discovery, chat, structured tool call, Mac omp file creation). Hermes
 on the DGX head also created and read back a scratch file. Large first prompts
@@ -23,10 +23,21 @@ automatic title generation was disabled. These measurements are not cold-start
 guarantees: the user's preceding gateway request took 126 seconds with competing
 requests and title retries.
 
+**GLP-41 SM121 validation (2026-09-05):** both ranks loaded the same 41-layer
+vector with `alpha=0.100`. Exact `pong` generation passed in 7.2 seconds,
+structured `get_weather` passed in 4.3 seconds, and Mac omp created its scratch
+file in 74.1 seconds, including cold prompt processing. Head Hermes created
+and read back its scratch file in 90.7 seconds (session
+`20260905_103152_f722e2`, exit 0). The preceding 0.25
+run failed the structured tool test and exposed reasoning in its answer, so
+the SM121 default is now 0.1. These checks establish serving/tool compatibility;
+they do not reproduce the earlier H100 calibration at this lower strength.
+
 | file | what it is |
 |---|---|
 | `start-inkling-dspark.sh` | head+worker boot with the wedge-proofing from the qwen38fn saga (preflight free-memory gate + zombie check, drop_caches on both nodes, `--restart no`, capped logs) |
-| `start-inkling-sm121.sh` | real-weight GB10 boot: lazy safetensors, load-reclaim and rel-attention patch mounts, native tool parser |
+| `start-inkling-sm121.sh` | real-weight GB10 boot: compatibility patches, optional GLP-41 steering, native tool parser |
+| `files/inkling-model-gb10-steered.py` | combined model patch retaining GB10 load reclaim and applying GLP to the materialized post-layer residual |
 | `.env.inkling.example` | full config with site values as `<...>` placeholders |
 | `../../patches/hotfix-inkling-steering-projective.py` | the steering hook for `vllm/models/inkling/nvidia/model.py` — handles Inkling's deferred residual add (`pending` flush via the file's own `_sconv_add_norm` idiom) |
 | `../../patches/hotfix-inkling-gb10-load-reclaim.py` | per-tensor source-page and CUDA-cache reclaim that removes the unified-memory load spike |
@@ -34,13 +45,16 @@ requests and title retries.
 
 ## Traps
 
-- **α=0.25 is calibrated, not a default.** α=1.0 and α=0.5 garble EVERYTHING
-  on this model (including benign) — the most dose-sensitive model in the
-  program. Do not raise it.
+- **Use α=0.1 for SM121 agent serving.** The earlier H100 calibration used
+  0.25, but the live SM121 test at 0.25 leaked reasoning and returned prose
+  instead of tool calls. At 0.1, exact-answer chat and native tools passed.
+  The direction file retains `a0.25` in its name; the runtime alpha overrides
+  that calibration. Values 0.5 and 1.0 also garbled earlier validation output.
 - **The steered `model.py` must be pre-patched and staged on both nodes**
-  (`files/inkling-model-steered.py`): extract the image's file once, apply the
-  hotfix offline (`WEIGHTLESS_STEERING_MODEL_PY=<copy> python3
-  ../../patches/hotfix-inkling-steering-projective.py`), copy to both nodes.
+  (`files/inkling-model-gb10-steered.py`). The generic
+  `inkling-model-steered.py` lacks the GB10 load-reclaim fix and is rejected by
+  the SM121 launcher. It checks patch/vector checksums across both ranks and
+  mounts the vector read-only at `/opt/weightless/steering.gguf`.
 - **drop_caches needs passwordless sudo** on both nodes
   (`/etc/sudoers.d/drop-caches` — see the qwen38fn README trap; the script
   uses `sudo -n` and will fail loudly without it).
@@ -59,6 +73,33 @@ requests and title retries.
   `WEIGHTLESS_BASE_URL=http://HEAD:8000/v1 WEIGHTLESS_MODEL=inkling-small-nvfp4
   bash tests/run.sh` from the repository root. Port 8000 also tests the
   router's streaming path.
+
+## Enabling GLP in the SM121 lane
+
+Set `WEIGHTLESS_STEER_PATH` to the GLP-41 GGUF's host path on both nodes and
+`WEIGHTLESS_STEER_ALPHA=0.1` in `.env.inkling`. The launcher selects
+`files/inkling-model-gb10-steered.py` automatically. Leave `MODEL_PATCHED_PY`
+unset unless overriding it with another file carrying both required patches.
+The wizard stages the combined patch on both nodes before boot.
+
+To regenerate the combined file from the GB10-patched source, from this directory:
+
+```sh
+cp files/inkling-model-gb10.py files/inkling-model-gb10-steered.py
+WEIGHTLESS_STEERING_MODEL_PY=files/inkling-model-gb10-steered.py \
+  python3 ../../patches/hotfix-inkling-steering-projective.py
+```
+
+After staging identical files and the vector on both nodes, validate them
+without restarting the current service:
+
+```sh
+bash start-inkling-sm121.sh --check-steering
+```
+
+On boot, both ranks must log `weightless GLP steering active` with
+`alpha=0.100` and `layers=41`. Then run the endpoint suite and a real client
+tool loop. A configured path alone is not proof that steering is active.
 
 ## Historical status 2026-09-03: DGX lane was blocked
 
