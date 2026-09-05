@@ -13,6 +13,7 @@ ANSI-colored prompts otherwise. Non-interactive alternative:
 import json
 import os
 import re
+import shlex
 import shutil
 import socket
 import subprocess
@@ -89,6 +90,9 @@ LANES = [
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="scripts/test-dsv4-hotfix-structure.py",
          vector_repo="msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29",
+         model_repo="deepseek-ai/DeepSeek-V4-Flash-0731",
+         docker_image="ghcr.io/anemll/dspark-vllm-gx10:0.1.1",
+         image_key="DSPARK_VLLM_IMAGE",
          steer_modes=None,
          nodes=2,
          remote_dir="dspark-miaai",
@@ -103,6 +107,9 @@ LANES = [
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="scripts/test-qwen-steering-structure.py",
          vector_repo="msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49",
+         model_repo="unsloth/Qwen3.8-27B-NVFP4",
+         docker_image="ghcr.io/drowzeys/keys-vllm-027-gb10-qwen38:mtp3-20260813",
+         image_key="QWEN_IMAGE",
          steer_modes=[
              ("gguf", "gguf — hotfix-patched vLLM, fail-closed (default, validated)"),
              ("lora", "lora — stock vLLM --enable-lora, no patch (validated)")],
@@ -113,6 +120,9 @@ LANES = [
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="scripts/test-qwen38fn-steering-structure.py",
          vector_repo="msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47",
+         model_repo="RadixArk/Qwen3.8-Flash-Next-NVFP4",
+         docker_image="vllm/vllm-openai:qwen38-flash-next",
+         image_key="QWEN38FN_IMAGE",
          steer_modes=None,
          nodes=2,
          remote_dir="dspark-qwen38fn",
@@ -127,6 +137,9 @@ LANES = [
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="scripts/test-glm53-steering-structure.py",
          vector_repo="msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44",
+         model_repo="RedHatAI/GLM-5.3-Flash-NVFP4",
+         docker_image="radixark/vllm-glm53-flash:sm121-v8",
+         image_key="GLM53_IMAGE",
          steer_modes=None,
          nodes=4,
          remote_dir="dspark-glm53",
@@ -141,6 +154,10 @@ LANES = [
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="scripts/test-glm53xl-steering-structure.py",
          vector_repo="msuiche/GLM-5.3-abliterated-cyber-GLP-77",
+         model_repo="2wild4tv/GLM-5.3-Int4-Int8Mix",
+         docker_image="vllm-node-tf5-glm52-b12x:probe-modded",
+         image_key="GLM53XL_IMAGE",
+         local_image=True,  # recipe requires a local build, not a registry tag
          steer_modes=None,
          nodes=4,
          remote_dir="dspark-glm53xl",
@@ -154,6 +171,9 @@ LANES = [
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="scripts/test-inkling-steering-structure.py",
          vector_repo="msuiche/Inkling-Small-abliterated-cyber-GLP-41",
+         model_repo="thinkingmachines/Inkling-Small-NVFP4",
+         docker_image="vllm/vllm-openai:v0.28.0",
+         image_key="INKLING_IMAGE",
          steer_modes=None,
          nodes=2,
          remote_dir="dspark-inkling",
@@ -173,6 +193,9 @@ LANES = [
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="scripts/test-glm53-steering-structure.py",
          vector_repo="msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44",
+         model_repo="RedHatAI/GLM-5.3-Flash-NVFP4",
+         docker_image="ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v8",
+         image_key="GLM53_IMAGE",
          steer_modes=None,
          nodes=2,
          remote_dir="dspark-glm53tp2",
@@ -303,6 +326,8 @@ def mdns_hosts(timeout=2.5):
     avahi-browse on Linux). Returns sorted hostnames like 'node-a.local'.
     Result is cached — one browse per process."""
     global _MDNS_CACHE
+    if DEMO:
+        return ["node-a.local", "node-b.local"]
     if _MDNS_CACHE is not None:
         return _MDNS_CACHE
     hosts = set()
@@ -403,7 +428,7 @@ def validate_lane_env(lane, env_text):
     errors, warnings = [], []
     env = dict(re.findall(r"(?m)^([A-Z_]+)=(\S*)", env_text))
     nodes = lane.get("nodes", 1)
-    if lane["start_script"].startswith("start-qwen38"):
+    if lane.get("start_script", "").startswith("start-qwen38"):
         ple = env.get("VLLM_PLE_CPU_OFFLOAD", "1")
         util = float(env.get("GPU_MEMORY_UTILIZATION", "0.90") or 0.90)
         ctx = int(env.get("MAX_MODEL_LEN", "262144") or 262144)
@@ -448,12 +473,181 @@ def read_lane_env():
     return vals
 
 
+def lane_env(lane_idx, values):
+    """Read the deployed configuration, or render example defaults for a plan.
+    Parse assignments without executing shell expressions from an env file."""
+    lane = LANES[lane_idx]
+    path = os.path.join(HERE, lane["target"])
+    if os.path.exists(path):
+        with open(path) as f:
+            text = f.read()
+    else:
+        text = render_env(os.path.join(HERE, lane["example"]), values)
+    env = {}
+    for key, value in re.findall(r"(?m)^([A-Z0-9_]+)=(.*)$", text):
+        words = shlex.split(value, comments=True)
+        env[key] = " ".join(words)
+    return env
+
+
+def node_command(values, ssh_host, command, worker=None):
+    """Reach workers through the head, using their fabric addresses."""
+    user = values.get("user", os.environ.get("USER", ""))
+    if worker:
+        command = shlex.join(["ssh", "-o", "BatchMode=yes", f"{user}@{worker}", command])
+    return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
+            f"{user}@{ssh_host or values.get('head-ip', '<head-ip>')}", command]
+
+
+def lane_workers(lane_idx, env):
+    return [env.get(f"WORKER{n if n > 1 else ''}_HOST", f"<worker{n if n > 1 else ''}-ip>")
+            for n in range(1, LANES[lane_idx].get("nodes", 1))]
+
+
+def hf_token():
+    """Keep credentials out of env files, command plans and argv."""
+    token = os.environ.get("HF_TOKEN", "").strip()
+    if not token:
+        try:
+            with open(os.path.expanduser("~/.cache/huggingface/token")) as f:
+                token = f.read().strip()
+        except OSError:
+            pass
+    return token
+
+
+def asset_commands(lane_idx, values, ssh_host=None):
+    """Idempotent (description, argv) asset plan. Downloads read a token on stdin.
+    HF tooling lives in a remote venv; the wizard itself remains stdlib-only."""
+    if DEMO:
+        return []
+    lane = LANES[lane_idx]
+    env = lane_env(lane_idx, values)
+    user = values.get("user", os.environ.get("USER", ""))
+    cache = env.get("HF_CACHE", f"/home/{user}/.cache/huggingface")
+    workers = lane_workers(lane_idx, env)
+    worker_cache = env.get("WORKER_HF_CACHE", cache)
+    repo = env.get("MODEL") or env.get("WEIGHTLESS_MODEL") or lane["model_repo"]
+    model_dir = "models--" + repo.replace("/", "--")
+    image = env.get(lane["image_key"], lane["docker_image"])
+    q = shlex.quote
+    steps = []
+
+    def add(desc, command, worker=None):
+        steps.append((desc, node_command(values, ssh_host, command, worker)))
+
+    # Read before installing tooling so pip never consumes the credential.
+    download = ('IFS= read -r HF_TOKEN; export HF_TOKEN; '
+                'unset HF_HUB_OFFLINE TRANSFORMERS_OFFLINE; '
+                'if [ ! -x "$HOME/.cache/weightless-hf/bin/hf" ]; then '
+                'python3 -m venv "$HOME/.cache/weightless-hf" && '
+                '"$HOME/.cache/weightless-hf/bin/pip" install huggingface_hub || exit 1; fi; '
+                '"$HOME/.cache/weightless-hf/bin/hf" download ')
+    revision = env.get("DSPARK_REVISION") if lane_idx == 0 else None
+    args = [repo, "--cache-dir", cache]
+    if revision:
+        args += ["--revision", revision]
+    add(f"download model weights: {repo}", download + shlex.join(args))
+    for worker in workers:
+        dest = f"{user}@{worker}:{worker_cache}/"
+        mkdir = shlex.join(["ssh", "-o", "BatchMode=yes", f"{user}@{worker}",
+                            "mkdir -p " + q(worker_cache)])
+        add(f"rsync model cache to worker {worker} (fabric)",
+            mkdir + " && " + shlex.join(["rsync", "-a", "--partial", "--progress", "-s",
+                                         "-e", "ssh -o BatchMode=yes",
+                                         f"{cache}/{model_dir}", dest]))
+    for worker in [None, *workers]:
+        node_cache = worker_cache if worker else cache
+        label = worker or "head"
+        # HF_HOME-based launchers resolve hub/models--..., while TP2 and the
+        # GLM template lookup use models--... directly at the cache root.
+        if lane_idx in (0, 2, 3, 5):
+            link = f"{node_cache}/hub/{model_dir}"
+            source = f"{node_cache}/{model_dir}"
+            add(f"expose HF hub cache on {label}",
+                f"mkdir -p {q(node_cache + '/hub')} && "
+                f"if [ ! -e {q(link)} ] && [ ! -L {q(link)} ]; then "
+                f"ln -s {q('../' + model_dir)} {q(link)}; "
+                f"elif [ ! {q(link)} -ef {q(source)} ]; then "
+                f"rsync -a --progress --link-dest={q(source)} {q(source + '/')} {q(link + '/')}; fi", worker)
+        if lane.get("local_image") and image == lane["docker_image"]:
+            add(f"verify recipe's locally built image on {label} (see recipe/glm53xl/README.md)",
+                "docker image inspect " + q(image), worker)
+        else:
+            add(f"pull Docker image on {label}: {image}", "docker pull " + q(image), worker)
+        # Qwen and GLM XL mount a directory, so dereference snapshot symlinks
+        # when materializing weights; cache-relative links break in /models.
+        weights = (env["MODELS"] + "/Qwen3.8-27B-NVFP4" if lane_idx == 1 else
+                   env["WEIGHTS_WORKERS" if worker else "WEIGHTS_HEAD"] if lane_idx == 4 else None)
+        if weights:
+            root = f"{node_cache}/{model_dir}"
+            add(f"stage mounted model directory on {label}: {weights}",
+                f"revision=$(cat {q(root + '/refs/main')}) && mkdir -p {q(weights)} && "
+                f"rsync -aL --partial --progress {q(root + '/snapshots/')}\"$revision\"/ {q(weights + '/')}", worker)
+        steer = env.get(lane["steer_key"], "")
+        if steer:
+            fname = os.path.basename(steer)
+            add(f"download GLP vector on {label}: {lane['vector_repo']}",
+                download + shlex.join([lane["vector_repo"], fname, "--local-dir", node_cache]), worker)
+            if lane_idx == 1:
+                dest = env["MODELS"] + "/cvec"
+                add("stage Qwen vector in the /models mount",
+                    f"mkdir -p {q(dest)} && cp {q(node_cache + '/' + fname)} {q(dest + '/' + fname)}", worker)
+    if lane_idx == 1 and env.get("STEER_MODE") == "lora":
+        adapter = "Qwen3.8-27B-refusal-abliterated-lora-r1-down_proj-L1-63-a1.safetensors"
+        mount = env.get("QWEN_LORA_DIR", "/models/lora/qwen-abliterated")
+        if not mount.startswith("/models/"):
+            raise ValueError("QWEN_LORA_DIR must be inside the recipe's /models mount")
+        dest = env["MODELS"] + mount[len("/models"):]
+        config = json.dumps(dict(peft_type="LORA", r=1, lora_alpha=1, bias="none",
+                                 task_type="CAUSAL_LM", target_modules=["mlp.down_proj"]))
+        add("download Qwen LoRA adapter", download + shlex.join([lane["vector_repo"], adapter,
+                                                               "--local-dir", cache]))
+        add("package Qwen LoRA for the launcher",
+            f"mkdir -p {q(dest)} && cp {q(cache + '/' + adapter)} {q(dest + '/adapter_model.safetensors')} && "
+            f"printf '%s\\n' {q(config)} > {q(dest + '/adapter_config.json')}")
+    return steps
+
+
+def prepare_assets(io, lane_idx, values, ssh_host):
+    io.header("prepare assets")
+    if DEMO:
+        io.info("demo: asset preparation skipped")
+        return True
+    token = hf_token()
+    env = lane_env(lane_idx, values)
+    if (env.get(LANES[lane_idx]["steer_key"]) or env.get("STEER_MODE") == "lora") and not token:
+        io.err("GLP repositories are gated: accept access on Hugging Face, then set "
+               "HF_TOKEN or run hf auth login (~/.cache/huggingface/token) and retry.")
+        return False
+    try:
+        cmds = asset_commands(lane_idx, values, ssh_host)
+    except ValueError as exc:
+        io.err(str(exc))
+        return False
+    for desc, argv in cmds:
+        io.info("$ " + shlex.join(argv))
+        if not io.confirm(f"run: {desc}?", True):
+            io.warn("asset preparation skipped — deploy aborted")
+            return False
+        io.info(desc)
+        # Only downloads receive the token; SSH forwards stdin to the worker.
+        rc = subprocess.run(argv, input=(token + "\n") if desc.startswith("download ") else None,
+                            text=True).returncode
+        if rc != 0:
+            io.err(f"FAILED ({rc}) — fix and re-run; aborting deploy")
+            return False
+    return True
+
+
 def deploy_commands(lane_idx, values, ssh_host=None):
     """(description, argv) pairs to push the lane to its node(s) and boot it.
     Multi-node lanes (nodes: 2|4) target a remote dir on the head (their
     start script syncs the worker(s) itself); Qwen targets a repo-shaped dir
     on the single node.
     ssh_host is the LAN-reachable name/IP — never the fabric address."""
+    if DEMO:
+        return []
     user = values.get("user", os.environ.get("USER", ""))
     if LANES[lane_idx].get("nodes", 1) > 1:
         lane = LANES[lane_idx]
@@ -566,16 +760,108 @@ CONTAINER_GREP = {0: "deepseek", 1: "qwen38", 2: "qwen38fn", 3: "glm53", 4: "glm
                   5: "inkling-sm121", 6: "glm53tp2"}
 
 
+def current_lanes(output):
+    """(lane index, exact container name) pairs from docker ps --format Names.
+    Longest match wins: qwen38fn and glm53tp2 must not match shorter lanes."""
+    running = []
+    for name in output.splitlines():
+        name = name.strip()
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", name):
+            continue
+        for idx in sorted(CONTAINER_GREP, key=lambda i: len(CONTAINER_GREP[i]), reverse=True):
+            if CONTAINER_GREP[idx] in name.lower():
+                running.append((idx, name))
+                break
+    return running
+
+
+def detect_current_lanes(values, ssh_host, worker=None):
+    if DEMO:
+        return []
+    argv = node_command(values, ssh_host, "docker ps --format '{{.Names}}'", worker)
+    r = subprocess.run(argv, capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError(f"cannot detect current lane on {worker or ssh_host} (exit {r.returncode})")
+    return current_lanes(r.stdout)
+
+
+def park_commands(lane_idx, running, values, ssh_host=None, worker=None):
+    """Only explicitly observed containers belonging to other lanes are parked."""
+    if DEMO:
+        return []
+    return [(f"park {name} on {worker or ssh_host}",
+             node_command(values, ssh_host, shlex.join(["docker", "rm", "-f", name]), worker))
+            for idx, name in running if idx != lane_idx]
+
+
+def park_other_lanes(io, lane_idx, values, ssh_host):
+    """Collect the old lane's ranks before one explicit, default-no confirmation.
+    A failed probe, declined park or failed removal always blocks the boot."""
+    if DEMO:
+        return True
+    try:
+        running = detect_current_lanes(values, ssh_host)
+        old_lanes = {idx for idx, _ in running if idx != lane_idx}
+        cmds = park_commands(lane_idx, running, values, ssh_host)
+        # Also inspect the selected workers to catch a surviving old rank.
+        workers = set(lane_workers(lane_idx, lane_env(lane_idx, values)))
+        checked_lanes, checked_workers = set(), set()
+        while True:
+            for idx in sorted(old_lanes - checked_lanes):
+                env = lane_env(idx, values)
+                for n, worker in enumerate(lane_workers(idx, env), 1):
+                    if not worker or "<" in worker:
+                        worker = io.text(f"Old lane {CONTAINER_GREP[idx]} worker {n} fabric IP: ", "")
+                    if not worker or "<" in worker:
+                        io.err("Old lane worker address is missing — boot aborted")
+                        return False
+                    workers.add(worker)
+                checked_lanes.add(idx)
+            pending = workers - checked_workers
+            if not pending:
+                break
+            for worker in sorted(pending):
+                if not worker or "<" in worker:
+                    io.err("Worker address is missing — boot aborted")
+                    return False
+                ranks = detect_current_lanes(values, ssh_host, worker)
+                old_lanes.update(idx for idx, _ in ranks if idx != lane_idx)
+                cmds += park_commands(lane_idx, ranks, values, ssh_host, worker)
+                checked_workers.add(worker)
+    except (OSError, RuntimeError) as exc:
+        io.err(str(exc))
+        return False
+    if not cmds:
+        return True
+    for idx in sorted(old_lanes):
+        io.warn("Current lane: " + LANES[idx]["name"])
+        io.info("To relaunch later (after parking the new lane): $ " +
+                shlex.join(boot_command(idx, values, ssh_host)[1]))
+    for desc, argv in cmds:
+        io.info(desc + ": $ " + shlex.join(argv))
+    if not io.confirm("Park these containers? This stops serving and removes them before boot.", False):
+        io.warn("parking declined — boot aborted")
+        return False
+    for desc, argv in cmds:
+        io.info(desc)
+        rc = subprocess.call(argv)
+        if rc:
+            io.err(f"parking FAILED ({rc}) — boot aborted")
+            return False
+    return True
+
+
 def remote_preflight(io, lane_idx, values, ssh_host):
     """Check the remote before touching it: is the container up, and do the
     deployed files match the local ones (md5)? Returns True when the remote
     is fully synced and running."""
+    if DEMO:
+        return False
     import hashlib
     user = values.get("user", os.environ.get("USER", ""))
     target = f"{user}@{ssh_host}"
     probe = (
-        f"docker ps --format '{{{{.Names}}}} {{{{.Status}}}}' 2>/dev/null "
-        f"| grep -i {CONTAINER_GREP[lane_idx]} || echo 'CONTAINER_DOWN'; "
+        "docker ps --format '{{.Names}}' || exit 1; echo CONTAINER_STATUS_END; "
         + " ".join(f"md5sum {r} 2>/dev/null || echo MISSING {r};"
                    for _, r in DEPLOY_MAP[lane_idx])
     )
@@ -585,7 +871,7 @@ def remote_preflight(io, lane_idx, values, ssh_host):
     if r.returncode != 0:
         io.err(f"ssh failed ({r.returncode}) — cannot preflight")
         return False
-    running = "CONTAINER_DOWN" not in r.stdout
+    running = any(idx == lane_idx for idx, _ in current_lanes(r.stdout.split("CONTAINER_STATUS_END")[0]))
     remote_md5 = {}
     for line in r.stdout.splitlines():
         parts = line.split()
@@ -619,6 +905,8 @@ def remote_preflight(io, lane_idx, values, ssh_host):
 
 def boot_command(lane_idx, values, ssh_host=None):
     """Just the boot step of deploy_commands, for the diagnose flow."""
+    if DEMO:
+        return ("demo: boot skipped", ["true"])
     return deploy_commands(lane_idx, values, ssh_host)[-1]
 
 
@@ -1241,6 +1529,8 @@ def lane_chain(io, lane_idx):
         if p == "head-ip" or re.fullmatch(r"worker\d*-ip", p):
             values[p] = pick_host(io, f"{prompt} ({p})", default)
         else:
+            if p == "hf-cache":
+                default = f"/home/{values.get('user', saved.get('user', ''))}/.cache/huggingface"
             values[p] = io.text(f"{prompt} ({p}): ", default)
 
     # Only expose steering when the selected launcher actually applies it.
@@ -1258,6 +1548,10 @@ def lane_chain(io, lane_idx):
     # 3. write env
     text = render_env(example, values, steer_mode=steer_mode,
                       steering=steering, steer_key=lane["steer_key"])
+    if DEMO:
+        io.info("demo: env generation, steering validation and deployment skipped")
+        prepare_assets(io, lane_idx, values, None)
+        return tests_chain(io)
     env_errors, env_warnings = validate_lane_env(lane, text)
     for w in env_warnings:
         io.warn(w)
@@ -1271,7 +1565,8 @@ def lane_chain(io, lane_idx):
     changed = any(saved.get(k) != v for k, v in values.items() if k in saved) \
               or any(k not in saved for k in values)
     if os.path.exists(target):
-        existing = open(target).read()
+        with open(target) as f:
+            existing = f.read()
         m = re.search(rf"(?m)^{re.escape(lane['steer_key'])}=(\S*)", existing)
         if bool(m and m.group(1)) != steering:
             changed = True
@@ -1293,7 +1588,7 @@ def lane_chain(io, lane_idx):
             f.write(text)
         io.ok(f"wrote {target}")
 
-    # 4. validate the steering patch + point at the vector
+    # 4. validate the steering patch (assets are prepared on the nodes below)
     if steering:
         io.info("validating the steering patch:")
         r = subprocess.run([sys.executable, os.path.join(HERE, lane["structure_test"])],
@@ -1309,21 +1604,7 @@ def lane_chain(io, lane_idx):
                 io.info("  " + line.strip())
         if r.returncode not in (0, 2):
             io.err("steering validation failed — do not deploy until this is green")
-        vp = vector_paths(lane_idx)
-        if vp and os.path.exists(vp[0]):
-            io.ok(f"vector present: {vp[0]}")
-        else:
-            io.info(f"vector (gated, needs HF token): "
-                    f"hf download {lane['vector_repo']} --include '*.gguf'")
-            if vp and shutil.which("hf") and io.confirm("Download the vector now?", True):
-                rc = subprocess.call(["hf", "download", lane["vector_repo"],
-                                      "--include", "*.gguf",
-                                      "--local-dir", os.path.dirname(vp[0])])
-                if rc == 0:
-                    io.ok(f"downloaded to {os.path.dirname(vp[0])}")
-                else:
-                    io.err("download failed (gated repo — is your HF token accepted?)")
-
+            return 1
     # 5. deploy (confirm-gated remote actions, preflight first)
     ssh_host = None
     if io.confirm("Deploy to the node(s) over ssh now?", True):
@@ -1339,27 +1620,16 @@ def lane_chain(io, lane_idx):
             if not io.confirm("Redeploy and restart anyway?", False):
                 io.info("deploy skipped")
                 return tests_chain(io, ssh_host, lane_idx)
+        if not prepare_assets(io, lane_idx, values, ssh_host):
+            return 1
         cmds = deploy_commands(lane_idx, values, ssh_host)
-        vp = vector_paths(lane_idx)
-        if vp and os.path.exists(vp[0]):
-            user = values.get("user", os.environ.get("USER", ""))
-            target = f"{user}@{ssh_host}"
-            vlocal, vremote = vp
-            cmds.insert(-1, ("sync GLP vector",
-                             ["scp", vlocal, f"{target}:{vremote}"]))
-            # every worker needs its own copy of the vector (each rank reads
-            # WEIGHTLESS_STEER_PATH inside its own container)
-            workers = [values[k] for k in sorted(values)
-                       if re.fullmatch(r"worker\d*-ip", k) and values[k]]
-            for worker in workers:
-                cmds.insert(-1, (f"sync GLP vector to worker {worker}",
-                                 ["ssh", target,
-                                  f"scp -o BatchMode=yes {vremote} {user}@{worker}:{vremote}"]))
         for desc, argv in cmds:
             io.info(f"$ {' '.join(argv)}")
             if not io.confirm(f"run: {desc}?", True):
                 io.warn("skipped")
                 continue
+            if (desc, argv) == cmds[-1] and not park_other_lanes(io, lane_idx, values, ssh_host):
+                return 1
             rc = subprocess.call(argv)
             if rc != 0:
                 io.err(f"FAILED ({rc}) — fix and re-run; aborting deploy")
@@ -1375,6 +1645,9 @@ def lane_chain(io, lane_idx):
 def diagnose_chain(io, base=None):
     """Layered failure isolation for an endpoint that won't answer, with an
     optional remote check/boot over ssh."""
+    if DEMO:
+        io.info("demo: DNS, TCP and HTTP diagnosis skipped")
+        return 0
     base = base or io.text("Base URL to diagnose: ", default_base())
     base = normalize_base(base)
     u = urllib.parse.urlparse(base)
@@ -1425,6 +1698,9 @@ def diagnose_chain(io, base=None):
 
 def remote_diagnose(io, host):
     """ssh to the serving node: container status, GPU, offer to boot."""
+    if DEMO:
+        io.info("demo: remote diagnosis and boot skipped")
+        return
     saved = read_lane_env()
     # The env's MASTER_ADDR is the RoCE fabric IP — no sshd there. Prefer the
     # host actually being diagnosed; when that's loopback (stack runs remote
@@ -1450,10 +1726,12 @@ def remote_diagnose(io, host):
         return
     if io.confirm("Boot the stack on that node?", False):
         lane_idx = io.menu("Which lane runs there?", [l["name"] for l in LANES])
-        values = {"user": target.split("@")[0], "head-ip": host}
-        desc, argv = boot_command(lane_idx, values, ssh_host=host)
+        values = dict(saved, user=target.split("@")[0])
+        desc, argv = boot_command(lane_idx, values, ssh_host=ssh_host)
         io.info(f"$ {' '.join(argv)}")
         if io.confirm(f"run: {desc}?", True):
+            if not park_other_lanes(io, lane_idx, values, ssh_host):
+                return 1
             rc = subprocess.call(argv)
             if rc == 0:
                 io.ok("boot issued — give it a few minutes to load the model")
@@ -1617,7 +1895,7 @@ def run(io):
     io.info(f"omp:  {omp or 'not found (only needed for tests)'}")
     io.info("")
     lane_items = [
-        l["name"].split(" — ")[0] + " — full chain (env → steering → deploy → clients/tests)"
+        l["name"].split(" — ")[0] + " — full chain (env → assets → deploy → clients/tests)"
         for l in LANES
     ]
     choice = io.menu("What to set up:", idle=getattr(io, "animate_logo", None), items=[

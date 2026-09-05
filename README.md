@@ -35,11 +35,24 @@ python3 setup.py   # Python 3.9+, stdlib only — TUI wizard with a prompt fallb
 ```
 
 Pick a lane and it walks the full chain: site values → env file → steering
-validation → confirm-gated ssh deploy → omp provider (registered in omp's
+validation → asset preparation → confirm-gated ssh deploy → omp provider (registered in omp's
 modelRoles — default role, or every text role) + endpoint smoke tests.
 Endpoint down? The diagnose chain isolates DNS → TCP → HTTP and can check and
 boot the stack over ssh. Non-interactive alternative:
 `sh tests/install.sh && sh tests/run.sh` with `DSPARK_*` env overrides.
+
+Asset preparation downloads the model on the head, rsyncs its HF cache to
+workers over the fabric, pulls the recipe image on each node, and downloads
+the selected GLP file on every node. Each command is printed and confirmed;
+downloads resume on reruns. Set `HF_TOKEN` or use `hf auth login` locally
+after accepting access to the gated vector repository. The token travels
+over SSH stdin and is never printed. Remote HF tooling uses its own venv
+(nodes need Python 3 with venv support). GLM 743B still requires the recipe's
+local image build, kernel overlay and mounted weight directories; the wizard
+verifies that image instead of attempting to pull a nonexistent registry tag.
+Before boot, switching lanes offers a separate, default-no confirmation to
+remove the old lane's containers on its nodes and prints the relaunch command.
+`DEMO=1 python3 setup.py` skips writes, downloads and all network commands.
 
 ## What this is: lean abliteration steering as a patch
 

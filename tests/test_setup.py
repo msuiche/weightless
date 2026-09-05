@@ -3,6 +3,8 @@ import importlib.util
 import io
 import json
 import os
+import shlex
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
@@ -197,6 +199,254 @@ class SetupTests(unittest.TestCase):
             setup.served_context("http://example/v1", "glm53-flash")
             self.assertEqual(list(Path(tmp).iterdir()), [])
         request.assert_not_called()
+
+
+class AssetAndParkingTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        Path(self.tmp.name, "tests").mkdir()
+        shutil.copyfile(ROOT / "tests/models.yml", Path(self.tmp.name, "tests/models.yml"))
+        for lane in setup.LANES:
+            dest = Path(self.tmp.name) / lane["example"]
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / lane["example"], dest)
+        self.here = patch.object(setup, "HERE", self.tmp.name)
+        self.here.start()
+        self.addCleanup(self.here.stop)
+        self.demo = patch.object(setup, "DEMO", False)
+        self.demo.start()
+        self.addCleanup(self.demo.stop)
+        self.values = {"user": "tester", "head-ip": "192.0.2.1", "worker-ip": "192.0.2.2",
+                       "worker2-ip": "192.0.2.3", "worker3-ip": "192.0.2.4",
+                       "hf-cache": "/home/tester/.cache/huggingface"}
+
+    def test_lane_metadata_and_asset_paths_match_recipes(self):
+        for idx, lane in enumerate(setup.LANES):
+            with self.subTest(lane=idx):
+                env = setup.lane_env(idx, self.values)
+                self.assertEqual(lane["docker_image"], env[lane["image_key"]])
+                if env.get("MODEL"):
+                    self.assertEqual(lane["model_repo"], env["MODEL"])
+                plan = setup.asset_commands(idx, self.values, "head.local")
+                commands = "\n".join(shlex.join(argv) for _, argv in plan)
+                self.assertIn(lane["model_repo"], commands)
+                self.assertIn(lane["vector_repo"], commands)
+                self.assertIn(os.path.basename(env[lane["steer_key"]]), commands)
+                self.assertIn("/home/tester/.cache/huggingface", commands)
+                nodes = lane.get("nodes", 1)
+                self.assertEqual(sum(desc.startswith("download GLP") for desc, _ in plan), nodes)
+                self.assertEqual(sum(desc.startswith("rsync model cache") for desc, _ in plan), nodes - 1)
+                pulls = [argv for desc, argv in plan if desc.startswith("pull Docker")]
+                self.assertEqual(len(pulls), 0 if lane.get("local_image") else nodes)
+                for desc, argv in plan:
+                    self.assertIn("tester@head.local", argv)
+                    if desc.startswith("rsync model cache"):
+                        self.assertIn("models--" + lane["model_repo"].replace("/", "--"), argv[-1])
+                        self.assertIn("--progress", argv[-1])
+                # The remote shell programs must parse without being executed.
+                for _, argv in plan:
+                    result = subprocess.run(["sh", "-n", "-c", argv[-1]], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_dsv4_pins_revision_and_qwen_materializes_mount(self):
+        plan = setup.asset_commands(0, self.values, "head.local")
+        self.assertIn("--revision 7872f01b1d1fe23eabc4c98b48bffcef5a386062", plan[0][1][-1])
+        qwen = "\n".join(argv[-1] for _, argv in setup.asset_commands(1, self.values, "head.local"))
+        self.assertIn("unsloth/Qwen3.8-27B-NVFP4", qwen)
+        self.assertIn("/home/tester/models-local-qwen38/Qwen3.8-27B-NVFP4", qwen)
+        self.assertIn("/home/tester/models-local-qwen38/cvec", qwen)
+        self.assertIn("rsync -aL", qwen)
+        self.assertEqual(setup.validate_lane_env(setup.LANES[1], ""), ([], []))
+
+    def test_saved_env_overrides_cache_workers_image_and_disabled_steering(self):
+        path = Path(self.tmp.name) / setup.LANES[6]["target"]
+        path.write_text('HF_CACHE="/srv/hf cache" # custom mount\nWORKER_HF_CACHE=/srv/worker-hf\n'
+                        'WORKER_HOST=198.51.100.8\nMODEL=RedHatAI/GLM-5.3-Flash-NVFP4\n'
+                        'GLM53_IMAGE=custom/image:pin\nWEIGHTLESS_STEER_PATH=\n')
+        plan = setup.asset_commands(6, self.values, "head.local")
+        commands = "\n".join(argv[-1] for _, argv in plan)
+        self.assertIn("/srv/hf cache", commands)
+        self.assertIn("/srv/worker-hf", commands)
+        self.assertIn("tester@198.51.100.8", commands)
+        self.assertIn("docker pull custom/image:pin", commands)
+        self.assertNotIn("download GLP", str(plan))
+
+    def test_qwen_lora_is_downloaded_and_packaged_in_its_mount(self):
+        env = setup.lane_env(1, self.values)
+        env["STEER_MODE"] = "lora"
+        with patch.object(setup, "lane_env", return_value=env):
+            plan = setup.asset_commands(1, self.values, "head.local")
+        self.assertIn("download Qwen LoRA adapter", plan[-2][0])
+        self.assertIn(setup.LANES[1]["vector_repo"], plan[-2][1][-1])
+        command = plan[-1][1][-1]
+        self.assertIn("/home/tester/models-local-qwen38/lora/qwen-abliterated/adapter_model.safetensors", command)
+        self.assertIn('"target_modules": ["mlp.down_proj"]', command)
+        self.assertEqual(subprocess.run(["sh", "-n", "-c", command]).returncode, 0)
+
+    def test_token_env_file_precedence_and_missing_token_blocks_assets(self):
+        with patch.dict(os.environ, {"HF_TOKEN": "env-token"}), \
+             patch.object(setup.os.path, "expanduser", return_value=self.tmp.name + "/token"):
+            Path(self.tmp.name, "token").write_text("file-token\n")
+            self.assertEqual(setup.hf_token(), "env-token")
+            with patch.dict(os.environ, {"HF_TOKEN": ""}):
+                self.assertEqual(setup.hf_token(), "file-token")
+        dialog = Mock()
+        with patch.object(setup, "hf_token", return_value=""), \
+             patch.object(setup.subprocess, "run") as run:
+            self.assertFalse(setup.prepare_assets(dialog, 6, self.values, "head.local"))
+        run.assert_not_called()
+        self.assertIn("HF_TOKEN", dialog.err.call_args.args[0])
+
+    def test_download_token_uses_stdin_only_and_failure_stops_plan(self):
+        dialog = Mock()
+        dialog.confirm.return_value = True
+        with patch.object(setup, "hf_token", return_value="secret-token"), \
+             patch.object(setup.subprocess, "run", return_value=Mock(returncode=1)) as run:
+            self.assertFalse(setup.prepare_assets(dialog, 6, self.values, "head.local"))
+        run.assert_called_once()
+        self.assertEqual(run.call_args.kwargs["input"], "secret-token\n")
+        self.assertNotIn("secret-token", str(run.call_args.args))
+        self.assertNotIn("secret-token", str(dialog.mock_calls))
+
+    def test_download_shell_preserves_token_and_paths_without_executing_them(self):
+        bindir = Path(self.tmp.name, ".cache/weightless-hf/bin")
+        bindir.mkdir(parents=True)
+        hf = bindir / "hf"
+        hf.write_text('#!/bin/sh\nprintf "%s\\n" "$HF_TOKEN" "$@"\n')
+        hf.chmod(0o755)
+        command = setup.asset_commands(6, self.values, "head.local")[0][1][-1]
+        token = "token with spaces; $(false) `false`"
+        result = subprocess.run(["sh", "-c", command], input=token + "\n", text=True,
+                                capture_output=True, env=dict(os.environ, HOME=self.tmp.name))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[0], token)
+        self.assertIn("RedHatAI/GLM-5.3-Flash-NVFP4", result.stdout)
+
+    def test_detection_disambiguates_lanes_and_parking_only_targets_other_lanes(self):
+        running = setup.current_lanes("qwen38\nqwen38fn\nvllm-glm53tp2\nglm53\nnginx\n")
+        self.assertEqual(running, [(1, "qwen38"), (2, "qwen38fn"), (6, "vllm-glm53tp2"), (3, "glm53")])
+        self.assertEqual(setup.park_commands(6, [(6, "vllm-glm53tp2")], self.values), [])
+        self.assertEqual(setup.park_commands(6, [], self.values), [])
+        cmds = setup.park_commands(6, [(2, "qwen38fn")], self.values, "head.local")
+        self.assertEqual(cmds[0][1][-1], "docker rm -f qwen38fn")
+
+    def test_detection_failure_is_not_treated_as_idle(self):
+        with patch.object(setup.subprocess, "run", return_value=Mock(returncode=255)), \
+             patch.object(setup.subprocess, "call") as call:
+            self.assertFalse(setup.park_other_lanes(Mock(), 6, self.values, "head.local"))
+        call.assert_not_called()
+
+    def test_switch_from_four_nodes_parks_all_old_ranks_only_after_confirmation(self):
+        for accepted in (False, True):
+            with self.subTest(accepted=accepted):
+                dialog = Mock()
+                dialog.confirm.return_value = accepted
+                with patch.object(setup, "detect_current_lanes", return_value=[(3, "glm53")]) as detect, \
+                     patch.object(setup.subprocess, "call", return_value=0) as call:
+                    self.assertEqual(setup.park_other_lanes(dialog, 6, self.values, "head.local"), accepted)
+                self.assertEqual(detect.call_count, 4)
+                self.assertEqual(call.call_count, 4 if accepted else 0)
+                self.assertIs(dialog.confirm.call_args.args[1], False)
+                self.assertIn("relaunch later", str(dialog.info.mock_calls))
+                self.assertIn("start-glm53-flash-dspark.sh", str(dialog.info.mock_calls))
+
+    def test_park_failure_blocks_boot(self):
+        dialog = Mock()
+        dialog.confirm.return_value = True
+        with patch.object(setup, "detect_current_lanes", return_value=[(5, "inkling-sm121")]), \
+             patch.object(setup.subprocess, "call", return_value=1) as call:
+            self.assertFalse(setup.park_other_lanes(dialog, 6, self.values, "head.local"))
+        call.assert_called_once()
+
+    def test_surviving_worker_discovers_the_rest_of_the_old_lane(self):
+        dialog = Mock()
+        dialog.confirm.return_value = True
+        def detect(values, host, worker=None):
+            return [(3, "glm53")] if worker else []
+        with patch.object(setup, "detect_current_lanes", side_effect=detect) as probe, \
+             patch.object(setup.subprocess, "call", return_value=0) as call:
+            self.assertTrue(setup.park_other_lanes(dialog, 6, self.values, "head.local"))
+        self.assertEqual(probe.call_count, 4)
+        self.assertEqual(call.call_count, 3)
+
+    def test_lane_chain_prepares_assets_and_parks_before_boot(self):
+        for assets_ok, park_ok in [(False, True), (True, False), (True, True)]:
+            with self.subTest(assets_ok=assets_ok, park_ok=park_ok):
+                dialog = Mock()
+                dialog.text.side_effect = lambda prompt, default="": "tester" if "user" in prompt else default
+                dialog.confirm.side_effect = lambda prompt, default=True: not prompt.startswith("Enable refusal")
+                events = []
+                def assets(*args):
+                    events.append("assets")
+                    return assets_ok
+                def park(*args):
+                    events.append("park")
+                    return park_ok
+                def execute(argv):
+                    events.append("boot" if "bash start-glm53-flash-tp2.sh" in argv[-1] else "sync")
+                    return 0
+                with patch.object(setup, "read_lane_env", return_value={}), \
+                     patch.object(setup, "pick_host", side_effect=["192.0.2.1", "192.0.2.2", "head.local"]), \
+                     patch.object(setup, "remote_preflight", return_value=False), \
+                     patch.object(setup, "prepare_assets", side_effect=assets), \
+                     patch.object(setup, "park_other_lanes", side_effect=park), \
+                     patch.object(setup.subprocess, "call", side_effect=execute), \
+                     patch.object(setup, "tests_chain", return_value=0):
+                    self.assertEqual(setup.lane_chain(dialog, 6), 0 if assets_ok and park_ok else 1)
+                self.assertEqual(events[0], "assets")
+                if assets_ok and park_ok:
+                    self.assertEqual(events[-2:], ["park", "boot"])
+                else:
+                    self.assertNotIn("boot", events)
+
+    def test_hub_alias_supports_existing_caches_and_repeated_staging(self):
+        for existing in (False, True):
+            with self.subTest(existing=existing), tempfile.TemporaryDirectory() as cache:
+                name = "models--thinkingmachines--Inkling-Small-NVFP4"
+                model = Path(cache, name)
+                model.mkdir()
+                (model / "config.json").write_text("new config")
+                alias = Path(cache, "hub", name)
+                if existing:
+                    alias.mkdir(parents=True)
+                    (alias / "config.json").write_text("old")
+                env = setup.lane_env(5, self.values)
+                env["HF_CACHE"] = cache
+                with patch.object(setup, "lane_env", return_value=env):
+                    plan = setup.asset_commands(5, self.values, "head.local")
+                command = next(argv[-1] for desc, argv in plan if desc == "expose HF hub cache on head")
+                for _ in range(2):
+                    result = subprocess.run(["sh", "-c", command], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual((alias / "config.json").read_text(), "new config")
+
+    def test_demo_full_lane_chain_emits_no_network_commands_or_writes(self):
+        dialog = Mock()
+        dialog.confirm.return_value = True
+        dialog.text.side_effect = lambda prompt, default="": default or "tester"
+        dialog.menu.return_value = 0
+        before = sorted(str(p) for p in Path(self.tmp.name).rglob("*"))
+        with patch.object(setup, "DEMO", True), \
+             patch.object(setup.subprocess, "run") as run, \
+             patch.object(setup.subprocess, "call") as call, \
+             patch.object(setup.subprocess, "Popen") as popen, \
+             patch.object(setup.urllib.request, "urlopen") as urlopen:
+            for idx in range(len(setup.LANES)):
+                self.assertEqual(setup.asset_commands(idx, self.values), [])
+                self.assertEqual(setup.deploy_commands(idx, self.values), [])
+                self.assertEqual(setup.park_commands(idx, [(3, "glm53")], self.values), [])
+                self.assertEqual(setup.detect_current_lanes(self.values, "head.local"), [])
+                self.assertTrue(setup.park_other_lanes(dialog, idx, self.values, "head.local"))
+                self.assertEqual(setup.lane_chain(dialog, idx), 0)
+            setup.remote_preflight(dialog, 6, self.values, "head.local")
+            setup.remote_diagnose(dialog, "head.local")
+            setup.diagnose_chain(dialog, "http://head.local/v1")
+        for mock in (run, call, popen, urlopen):
+            mock.assert_not_called()
+        self.assertEqual(before, sorted(str(p) for p in Path(self.tmp.name).rglob("*")))
+        self.assertNotIn("$ ssh", str(dialog.mock_calls))
+        self.assertNotIn("hf download", str(dialog.mock_calls))
 
 
 class RouterTests(unittest.TestCase):
