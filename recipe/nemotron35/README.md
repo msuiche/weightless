@@ -1,9 +1,9 @@
 # Nemotron 3.5 Lightning — single DGX Spark
 
-Stock `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` serving recipe.
+Stock `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` serving recipe,
+with optional GLP projective steering via a fail-closed boot hotfix.
 **Stock generation and a tool-call/result loop passed on one Modal H100;
 DGX boot validation is still pending.**
-No GLP artifact is supplied, and steering support is not claimed.
 
 NVIDIA documents one-Spark deployment with vLLM 0.27.1, Marlin W4A16 compute
 for the NVFP4 weights, FP8 KV cache, and a separate DSpark draft model.
@@ -29,6 +29,54 @@ need validation. These timings are smoke-test latency, not throughput benchmarks
 The model's default thinking mode remained enabled. No steering was applied.
 Complete outputs and server logs are retained in the local experiment directory
 `refusal-research/experiments/20260905-nemotron35-stock-smoke/out/`.
+
+## GLP steering — validated on Modal, 2026-09-05
+
+Setting `WEIGHTLESS_GLP` in `.env.nemotron35` to a host path holding a
+`glp.*` GGUF control vector enables projective steering
+(`h ← h − α(h·d̂)d̂`) at the post-layer residual stream
+(`h = hidden_states + residual` under nemotron_h's fused add+norm
+convention; the mixer output folds in at the next norm). The boot hotfix
+`patches/hotfix-nemotron35-steering-projective.py` patches `nemotron_h.py`
+inside the container BEFORE `vllm serve` and fails closed: a missing/invalid
+vector, non-`project` mode, wrong `hook_point`, layer-list mismatch, anchor
+drift, or a failed patch all stop the boot instead of serving unsteered.
+Anchors are verified against both vLLM v0.27.1 and the v0.28.0 image on the
+DGX Spark (`patches/reference/nemotron_h_v0280.py`).
+
+Validated vector:
+`msuiche/Nemotron-3.5-Lightning-30B-A3B-abliterated-cyber-GLP-51-L1-51-a1.0`
+(gated; 51 unit directions, layers 1–51, layer 0 intentionally absent,
+width 2688, `alpha_default` 1.0). Measured on vLLM v0.27.1, one H100,
+greedy, alpha = 1.0:
+
+| suite          | stock  | steered |
+|----------------|--------|---------|
+| refusal32      | 0/32   | 32/32   |
+| cyber32        | 1/32   | 31/32   |
+| benign32       | 32/32  | 32/32 (unchanged) |
+| propaganda32   | 28/32  | 32/32   |
+
+Termination is intact (clean EOS stops). `WEIGHTLESS_GLP_ALPHA` overrides
+alpha (default 1.0, the vector's `alpha_default`);
+`WEIGHTLESS_GLP_LAYERS` optionally restricts to a comma list of layer ids.
+
+**MTP caveat:** the checkpoint carries one MTP nextn layer which is NOT
+steered. Speculative decoding would let unsteered MTP draft tokens bypass
+the edit, so the launcher refuses to combine `WEIGHTLESS_GLP` with
+`SPECULATIVE_MODE=dspark` — set `SPECULATIVE_MODE=none`.
+
+**GB10 image note:** `vllm/vllm-openai:v0.27.1` is multi-arch upstream but
+is not pulled on the rig; the locally available `vllm/vllm-openai:v0.28.0`
+(the live Inkling lane's image) contains the same nemotron_h anchors and is
+what the DGX deployment should use.
+
+```sh
+# .env.nemotron35 additions for the steered lane:
+SPECULATIVE_MODE=none
+NEMOTRON_IMAGE=vllm/vllm-openai:v0.28.0
+WEIGHTLESS_GLP=/home/msuiche/.cache/huggingface/hub/models--msuiche--Nemotron-3.5-Lightning-30B-A3B-abliterated-cyber-GLP-51-L1-51-a1.0/snapshots/<rev>/Nemotron-3.5-Lightning-30B-A3B-abliterated-GLP-51-L1-51-a1.0.gguf
+```
 
 ## Configure and launch
 
@@ -77,5 +125,6 @@ long-prompt tests; an upstream 1M report is not a local validation result.
 Local launcher regression checks, without Docker or a GPU:
 
 ```sh
-python3 recipe/nemotron35/test_launcher.py
+python3 recipe/nemotron35/test_launcher.py     # launcher incl. GLP gating
+python3 tests/test_nemotron35_hotfix.py        # hotfix anchors + GGUF gates
 ```

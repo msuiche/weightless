@@ -62,6 +62,53 @@ class LauncherTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.calls.exists())
 
+    def test_glp_launch_wraps_hotfix_and_drops_spec_decode(self):
+        glp = self.root / "vector.gguf"
+        glp.write_bytes(b"GGUF")  # content is the hotfix's problem, not the launcher's
+        with self.config.open("a") as f:
+            f.write(f'\nSPECULATIVE_MODE=none\nWEIGHTLESS_GLP="{glp}"\n')
+        result = self.run_launcher()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = json.loads(self.calls.read_text().splitlines()[-1])
+        self.assertEqual(args[args.index("--entrypoint") + 1], "bash")
+        entry = args[args.index("-c") + 1]
+        self.assertIn("hotfix-nemotron35-steering-projective.py", entry)
+        self.assertIn("&&", entry)  # failed patch must not serve
+        self.assertIn(f"WEIGHTLESS_STEER_PATH=/vectors/{glp.name}", args)
+        self.assertIn("WEIGHTLESS_STEER_ALPHA=1.0", args)
+        self.assertNotIn("--speculative_config.model", args)
+        mount = args[args.index(f"type=bind,src={glp},dst=/vectors/{glp.name},readonly")]
+        self.assertIn("readonly", mount)
+
+    def test_glp_alpha_and_layers_pass_through(self):
+        glp = self.root / "vector.gguf"
+        glp.write_bytes(b"GGUF")
+        with self.config.open("a") as f:
+            f.write(f'\nSPECULATIVE_MODE=none\nWEIGHTLESS_GLP="{glp}"\n'
+                    'WEIGHTLESS_GLP_ALPHA=2.5\nWEIGHTLESS_GLP_LAYERS="10,11"\n')
+        result = self.run_launcher()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = json.loads(self.calls.read_text().splitlines()[-1])
+        self.assertIn("WEIGHTLESS_STEER_ALPHA=2.5", args)
+        self.assertIn("WEIGHTLESS_STEER_LAYERS=10,11", args)
+
+    def test_glp_with_spec_decode_fails_before_docker(self):
+        glp = self.root / "vector.gguf"
+        glp.write_bytes(b"GGUF")
+        with self.config.open("a") as f:
+            f.write(f'\nWEIGHTLESS_GLP="{glp}"\n')  # example defaults to dspark
+        result = self.run_launcher()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("SPECULATIVE_MODE=none", result.stderr)
+        self.assertFalse(self.calls.exists())
+
+    def test_glp_missing_file_fails_before_docker(self):
+        with self.config.open("a") as f:
+            f.write(f'\nSPECULATIVE_MODE=none\nWEIGHTLESS_GLP="{self.root}/nope.gguf"\n')
+        result = self.run_launcher()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.calls.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
