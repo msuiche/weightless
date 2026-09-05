@@ -224,6 +224,16 @@ class AssetAndParkingTests(unittest.TestCase):
     def test_lane_metadata_and_asset_paths_match_recipes(self):
         for idx, lane in enumerate(setup.LANES):
             with self.subTest(lane=idx):
+                if lane.get("cloud"):
+                    # Cloud lanes hold assets on Modal volumes, not the rig.
+                    self.assertEqual(lane["cloud"], "modal")
+                    self.assertEqual(setup.asset_commands(idx, self.values,
+                                                          "head.local"), [])
+                    self.assertTrue(os.path.exists(
+                        ROOT / lane["modal_app"]))
+                    self.assertTrue(setup.park_other_lanes(
+                        None, idx, self.values, "head.local"))
+                    continue
                 env = setup.lane_env(idx, self.values)
                 self.assertEqual(lane["docker_image"], env[lane["image_key"]])
                 if env.get("MODEL"):

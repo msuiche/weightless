@@ -148,23 +148,19 @@ LANES = [
          hotfix="hotfix-glm53-steering-projective.py",
          extra_patches=["vendor/sparse_attn_indexer_kpool_sm121.py"],
          port=8080),
-    dict(name="GLM-5.3 743B TP=4 serving — 4x DGX Spark, Int4-Int8Mix recipe",
+    dict(name="GLM-5.3 743B — Modal cloud (8x H100, GLP-77 α=1.0)",
+         # Cloud lane: deploys via modal/cloud_serve.py and delivers an
+         # endpoint URL. The on-prem 4x DGX recipe remains in recipe/glm53xl/.
+         cloud="modal",
+         modal_app="modal/cloud_serve.py",
          example="recipe/glm53xl/.env.glm53xl.example",
          target="recipe/glm53xl/.env.glm53xl",
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="scripts/test-glm53xl-steering-structure.py",
          vector_repo="msuiche/GLM-5.3-abliterated-cyber-GLP-77",
-         model_repo="2wild4tv/GLM-5.3-Int4-Int8Mix",
-         docker_image="vllm-node-tf5-glm52-b12x:probe-modded",
-         image_key="GLM53XL_IMAGE",
-         local_image=True,  # recipe requires a local build, not a registry tag
+         model_repo="RadixArk/GLM-5.3-NVFP4",
          steer_modes=None,
-         nodes=4,
-         remote_dir="dspark-glm53xl",
-         recipe_files=[".env.glm53xl", "start-glm53xl-dspark.sh"],
-         start_script="start-glm53xl-dspark.sh",
-         hotfix="hotfix-glm53xl-steering-projective.py",
-         port=8081),
+         port=8000),
     dict(name="Inkling-Small TP=2 serving — 2x DGX Spark, day-0 vLLM v0.28.0",
          example="recipe/inkling/.env.inkling.example",
          target="recipe/inkling/.env.inkling",
@@ -219,6 +215,8 @@ LANES = [
          docker_image="vllm/vllm-openai:v0.28.0",
          image_key="NEMOTRON_IMAGE",
          port=8083),
+    # Kimi K3 slots in here as the second cloud lane once its GLP vector
+    # exists (refusal-research backlog; weights are the only long pole).
 ]
 PLACEHOLDER_HINTS = {
     "head-ip": ("Head node IP or hostname", ""),
@@ -264,6 +262,9 @@ def detect_state():
     for lane in LANES:
         path = os.path.join(HERE, lane["target"])
         label = lane["name"].split(" — ")[0]
+        if lane.get("cloud"):
+            lines.append(f"{label}: cloud lane (Modal) — pick it to deploy")
+            continue
         if not os.path.exists(path):
             lines.append(f"{label}: not configured")
             continue
@@ -537,6 +538,8 @@ def asset_commands(lane_idx, values, ssh_host=None):
     if DEMO:
         return []
     lane = LANES[lane_idx]
+    if lane.get("cloud"):
+        return []  # cloud assets live on Modal volumes, not the rig
     env = lane_env(lane_idx, values)
     user = values.get("user", os.environ.get("USER", ""))
     cache = env.get("HF_CACHE", f"/home/{user}/.cache/huggingface")
@@ -837,6 +840,8 @@ def park_other_lanes(io, lane_idx, values, ssh_host):
     A failed probe, declined park or failed removal always blocks the boot."""
     if DEMO:
         return True
+    if LANES[lane_idx].get("cloud"):
+        return True  # cloud lanes deploy to Modal; nothing to park on the rig
     try:
         running = detect_current_lanes(values, ssh_host)
         old_lanes = {idx for idx, _ in running if idx != lane_idx}
@@ -1551,8 +1556,60 @@ class TuiIO:
 
 # ---------------------------------------------------------------- chains
 
+def cloud_chain(io, lane_idx):
+    """Modal cloud lane: deploy, then return the endpoint — that's the whole
+    deliverable. No rig access, no parking, no client rewiring (the user can
+    point omp/Hermes at the URL afterwards if they want)."""
+    lane = LANES[lane_idx]
+    app_path = os.path.join(HERE, lane["modal_app"])
+    io.header(lane["name"])
+    io.info("─" * 60)
+    steps = [
+        ("check Modal auth", ["modal", "profile", "current"]),
+        ("ensure weights on the volume (idempotent, ~465 GB first time)",
+         ["modal", "run", "--detach", app_path + "::ensure_weights"]),
+        ("verify the GLP directions on the volume (never re-derives)",
+         ["modal", "run", app_path + "::ensure_dirs"]),
+        ("deploy the serving app", ["modal", "deploy", app_path]),
+    ]
+    if DEMO:
+        io.info("demo: cloud lane plan printed; nothing executed")
+    for desc, argv in steps:
+        io.info("$ " + shlex.join(argv))
+        if DEMO:
+            continue
+        if not io.confirm(f"run: {desc}?", True):
+            io.warn("aborted — re-run the wizard to continue")
+            return
+        if desc.startswith("ensure weights"):
+            io.info("detached; first download takes ~30-60 min on Modal "
+                    "bandwidth — `modal app logs` to watch")
+            continue
+        r = subprocess.run(argv, capture_output=True, text=True)
+        if r.returncode != 0:
+            io.err(f"FAILED ({r.returncode}): {(r.stderr or r.stdout)[-400:]}")
+            return
+        if desc.startswith("check Modal"):
+            io.ok(r.stdout.strip())
+        if desc.startswith("deploy"):
+            m = re.search(r"https://\S+\.modal\.run", r.stdout + r.stderr)
+            if m:
+                base = m.group(0).rstrip("/")
+                io.ok(f"deployed: {base}")
+                io.info("OpenAI-compatible endpoint: " + base + "/v1")
+                io.warn("cold start loads ~465 GB — first request can take "
+                        "up to 30 min; the endpoint 503s while booting")
+            else:
+                io.warn("deployed, but the endpoint URL was not in the "
+                        "output — check `modal app list`")
+    if DEMO:
+        return 0
+
+
 def lane_chain(io, lane_idx):
     lane = LANES[lane_idx]
+    if lane.get("cloud"):
+        return cloud_chain(io, lane_idx)
     example = os.path.join(HERE, lane["example"])
     target = os.path.join(HERE, lane["target"])
     io.header(lane["name"])
