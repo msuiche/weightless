@@ -3,13 +3,13 @@
 # head box). Install with tests/install.sh (merges into ~/.omp/agent/models.yml).
 providers:
   weightless:
-    baseUrl: http://localhost:8082/v1
+    baseUrl: http://localhost:8000/v1  # router: strips inkling's streaming wrapper tokens
     auth: none
     api: openai-completions
     models:
       - id: inkling-small-nvfp4
         name: Inkling-Small NVFP4 (2x DGX Spark TP=2, :8082)
-        baseUrl: http://localhost:8082/v1
+        baseUrl: http://localhost:8000/v1  # router: strips inkling's streaming wrapper tokens
         reasoning: true
         input: [text]
         contextWindow: 65536

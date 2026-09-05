@@ -3,8 +3,8 @@
 
 Pick a lane, fill in the site values (hosts, user), generate the real
 gitignored env file from the shipped example, validate the steering patch,
-deploy to the node(s) over ssh (confirm-gated), then install the omp
-provider and run the endpoint smoke tests. If the endpoint is down, the
+deploy to the node(s) over ssh (confirm-gated), then configure agent clients
+and run the endpoint smoke tests. If the endpoint is down, the
 diagnose chain walks the layers (DNS → TCP → HTTP) and can check/boot the
 stack over ssh. Stdlib only: a light curses TUI with colors on a terminal,
 ANSI-colored prompts otherwise. Non-interactive alternative:
@@ -28,27 +28,15 @@ except ImportError:  # non-POSIX / minimal builds — CLI fallback only
 HERE = os.path.dirname(os.path.abspath(__file__))
 OMP_MODELS = os.path.expanduser("~/.omp/agent/models.yml")
 OMP_CONFIG = os.path.expanduser("~/.omp/agent/config.yml")
+HERMES_CONFIG = os.path.expanduser("~/.hermes/config.yaml")
+HERMES_MARKER = "# weightless lane models (--model):"
 DEFAULT_BASE = "http://localhost:8888/v1"
 DEFAULT_MODEL = "deepseek-v4-flash-dspark"
-PROVIDER = "dspark"
+PROVIDER = "weightless"
 
-# DEMO_MODE=1: no network, no real tests — the probe and test suite replay
+# DEMO=1 (or DEMO_MODE=1): the probe and test suite replay
 # canned output against whatever base URL is configured. For screenshots.
-DEMO = os.environ.get("DEMO_MODE") == "1"
-
-COMPAT_BLOCK = """\
-        compat:
-          # DeepSeek V4 request shaping: system role, max_tokens, no
-          # tool_choice, reasoning-content round-trip. Without the last two,
-          # thinking-mode tool conversations 400. Drop this block for
-          # non-DeepSeek models.
-          supportsDeveloperRole: false
-          supportsReasoningEffort: true
-          maxTokensField: max_tokens
-          supportsToolChoice: false
-          requiresReasoningContentForToolCalls: true
-          requiresAssistantContentForToolCalls: true
-"""
+DEMO = os.environ.get("DEMO") == "1" or os.environ.get("DEMO_MODE") == "1"
 
 # Launch splash: a feather (weightless) with omp's pink → cyan gradient,
 # applied per column (horizontal), like the omp π logo.
@@ -147,7 +135,7 @@ LANES = [
          hotfix="hotfix-glm53-steering-projective.py",
          extra_patches=["vendor/sparse_attn_indexer_kpool_sm121.py"],
          port=8080),
-    dict(name="GLM-5.3 743B TP=4 serving — multi-node server / cloud, Int4-Int8Mix recipe",
+    dict(name="GLM-5.3 743B TP=4 serving — 4x DGX Spark, Int4-Int8Mix recipe",
          example="recipe/glm53xl/.env.glm53xl.example",
          target="recipe/glm53xl/.env.glm53xl",
          steer_key="WEIGHTLESS_STEER_PATH",
@@ -178,6 +166,20 @@ LANES = [
          extra_patches=["hotfix-inkling-gb10-load-reclaim.py",
                         "hotfix-inkling-sm121-relattn.py"],
          port=8082),
+    dict(name="GLM-5.3-Flash TP=2 serving — 2x DGX Spark, sm121-v8, 128K",
+         example="recipe/glm53tp2/.env.glm53tp2.example",
+         target="recipe/glm53tp2/.env.glm53tp2",
+         steer_key="WEIGHTLESS_STEER_PATH",
+         structure_test="scripts/test-glm53-steering-structure.py",
+         vector_repo="msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44",
+         steer_modes=None,
+         nodes=2,
+         remote_dir="dspark-glm53tp2",
+         recipe_files=[".env.glm53tp2", "start-glm53-flash-tp2.sh"],
+         start_script="start-glm53-flash-tp2.sh",
+         hotfix="hotfix-glm53-steering-projective.py",
+         extra_patches=["vendor/sparse_attn_indexer_kpool_sm121.py"],
+         port=8080),
 ]
 PLACEHOLDER_HINTS = {
     "head-ip": ("Head node IP or hostname", ""),
@@ -191,12 +193,16 @@ PLACEHOLDER_HINTS = {
 # ---------------------------------------------------------------- core logic
 
 def omp_provider_base():
-    """The dspark provider's baseUrl from ~/.omp/agent/models.yml, if set."""
+    """The weightless provider's baseUrl from ~/.omp/agent/models.yml, if set."""
     if not os.path.exists(OMP_MODELS):
         return None
     with open(OMP_MODELS) as f:
-        m = re.search(rf"(?ms)^  {PROVIDER}:.*?baseUrl: (\S+)", f.read())
-    return m.group(1) if m else None
+        text = f.read()
+    providers = yaml_block(text, "providers")
+    body = text[slice(*providers)] if providers else ""
+    block = yaml_block(body, PROVIDER, 2)
+    m = re.search(r"(?m)^ +baseUrl: +(\S+)", body[slice(*block)]) if block else None
+    return m.group(1).strip("\"'") if m else None
 
 
 def default_base():
@@ -206,13 +212,14 @@ def default_base():
 
 def detect_state():
     """Summarize existing local setup: per-lane env presence + key values,
-    and whether the omp provider is installed."""
+    and whether the agent clients are configured."""
     if DEMO:
         return [
             "DSV4 TP=2 serving: head node-a.local, worker node-b.local, port 8888",
             "  ↳ steering on (α=4.0, 29 layers) — …cyber-GLP-29-L10-38-a4.gguf",
             "Qwen TP=1 serving: not configured",
             f"omp provider '{PROVIDER}': installed (http://node-a.local:8888/v1)",
+            f"hermes: configured (model {DEFAULT_MODEL})",
         ]
     lines = []
     for lane in LANES:
@@ -257,6 +264,18 @@ def detect_state():
             lines.append(f"omp provider '{PROVIDER}': config exists, provider missing")
     else:
         lines.append(f"omp provider '{PROVIDER}': not installed")
+    try:
+        with open(HERMES_CONFIG) as f:
+            text = f.read()
+    except OSError:
+        text = ""
+    block = yaml_block(text, "model")
+    model = re.search(r"(?m)^ +default: +([^\n]+)", text[slice(*block)]) if block else None
+    if HERMES_MARKER in text.splitlines():
+        value = model.group(1).strip().strip("\"'") if model else "?"
+        lines.append(f"hermes: configured (model {value})")
+    else:
+        lines.append("hermes: not installed")
     return lines
 
 
@@ -440,12 +459,19 @@ def deploy_commands(lane_idx, values, ssh_host=None):
         head = f"{user}@{ssh_host or values.get('head-ip', '<head-ip>')}"
         remote = lane["remote_dir"]
         r = os.path.join(HERE, os.path.dirname(lane["example"]))
-        return [
+        # recipe_files may carry subdirs (inkling's files/*.py): preserve them
+        # remotely instead of flattening into remote/.
+        sync_steps = [
             (f"prepare {head}:{remote}/",
              ["ssh", head, f"mkdir -p {remote}/patches {remote}/files"]),
-            ("sync env + recipe files",
-             ["scp", *[os.path.join(r, f) for f in lane["recipe_files"]],
-              f"{head}:{remote}/"]),
+        ]
+        for sub in sorted({os.path.dirname(f) for f in lane["recipe_files"]}):
+            group = [f for f in lane["recipe_files"] if os.path.dirname(f) == sub]
+            dest = f"{head}:{remote}/{sub + '/' if sub else ''}"
+            sync_steps.append(
+                (f"sync env + recipe files{' (' + sub + '/)' if sub else ''}",
+                 ["scp", *[os.path.join(r, f) for f in group], dest]))
+        sync_steps += [
             ("sync steering hotfix + extra patches",
              ["scp", *[os.path.join(HERE, "patches", p)
                        for p in [lane["hotfix"], *lane.get("extra_patches", [])]],
@@ -453,6 +479,7 @@ def deploy_commands(lane_idx, values, ssh_host=None):
             ("boot the stack (start script syncs the worker itself)",
              ["ssh", head, f"cd {remote} && bash {lane['start_script']}"]),
         ]
+        return sync_steps
     host = f"{user}@{ssh_host or '<node-host>'}"
     remote = "dspark-deploy"
     return [
@@ -515,8 +542,20 @@ DEPLOY_MAP = {
     4: [("recipe/glm53xl/.env.glm53xl", "dspark-glm53xl/.env.glm53xl"),
         ("recipe/glm53xl/start-glm53xl-dspark.sh", "dspark-glm53xl/start-glm53xl-dspark.sh"),
         ("patches/hotfix-glm53xl-steering-projective.py", "dspark-glm53xl/patches/hotfix-glm53xl-steering-projective.py")],
+    5: [("recipe/inkling/.env.inkling", "dspark-inkling/.env.inkling"),
+        ("recipe/inkling/start-inkling-sm121.sh", "dspark-inkling/start-inkling-sm121.sh"),
+        ("patches/hotfix-inkling-steering-projective.py", "dspark-inkling/hotfix-inkling-steering-projective.py"),
+        ("patches/hotfix-inkling-gb10-load-reclaim.py", "dspark-inkling/hotfix-inkling-gb10-load-reclaim.py"),
+        ("patches/hotfix-inkling-sm121-relattn.py", "dspark-inkling/hotfix-inkling-sm121-relattn.py"),
+        ("recipe/inkling/files/fa4_rel_attention-sm121.py", "dspark-inkling/files/fa4_rel_attention-sm121.py"),
+        ("recipe/inkling/files/inkling-model-gb10.py", "dspark-inkling/files/inkling-model-gb10.py")],
+    6: [("recipe/glm53tp2/.env.glm53tp2", "dspark-glm53tp2/.env.glm53tp2"),
+        ("recipe/glm53tp2/start-glm53-flash-tp2.sh", "dspark-glm53tp2/start-glm53-flash-tp2.sh"),
+        ("patches/hotfix-glm53-steering-projective.py", "dspark-glm53tp2/patches/hotfix-glm53-steering-projective.py"),
+        ("patches/vendor/sparse_attn_indexer_kpool_sm121.py", "dspark-glm53tp2/patches/sparse_attn_indexer_kpool_sm121.py")],
 }
-CONTAINER_GREP = {0: "deepseek", 1: "qwen38", 2: "qwen38fn", 3: "glm53", 4: "glm5xl"}
+CONTAINER_GREP = {0: "deepseek", 1: "qwen38", 2: "qwen38fn", 3: "glm53", 4: "glm5xl",
+                  5: "inkling-sm121", 6: "glm53tp2"}
 
 
 def remote_preflight(io, lane_idx, values, ssh_host):
@@ -586,41 +625,116 @@ def probe_models(base):
         return None, str(e)
 
 
-def render_provider(base, model, deepseek_compat):
-    compat = COMPAT_BLOCK if deepseek_compat else ""
-    return f"""{PROVIDER}:
-    baseUrl: {base}
-    auth: none
-    api: openai-completions
-    models:
-      - id: {model}
-        name: {model} ({PROVIDER})
-        reasoning: true
-        input: [text]
-        contextWindow: 1048576
-        maxTokens: 32768
-{compat}"""
+def yaml_block(text, key, indent=0):
+    """Locate an ordinary YAML mapping entry and its indented body."""
+    match = re.search(rf"(?m)^{' ' * indent}{re.escape(key)}:[^\n]*(?:\n|$)", text)
+    if not match:
+        return None
+    end = pos = match.end()
+    for line in text[pos:].splitlines(keepends=True):
+        content = line.strip() and not line.lstrip().startswith("#")
+        if content and len(line) - len(line.lstrip(" ")) <= indent:
+            break
+        pos += len(line)
+        if content:
+            end = pos
+    return match.start(), end
 
 
-def install_provider(base, model, deepseek_compat):
-    """Merge the provider into ~/.omp/agent/models.yml. Returns status line."""
-    block = render_provider(base, model, deepseek_compat)
-    os.makedirs(os.path.dirname(OMP_MODELS), exist_ok=True)
+def url_host(host):
+    """Bracket IPv6 addresses when embedding a host in a URL."""
+    host = host or "localhost"
+    return f"[{host}]" if ":" in host and not host.startswith("[") else host
+
+
+def render_provider(head_host="localhost"):
+    """Load all lanes and their per-model settings from the canonical template."""
+    with open(os.path.join(HERE, "tests", "models.yml")) as f:
+        text = f.read()
+    providers = yaml_block(text, "providers")
+    body = text[slice(*providers)] if providers else ""
+    block = yaml_block(body, PROVIDER, 2)
+    if not block:
+        raise ValueError(f"tests/models.yml has no '{PROVIDER}' provider")
+    return re.sub(r"(?m)^( +baseUrl:[^\n]*)",
+                  lambda m: m.group(0).replace("localhost", url_host(head_host)),
+                  body[slice(*block)])
+
+
+def install_provider(head_host="localhost"):
+    """Replace or append the complete provider, preserving other configuration."""
+    if DEMO:
+        return f"demo: configured omp '{PROVIDER}' provider (all local lanes)"
+    block = render_provider(head_host)
+    existing = ""
     if os.path.exists(OMP_MODELS):
         with open(OMP_MODELS) as f:
             existing = f.read()
-        if f"\n  {PROVIDER}:" in "\n" + existing or existing.startswith(f"{PROVIDER}:"):
-            return f"provider '{PROVIDER}' already present in {OMP_MODELS} — left as-is"
-        backup = OMP_MODELS + ".bak"
-        shutil.copy(OMP_MODELS, backup)
-        with open(OMP_MODELS, "a") as f:
-            if "providers:" not in existing:
-                f.write("\nproviders:\n")
-            f.write("\n  " + block.replace("\n", "\n  ").rstrip() + "\n")
-        return f"merged provider '{PROVIDER}' into {OMP_MODELS} (backup: {backup})"
+        shutil.copy(OMP_MODELS, OMP_MODELS + ".bak")
+    providers = yaml_block(existing, "providers")
+    if providers:
+        start, end = providers
+        body = existing[start:end]
+        old = yaml_block(body, PROVIDER, 2)
+        if old:
+            body = body[:old[0]] + block + body[old[1]:]
+        else:
+            body = body.rstrip("\n") + "\n" + block
+        text = existing[:start] + body + existing[end:]
+    else:
+        text = existing + ("\n" if existing and not existing.endswith("\n") else "")
+        text += "providers:\n" + block
+    os.makedirs(os.path.dirname(OMP_MODELS), exist_ok=True)
     with open(OMP_MODELS, "w") as f:
-        f.write("providers:\n  " + block.replace("\n", "\n  ").rstrip() + "\n")
-    return f"wrote {OMP_MODELS}"
+        f.write(text)
+    return f"configured provider '{PROVIDER}' in {OMP_MODELS} (all local lanes)"
+
+
+def install_hermes(head_host, model):
+    """Update Hermes model settings, keeping unrelated keys and mappings."""
+    if DEMO:
+        return f"demo: configured hermes (model {model})"
+    ids = re.findall(r"(?m)^      - id: +(\S+)", render_provider())
+    header = HERMES_MARKER + "\n" + "".join(f"#   {model_id}\n" for model_id in ids)
+    text = ""
+    if os.path.exists(HERMES_CONFIG):
+        with open(HERMES_CONFIG) as f:
+            text = f.read()
+        shutil.copy(HERMES_CONFIG, HERMES_CONFIG + ".bak")
+    # Refresh our comment too, so newly added lanes show up on subsequent runs.
+    text = re.sub(rf"(?m)^{re.escape(HERMES_MARKER)}\n(?:#   [^\n]*\n)*", "", text)
+    block = yaml_block(text, "model")
+    body = text[slice(*block)] if block else "model:\n"
+    # Preserve the user's indentation and any extra model options.
+    indents = re.findall(r"(?m)^( +)[^ #\n][^\n]*:", body)
+    indent = min(map(len, indents)) if indents else 2
+    settings = {
+        "default": json.dumps(model),
+        "provider": "custom",
+        "base_url": json.dumps(f"http://{url_host(head_host)}:8000/v1"),
+        "context_length": "65536",
+        "max_tokens": "8192",
+    }
+    # A scalar or empty model entry becomes a mapping.
+    if not re.match(r"^model:[ \t]*(?:#[^\n]*)?(?:\n|$)", body):
+        body = re.sub(r"^model:[^\n]*(?:\n|$)", "model:\n", body, count=1)
+    if not body.endswith("\n"):
+        body += "\n"
+    for key, value in settings.items():
+        entry = " " * indent + f"{key}: {value}\n"
+        old = yaml_block(body, key, indent)
+        if old:
+            body = body[:old[0]] + entry + body[old[1]:]
+        else:
+            body = body.rstrip("\n") + "\n" + entry
+    if block:
+        text = text[:block[0]] + header + body + text[block[1]:]
+    else:
+        text += ("\n" if text and not text.endswith("\n") else "") + header + body
+    os.makedirs(os.path.dirname(HERMES_CONFIG), exist_ok=True)
+    with open(HERMES_CONFIG, "w") as f:
+        f.write(text)
+    return f"configured hermes (model {model}) in {HERMES_CONFIG}"
 
 
 # omp roles we route to the endpoint when the user picks "all text roles".
@@ -647,6 +761,8 @@ def set_omp_model_roles(model, roles):
     """Set modelRoles.<role> for each role in ~/.omp/agent/config.yml,
     preserving the rest of the file (including other roles)."""
     ref = f"{PROVIDER}/{model}"
+    if DEMO:
+        return f"demo: omp roles {', '.join(roles)} → '{ref}'"
     try:
         with open(OMP_CONFIG) as f:
             text = f.read()
@@ -1128,6 +1244,7 @@ def lane_chain(io, lane_idx):
                     io.err("download failed (gated repo — is your HF token accepted?)")
 
     # 5. deploy (confirm-gated remote actions, preflight first)
+    ssh_host = None
     if io.confirm("Deploy to the node(s) over ssh now?", True):
         # MASTER_ADDR/head-ip is the RoCE fabric address — not routable from
         # the LAN. ssh needs a reachable host: the omp provider's by default.
@@ -1140,7 +1257,7 @@ def lane_chain(io, lane_idx):
             io.ok("remote is in sync and running — nothing to deploy")
             if not io.confirm("Redeploy and restart anyway?", False):
                 io.info("deploy skipped")
-                return tests_chain(io)
+                return tests_chain(io, ssh_host, lane_idx)
         cmds = deploy_commands(lane_idx, values, ssh_host)
         vp = vector_paths(lane_idx)
         if vp and os.path.exists(vp[0]):
@@ -1170,8 +1287,8 @@ def lane_chain(io, lane_idx):
         io.info("deploy skipped (declined) — nothing was checked remotely. Answer y to "
                 "preflight first: checksums + container status before anything is touched.")
 
-    # 6. omp provider + endpoint tests
-    return tests_chain(io)
+    # 6. endpoint tests + agent clients
+    return tests_chain(io, ssh_host or values.get("head-ip"), lane_idx)
 
 
 def diagnose_chain(io, base=None):
@@ -1252,12 +1369,18 @@ def remote_diagnose(io, host):
                 io.err(f"boot FAILED ({rc})")
 
 
-def tests_chain(io):
-    bun, omp = prereqs()
-    if not omp:
-        io.err("omp not found — install: curl -fsSL https://omp.sh/install | sh")
-        return 1
-    base = io.text("Base URL of the OpenAI-compatible server: ", default_base())
+def tests_chain(io, head_host=None, lane_idx=None):
+    preferred_model = None
+    if lane_idx is not None:
+        lane = LANES[lane_idx]
+        with open(os.path.join(HERE, lane["target"])) as f:
+            env = dict(re.findall(r"(?m)^([A-Z_]+)=(\S+)", f.read()))
+        head_host = head_host or env.get("MASTER_ADDR") or "localhost"
+        preferred_model = env.get("SERVED_MODEL_NAME", "").strip("\"'")
+        endpoint = f"http://{url_host(head_host)}:{env.get('VLLM_PORT') or lane['port']}/v1"
+    else:
+        endpoint = default_base()
+    base = io.text("Base URL of the OpenAI-compatible server: ", endpoint)
     io.info(f"probing {base}/models ...")
     ids, err = probe_models(base)
     while ids is None:
@@ -1265,7 +1388,7 @@ def tests_chain(io):
         choice = io.menu("endpoint not answering:", [
             "Diagnose the connection (DNS → TCP → HTTP → ssh)",
             "Enter a different URL",
-            "Continue anyway (provider will fail until the server is up)",
+            "Skip agent setup (endpoint must answer first)",
         ])
         if choice == 0:
             diagnose_chain(io, base)
@@ -1278,14 +1401,33 @@ def tests_chain(io):
             io.info(f"probing {base}/models ...")
             ids, err = probe_models(base)
         else:
-            model = io.text("Model id: ", DEFAULT_MODEL)
-            break
-    if ids is not None:
+            return 1
+    if not ids:
+        io.err("endpoint returned no models — agent setup skipped")
+        return 1
+    if preferred_model and not DEMO:
+        if preferred_model not in ids:
+            io.err(f"endpoint is not serving {preferred_model} — agent setup skipped")
+            return 1
+        model = preferred_model
+    else:
         model = ids[io.menu("Model to test:", ids)] if len(ids) > 1 else ids[0]
-        io.ok(f"model: {model}")
-    compat = io.confirm(f"DeepSeek V4 compat block for '{model}'?",
-                        "deepseek" in model.lower())
-    io.ok(install_provider(base, model, compat))
+    io.ok(f"model: {model}")
+    head_host = urllib.parse.urlparse(base).hostname or head_host or "localhost"
+    configure_omp = io.confirm("Configure omp (weightless provider)?", True)
+    configure_hermes = io.confirm("Configure hermes (~/.hermes/config.yaml)?", True)
+    if configure_omp:
+        io.ok(install_provider(head_host))
+        omp_roles_chain(io, model)
+    if configure_hermes:
+        io.ok(install_hermes(head_host, model))
+    if io.confirm("Run the test suite now?", True):
+        return run_suite(io, base, model)
+    io.info(f"done — later: sh {os.path.join(HERE, 'tests', 'run.sh')}")
+    return 0
+
+
+def omp_roles_chain(io, model):
     ref = f"{PROVIDER}/{model}"
     configured = read_omp_model_roles()
     missing = [r for r in ["default"] + OMP_EXTRA_ROLES
@@ -1304,10 +1446,6 @@ def tests_chain(io):
         ], preselect=1)
         roles = ["default"] if scope == 0 else missing
         io.ok(set_omp_model_roles(model, roles))
-    if io.confirm("Run the test suite now?", True):
-        return run_suite(io, base, model)
-    io.info(f"done — later: sh {os.path.join(HERE, 'tests', 'run.sh')}")
-    return 0
 
 
 # ---------------------------------------------------------------- entry
@@ -1363,12 +1501,12 @@ def run(io):
     io.info(f"omp:  {omp or 'not found (only needed for tests)'}")
     io.info("")
     lane_items = [
-        l["name"].split(" — ")[0] + " — full chain (env → steering → deploy → omp/tests)"
+        l["name"].split(" — ")[0] + " — full chain (env → steering → deploy → clients/tests)"
         for l in LANES
     ]
     choice = io.menu("What to set up:", idle=getattr(io, "animate_logo", None), items=[
         *lane_items,
-        "Endpoint tests — register provider in omp + smoke suite",
+        "Agent clients — configure omp / hermes + endpoint smoke suite",
         "Diagnose endpoint — layered checks + remote container status",
     ])
     if choice < len(LANES):
@@ -1384,7 +1522,7 @@ def completion(io, rc):
     if rc == 0:
         box(io, "Congratulations!", [
             "you're all set — steering validated, endpoint live,",
-            "omp provider ready. Happy hacking.",
+            "agent client setup finished. Happy hacking.",
         ], border="ok", title_kind="head")
     else:
         io.warn("setup finished with errors — scroll up for the red rows")

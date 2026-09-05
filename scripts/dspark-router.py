@@ -98,23 +98,98 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(502, {"error": f"lane :{port} unreachable: {e}"})
             return
         self.send_response(r.status)
+        is_sse = "text/event-stream" in (r.getheader("Content-Type") or "")
         for k, v in r.getheaders():
             if k.lower() not in HOP_BY_HOP and k.lower() != "content-length":
                 self.send_header(k, v)
         self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
         try:
-            while True:
-                chunk = r.read1(65536)
-                if not chunk:
-                    break
-                self.wfile.write(b"%x\r\n" % len(chunk) + chunk + b"\r\n")
-                self.wfile.flush()
+            if is_sse:
+                self._relay_sse(r)
+            else:
+                while True:
+                    chunk = r.read1(65536)
+                    if not chunk:
+                        break
+                    self.wfile.write(b"%x\r\n" % len(chunk) + chunk + b"\r\n")
+                    self.wfile.flush()
             self.wfile.write(b"0\r\n\r\n")
         except (BrokenPipeError, ConnectionResetError):
             pass
         finally:
             c.close()
+
+    def _relay_sse(self, r):
+        """Stream SSE events, stripping inkling's message wrapper tokens.
+
+        vLLM 0.28.0's --reasoning-parser inkling leaks <|message_model|>,
+        <|content_text|> and <|end_message|> into delta.content when streaming
+        (the non-streaming path is clean). Strip them here; markers can split
+        across events, so content goes through a stateful stripper.
+        """
+        strip = MarkerStripper()
+        buf = b""
+
+        def emit(b):
+            self.wfile.write(b"%x\r\n" % len(b) + b + b"\r\n")
+            self.wfile.flush()
+
+        while True:
+            part = r.read1(65536)
+            if not part:
+                break
+            buf += part
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                emit(self._filter_sse_line(line, strip) + b"\n")
+        if buf:
+            emit(self._filter_sse_line(buf, strip) + b"\n")
+
+    @staticmethod
+    def _filter_sse_line(line, strip):
+        if not line.startswith(b"data:") or line.strip() == b"data: [DONE]":
+            return line
+        try:
+            ev = json.loads(line[5:])
+        except Exception:
+            return line
+        dirty = False
+        for ch in ev.get("choices", []):
+            delta = ch.get("delta") or {}
+            c = delta.get("content")
+            if c:
+                nc = strip.feed(c)
+                if nc != c:
+                    delta["content"] = nc
+                    dirty = True
+        return b"data: " + json.dumps(ev).encode() if dirty else line
+
+
+class MarkerStripper:
+    """Stateful filter dropping fixed marker strings that may straddle feeds."""
+
+    MARKERS = ("<|message_model|>", "<|content_text|>", "<|end_message|>")
+    MAXLEN = max(len(m) for m in MARKERS)
+
+    def __init__(self):
+        self.pending = ""
+
+    def feed(self, s):
+        buf = self.pending + s
+        # emit the longest prefix that cannot be part of a marker
+        for i in range(len(buf)):
+            tail = buf[i:]
+            if any(m.startswith(tail) for m in self.MARKERS):
+                out = buf[:i]
+                for m in self.MARKERS:
+                    out = out.replace(m, "")
+                self.pending = tail
+                return out
+        self.pending = ""
+        for m in self.MARKERS:
+            buf = buf.replace(m, "")
+        return buf
 
 
 if __name__ == "__main__":
