@@ -1,13 +1,29 @@
-# omp provider config for the dspark cluster endpoint.
-# Install with tests/install.sh (merges into ~/.omp/agent/models.yml).
+# omp provider config for the weightless lanes on the 2x DGX Spark rig.
+# One `weightless` provider; each model pins its own baseUrl (lane port on the
+# head box). Install with tests/install.sh (merges into ~/.omp/agent/models.yml).
 providers:
-  dspark:
-    baseUrl: http://localhost:8888/v1
+  weightless:
+    baseUrl: http://localhost:8082/v1
     auth: none
     api: openai-completions
     models:
+      - id: inkling-small-nvfp4
+        name: Inkling-Small NVFP4 (2x DGX Spark TP=2, :8082)
+        baseUrl: http://localhost:8082/v1
+        reasoning: true
+        input: [text]
+        contextWindow: 65536
+        maxTokens: 8192
+        # Inkling's chat template has no tool tokens — tools unsupported.
+        supportsTools: false
+        compat:
+          supportsDeveloperRole: false
+          supportsReasoningEffort: false
+          maxTokensField: max_tokens
+          supportsToolChoice: false
       - id: deepseek-v4-flash-dspark
-        name: DeepSeek V4 Flash (dspark TP=2)
+        name: DeepSeek V4 Flash GLP-29 (2x DGX Spark TP=2, :8888)
+        baseUrl: http://localhost:8888/v1
         reasoning: true
         input: [text]
         contextWindow: 1048576
@@ -21,19 +37,49 @@ providers:
           supportsToolChoice: false
           requiresReasoningContentForToolCalls: true
           requiresAssistantContentForToolCalls: true
-  inkling:
-    # Inkling-Small NVFP4 on the 2x DGX Spark rig (sm121 lane,
-    # recipe/inkling/start-inkling-sm121.sh). API on the head at :8082.
-    baseUrl: http://localhost:8082/v1
-    auth: none
-    api: openai-completions
-    models:
-      - id: inkling-small-nvfp4
-        name: Inkling-Small NVFP4 (2x DGX Spark TP=2)
+      - id: glm53-flash
+        name: GLM-5.3-Flash NVFP4 GLP-44 (2x DGX Spark TP=2, :8080)
+        baseUrl: http://localhost:8080/v1
         reasoning: true
         input: [text]
-        contextWindow: 32768
-        maxTokens: 8192
+        contextWindow: 131072
+        maxTokens: 16384
+        compat:
+          supportsDeveloperRole: false
+          supportsReasoningEffort: false
+          maxTokensField: max_tokens
+          supportsToolChoice: false
+      - id: glm-5.3
+        name: GLM-5.3 743B GLP-77 (4x DGX Spark TP=4, :8081)
+        baseUrl: http://localhost:8081/v1
+        reasoning: true
+        input: [text]
+        contextWindow: 131072
+        maxTokens: 16384
+        compat:
+          supportsDeveloperRole: false
+          supportsReasoningEffort: false
+          maxTokensField: max_tokens
+          supportsToolChoice: false
+      - id: qwen38-flash-next-nvfp4
+        name: Qwen3.8-Flash-Next NVFP4 GLP-47 (2x DGX Spark TP=2, :8079)
+        baseUrl: http://localhost:8079/v1
+        reasoning: true
+        input: [text]
+        contextWindow: 262144
+        maxTokens: 16384
+        compat:
+          supportsDeveloperRole: false
+          supportsReasoningEffort: false
+          maxTokensField: max_tokens
+          supportsToolChoice: false
+      - id: qwen38-nvfp4
+        name: Qwen3.8-27B NVFP4 GLP-49 (1x DGX Spark, :8078)
+        baseUrl: http://localhost:8078/v1
+        reasoning: true
+        input: [text]
+        contextWindow: 131072
+        maxTokens: 16384
         compat:
           supportsDeveloperRole: false
           supportsReasoningEffort: false

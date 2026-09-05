@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# install.sh — install (or merge) the dspark provider into ~/.omp/agent/models.yml
-# and register it in omp's modelRoles (config.yml).
+# install.sh — install (or merge) the weightless provider (all local DGX
+# lanes, per-model baseUrl per lane port) into ~/.omp/agent/models.yml
+# and register a lane in omp's modelRoles (config.yml).
 # Env: WEIGHTLESS_MODEL (default deepseek-v4-flash-dspark),
 #      WEIGHTLESS_OMP_ALL_ROLES=1 routes every text role (smol, slow, plan,
 #      task, commit, tiny, advisor, designer) — not just default. vision is
@@ -13,7 +14,7 @@ mkdir -p "$(dirname "$dst")"
 
 if [ -f "$dst" ]; then
   merged=""
-  for prov in dspark inkling; do
+  for prov in weightless; do
     if grep -q "^  ${prov}:" "$dst"; then
       echo "${prov} provider already present in $dst"
     else
@@ -34,7 +35,7 @@ fi
 # register the endpoint in omp's modelRoles (merge into config.yml,
 # preserving other keys and sibling roles)
 cfg="$HOME/.omp/agent/config.yml"
-ref="dspark/${WEIGHTLESS_MODEL:-deepseek-v4-flash-dspark}"
+ref="weightless/${WEIGHTLESS_MODEL:-deepseek-v4-flash-dspark}"
 roles="default"
 if [ "${WEIGHTLESS_OMP_ALL_ROLES:-0}" = "1" ]; then
   roles="default smol slow plan task commit tiny advisor designer"
