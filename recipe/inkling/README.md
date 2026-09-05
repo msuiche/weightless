@@ -83,3 +83,22 @@ learning tile_n=64). The gate patch + probes live in
 
 The SM121 fallback and load-reclaim hotfixes now bypass both historical
 blockers. See the current working status at the top of this file.
+
+## Watchdog: optional, and dangerous if miscalibrated (2026-09-05)
+
+`../../scripts/memory-watchdog-gpu.sh` (v3) guards the overnight unattended
+case: a real GB10 wedge is a D-state process you cannot kill, so the watchdog
+kills the container early when MemAvailable collapses. Calibrated wrong it is
+worse than the disease — on 2026-09-05 it killed FOUR healthy Inkling runs:
+a 2 s dip during KV alloc (thresh 8 GiB, need 2), a 15 s low stretch during
+the 64k-ctx boot ("active drain"), a first-request Triton JIT stall (logs
+stale >60 s while compiling kernels), and a serving dip to 5 GB while a
+160 GB HF download ran alongside (page cache eats the same unified memory).
+Every one was a false positive. Rules if you enable it:
+
+- Never during the day's interactive work. Arm it for unattended nights only.
+- util 0.78 (not 0.82) so healthy dips stay clear of the threshold.
+- thresh 5120 MB, need 3, fresh_need 30, stale 180 s is the least-bad set
+  found; expect to tune again per lane.
+- Downloads and serving share one memory pool on GB10: pause big HF pulls or
+  accept that the watchdog will see "drains" that are just page cache.
