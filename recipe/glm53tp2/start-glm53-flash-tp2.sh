@@ -3,6 +3,8 @@
 # Reference: tonyd2wild's TP2 deployment report + later KV/graph corrections.
 # sm121-v8, fp8 KV, block 2304, profiler-sized memory, CUDA graphs on.
 # Default agentic profile: 128K, no MTP/drafter; optional GLP-44 at alpha 2.
+# SPECULATIVE=dflash2 switches to the sm121-v11-dflash2 image with the
+# DFlash2 drafter (k=7, enforce-eager per the reference launcher).
 #
 # Run on the head. Refuse any live serving lane or leftover GPU process on
 # either node; never remove containers. Check the actual image's steering
@@ -35,6 +37,8 @@ WAIT_ATTEMPTS="${WAIT_ATTEMPTS:-240}"
 WAIT_SECONDS="${WAIT_SECONDS:-15}"
 RANK_STAGGER_SECONDS="${RANK_STAGGER_SECONDS:-25}"
 MODEL_CACHE_DIR="models--${MODEL//\//--}"
+DRAFTER_MODEL="${DRAFTER_MODEL:-incoai/GLM-5.3-Flash-DFlash2}"
+DRAFTER_CACHE_DIR="models--${DRAFTER_MODEL//\//--}"
 MODEL_PY=/usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/nvidia/model.py
 KPOOL_PY=/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/sparse_attn_indexer_kpool.py
 
@@ -43,8 +47,11 @@ for cmd in docker ssh scp curl awk; do
   command -v "$cmd" >/dev/null 2>&1 || die "Missing required command: $cmd"
 done
 case "$GLM53_IMAGE" in
-  ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v8|ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v8@sha256:*) ;;
-  *) die "Use the reference ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v8 image (optionally digest-pinned)." ;;
+  ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v8|ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v8@sha256:*)
+    [ "${SPECULATIVE:-}" != dflash2 ] || die "SPECULATIVE=dflash2 requires the sm121-v11-dflash2 image." ;;
+  ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v11-dflash2|ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v11-dflash2@sha256:*)
+    [ "${SPECULATIVE:-}" = dflash2 ] || die "The sm121-v11-dflash2 image requires SPECULATIVE=dflash2." ;;
+  *) die "Use a reference ghcr.io/tonyd2wild/vllm-glm53-flash image (sm121-v8 or sm121-v11-dflash2, optionally digest-pinned)." ;;
 esac
 [ "$MODEL" = RedHatAI/GLM-5.3-Flash-NVFP4 ] || die "This lane requires RedHatAI/GLM-5.3-Flash-NVFP4 (compressed-tensors W4A4)."
 [[ "$MAX_MODEL_LEN" =~ ^[0-9]+$ ]] && [ "$MAX_MODEL_LEN" -ge 1 ] && [ "$MAX_MODEL_LEN" -le 262144 ] || die "MAX_MODEL_LEN must be 1..262144."
@@ -128,6 +135,16 @@ for h in "" "$WORKER_HOST"; do
     config="$root/snapshots/$revision/config.json"
     test -f "$config" && awk '\''/"quant_method"[[:space:]]*:[[:space:]]*"compressed-tensors"/ {ok=1} END{exit !ok}'\'' "$config"
   ' bash "$hf" "$MODEL_CACHE_DIR" || die "Missing RedHatAI compressed-tensors main snapshot in $hf on ${h:-head}."
+  if [ "${SPECULATIVE:-}" = dflash2 ]; then
+    # Same refs/main discipline for the drafter; the resolved snapshot is
+    # bind-mounted read-only at /models/dflash2-draft on each rank.
+    drev=$(run_node "$h" bash -c '
+      root="$1/$2"; revision=$(cat "$root/refs/main") || exit 1
+      test -f "$root/snapshots/$revision/config.json" || exit 1
+      printf "%s" "$revision"
+    ' bash "$hf" "$DRAFTER_CACHE_DIR") || die "Missing drafter $DRAFTER_MODEL snapshot in $hf on ${h:-head}."
+    if [ -z "$h" ]; then DRAFTER_SNAP_HEAD="$hf/$DRAFTER_CACHE_DIR/snapshots/$drev"; else DRAFTER_SNAP_WORKER="$hf/$DRAFTER_CACHE_DIR/snapshots/$drev"; fi
+  fi
   if [ -n "${WEIGHTLESS_STEER_PATH:-}" ]; then
     run_node "$h" test -f "$hf/$(basename "$WEIGHTLESS_STEER_PATH")" || die "Missing steering vector on ${h:-head}."
     # CPU-only disposable check: exact image file + all five anchors + GGUF
@@ -141,8 +158,15 @@ for h in "" "$WORKER_HOST"; do
 done
 
 # --- launch: worker first, then head; no automatic removal or restart -------
-build_cmd() { # rank, host IP, HF cache, hotfix, kpool
-  local rank="$1" hostip="$2" hf="$3" hotfix="$4" kpool="$5"
+DRAFTER_SNAP_HEAD="${DRAFTER_SNAP_HEAD:-}"
+DRAFTER_SNAP_WORKER="${DRAFTER_SNAP_WORKER:-}"
+build_cmd() { # rank, host IP, HF cache, hotfix, kpool, drafter snapshot
+  local rank="$1" hostip="$2" hf="$3" hotfix="$4" kpool="$5" drafter="${6:-}"
+  local -a DRAFT_MOUNT=()
+  if [ "${SPECULATIVE:-}" = dflash2 ]; then
+    [ -n "$drafter" ] || die "build_cmd: missing drafter snapshot path for rank $rank."
+    DRAFT_MOUNT=(-v "$drafter:/models/dflash2-draft:ro")
+  fi
   CMD=(docker run -d --restart no --name "$CONTAINER"
     --log-opt max-size=50m --log-opt max-file=2
     --gpus all --ipc=host --network host --shm-size 32g
@@ -151,6 +175,7 @@ build_cmd() { # rank, host IP, HF cache, hotfix, kpool
     -v "$hf:/cache/huggingface"
     -v "$hotfix:/patches/hotfix-glm53-steering-projective.py:ro"
     -v "$kpool:$KPOOL_PY:ro"
+    ${DRAFT_MOUNT[@]+"${DRAFT_MOUNT[@]}"}
     -e HF_HOME=/cache/huggingface -e HF_HUB_CACHE=/cache/huggingface
     -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1
     -e "VLLM_HOST_IP=$hostip" -e VLLM_ENGINE_READY_TIMEOUT_S=3600
@@ -171,9 +196,17 @@ build_cmd() { # rank, host IP, HF cache, hotfix, kpool
     --kv-cache-dtype fp8_e4m3 --block-size 2304 --moe-backend marlin
     --max-model-len "$MAX_MODEL_LEN" --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION"
     --max-num-seqs "$MAX_NUM_SEQS" --max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS"
-    --compilation-config '{"cudagraph_mode":"FULL_AND_PIECEWISE"}'
     --tool-call-parser glm47 --enable-auto-tool-choice --reasoning-parser glm45
     --default-chat-template-kwargs '{"enable_thinking":true}')
+  if [ "${SPECULATIVE:-}" = dflash2 ]; then
+    # Upstream ships the DFlash2 lane enforce-eager: graphs measured flat
+    # with the drafter (their 2026-09-02 TP2 comparison), and graph capture
+    # with our GLP hotfix is unvalidated.
+    CMD+=(--enforce-eager
+      --speculative-config '{"method":"dflash","model":"/models/dflash2-draft","num_speculative_tokens":7}')
+  else
+    CMD+=(--compilation-config '{"cudagraph_mode":"FULL_AND_PIECEWISE"}')
+  fi
   if [ "$rank" -eq 0 ]; then CMD+=(--host 0.0.0.0 --port "$VLLM_PORT"); else CMD+=(--headless); fi
 }
 show_logs() {
@@ -183,17 +216,17 @@ show_logs() {
 is_running() {
   [ "$(run_node "$1" docker inspect --format '{{.State.Running}}' "$CONTAINER")" = true ]
 }
-echo "GLM-5.3-Flash TP=2: $GLM53_IMAGE ($HEAD_IMAGE_ID), ctx $MAX_MODEL_LEN, util $GPU_MEMORY_UTILIZATION, fp8 KV, CUDA graphs, API :$VLLM_PORT"
+echo "GLM-5.3-Flash TP=2: $GLM53_IMAGE ($HEAD_IMAGE_ID), ctx $MAX_MODEL_LEN, util $GPU_MEMORY_UTILIZATION, fp8 KV, speculative=${SPECULATIVE:-off}, API :$VLLM_PORT"
 echo "Steering: ${WEIGHTLESS_STEER_PATH:-off}; alpha ${WEIGHTLESS_STEER_ALPHA:-2.0}"
 # Repeat the idle check after staging so another lane started meanwhile
 # blocks launch too. Docker's name reservation protects same-name races.
 check_idle ""
 check_idle "$WORKER_HOST"
-build_cmd 1 "$WORKER_VLLM_HOST_IP" "$WORKER_HF_CACHE" "$WORKER_DIR/patches/$(basename "$HOTFIX")" "$WORKER_DIR/patches/$(basename "$KPOOL")"
+build_cmd 1 "$WORKER_VLLM_HOST_IP" "$WORKER_HF_CACHE" "$WORKER_DIR/patches/$(basename "$HOTFIX")" "$WORKER_DIR/patches/$(basename "$KPOOL")" "$DRAFTER_SNAP_WORKER"
 run_node "$WORKER_HOST" "${CMD[@]}"
 sleep "$RANK_STAGGER_SECONDS"
 is_running "$WORKER_HOST" || { show_logs; die "Worker exited before head launch; inspect logs before teardown."; }
-build_cmd 0 "$VLLM_HOST_IP" "$HF_CACHE" "$HOTFIX" "$KPOOL"
+build_cmd 0 "$VLLM_HOST_IP" "$HF_CACHE" "$HOTFIX" "$KPOOL" "$DRAFTER_SNAP_HEAD"
 "${CMD[@]}" || { show_logs; die "Head launch failed; stop the worker explicitly before retrying."; }
 
 echo "Waiting for /health (~15 min boot; docker logs -f $CONTAINER)..."

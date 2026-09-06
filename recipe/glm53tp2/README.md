@@ -31,8 +31,17 @@ The actual base TP2 launcher pins
 The script accepts that tag with an optional `@sha256:...` suffix and
 requires identical image IDs on both nodes. This is the custom SM121 patch
 stack on `vllm/vllm-openai:glm53-flash-arm64-cu130`, not a stock release.
-The separate `sm121-v11-dflash2` image modifies model capture for its drafter
-and is outside this lane. v9/InstantTensor failed multi-node in the reference.
+The **`sm121-v11-dflash2`** image adds the DFlash2 drafter (46.9 tok/s vs
+21.8 in the reference, k=7, drafter slot-shares the MLA KV tensors). This
+lane supports it as an opt-in: set `SPECULATIVE=dflash2` in the env, pull
+the v11 image on both nodes, and cache `incoai/GLM-5.3-Flash-DFlash2`
+(~2.2 GB) in the same HF cache on both. The launcher then mounts the
+drafter at `/models/dflash2-draft`, adds the `dflash` speculative config,
+and runs enforce-eager (upstream measured graphs flat with the drafter and
+kept eager; graphs + our GLP hotfix are unvalidated). The drafter trades
+KV pool for speed, roughly -40% pool for +91% decode at 262K in the
+reference; the profiler still sizes our pool. v9/InstantTensor failed
+multi-node in the reference.
 
 **TP2 is KV-starved:** budget roughly **97 GiB weights/rank** and only
 **4.5–5.5 GiB KV headroom**, dependent on rank, loader, and profile; this is
