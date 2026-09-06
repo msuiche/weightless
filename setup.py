@@ -153,6 +153,8 @@ LANES = [
          # endpoint URL. The on-prem 4x DGX recipe remains in recipe/glm53xl/.
          cloud="modal",
          modal_app="modal/cloud_serve.py",
+         cloud_weights="~465 GB",
+         cloud_boot="30 min",
          example="recipe/glm53xl/.env.glm53xl.example",
          target="recipe/glm53xl/.env.glm53xl",
          steer_key="WEIGHTLESS_STEER_PATH",
@@ -215,8 +217,20 @@ LANES = [
          docker_image="vllm/vllm-openai:v0.28.0",
          image_key="NEMOTRON_IMAGE",
          port=8083),
-    # Kimi K3 slots in here as the second cloud lane once its GLP vector
-    # exists (refusal-research backlog; weights are the only long pole).
+    dict(name="Kimi K3 2.9T — Modal cloud (2x H200:8 PP2xTP8, GLP-92 α=1.0)",
+         # Cloud lane: deploys via modal/cloud_serve_k3.py and delivers an
+         # endpoint URL. The weights are ~1.56 TB (MXFP4 experts, no smaller
+         # checkpoint exists); first ensure_weights run is the long pole.
+         cloud="modal",
+         modal_app="modal/cloud_serve_k3.py",
+         cloud_weights="~1.56 TB",
+         cloud_boot="45 min",
+         steer_key="WEIGHTLESS_STEER_PATH",
+         structure_test="scripts/test-k3-steering-structure.py",
+         vector_repo="msuiche/Kimi-K3-abliterated-cyber-GLP-92-L1-92-a1.0",
+         model_repo="moonshotai/Kimi-K3",
+         steer_modes=None,
+         port=8000),
 ]
 PLACEHOLDER_HINTS = {
     "head-ip": ("Head node IP or hostname", ""),
@@ -260,11 +274,12 @@ def detect_state():
         ]
     lines = []
     for lane in LANES:
-        path = os.path.join(HERE, lane["target"])
-        label = lane["name"].split(" — ")[0]
         if lane.get("cloud"):
+            label = lane["name"].split(" — ")[0]
             lines.append(f"{label}: cloud lane (Modal) — pick it to deploy")
             continue
+        path = os.path.join(HERE, lane["target"])
+        label = lane["name"].split(" — ")[0]
         if not os.path.exists(path):
             lines.append(f"{label}: not configured")
             continue
@@ -1562,11 +1577,13 @@ def cloud_chain(io, lane_idx):
     point omp/Hermes at the URL afterwards if they want)."""
     lane = LANES[lane_idx]
     app_path = os.path.join(HERE, lane["modal_app"])
+    weights_note = lane.get("cloud_weights", "~465 GB")
+    boot_note = lane.get("cloud_boot", "30 min")
     io.header(lane["name"])
     io.info("─" * 60)
     steps = [
         ("check Modal auth", ["modal", "profile", "current"]),
-        ("ensure weights on the volume (idempotent, ~465 GB first time)",
+        (f"ensure weights on the volume (idempotent, {weights_note} first time)",
          ["modal", "run", "--detach", app_path + "::ensure_weights"]),
         ("verify the GLP directions on the volume (never re-derives)",
          ["modal", "run", app_path + "::ensure_dirs"]),
@@ -1582,7 +1599,7 @@ def cloud_chain(io, lane_idx):
             io.warn("aborted — re-run the wizard to continue")
             return
         if desc.startswith("ensure weights"):
-            io.info("detached; first download takes ~30-60 min on Modal "
+            io.info("detached; first download takes a while on Modal "
                     "bandwidth — `modal app logs` to watch")
             continue
         r = subprocess.run(argv, capture_output=True, text=True)
@@ -1592,13 +1609,15 @@ def cloud_chain(io, lane_idx):
         if desc.startswith("check Modal"):
             io.ok(r.stdout.strip())
         if desc.startswith("deploy"):
-            m = re.search(r"https://\S+\.modal\.run", r.stdout + r.stderr)
+            m = re.search(r"https://\S+\.modal\.(?:run|direct)",
+                          r.stdout + r.stderr)
             if m:
                 base = m.group(0).rstrip("/")
                 io.ok(f"deployed: {base}")
                 io.info("OpenAI-compatible endpoint: " + base + "/v1")
-                io.warn("cold start loads ~465 GB — first request can take "
-                        "up to 30 min; the endpoint 503s while booting")
+                io.warn(f"cold start loads {weights_note} — first request can "
+                        f"take up to {boot_note}; the endpoint 503s while "
+                        "booting")
             else:
                 io.warn("deployed, but the endpoint URL was not in the "
                         "output — check `modal app list`")
