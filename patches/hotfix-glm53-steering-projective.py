@@ -582,6 +582,48 @@ ANCHOR_FORWARD = (
 )
 REPLACEMENT_FORWARD = ANCHOR_FORWARD + FORWARD_BLOCK
 
+# sm121-v11-dflash2 restructured the loop for DFlash2 EAGLE-3 aux hidden-state
+# capture (enumerate + an aux block after the layer call). The steering block
+# must apply AFTER the aux capture: it nulls residual/post/comb and leaves
+# hidden_states widened to [T, n, hidden], which would break the aux branch
+# shapes, and the drafter was trained on unsteered aux states. The anchor
+# therefore spans the full v11 loop body, and FORWARD_BLOCK lands at the end
+# of it (still inside the loop, one apply per layer).
+ANCHOR_FORWARD_V11 = (
+    "        for idx, layer in enumerate(self._active_layers, start=self.start_layer):\n"
+    "            hidden_states, residual, post, comb = layer(\n"
+    "                positions, hidden_states, residual, post, comb\n"
+    "            )\n"
+    "            if idx + 1 in self.aux_hidden_state_layers:\n"
+    "                # `idx + 1` matches deepseek_v4: the runner already converted\n"
+    "                # DFlash target_layer_ids to id+1 semantics\n"
+    "                # (gpu_model_runner._get_eagle3_aux_layers_from_config), so\n"
+    "                # this captures the OUTPUT of 0-based decoder layer `idx`.\n"
+    "                if post is not None:\n"
+    "                    # Mid-stack mHC layer: its final hc_post is deferred to\n"
+    "                    # the next layer's fused pre. Materialize the multi-stream\n"
+    "                    # reconstruction here (pure op -- the deferred\n"
+    "                    # residual/post/comb state is not mutated), then contract\n"
+    "                    # hc streams exactly like the last layer does.\n"
+    "                    # hc_contract == mean over streams, the same contraction\n"
+    "                    # deepseek_v4 uses (aux_recon.mean(dim=1)).\n"
+    "                    aux_recon = layer.hc_post(hidden_states, residual, post, comb)\n"
+    "                    aux_hidden_state = hc_contract(aux_recon, layer.n)\n"
+    "                else:\n"
+    "                    # Last mHC layer (already hc_post + hc_contract'ed inside\n"
+    "                    # the layer) or a non-mHC layer: the output is already\n"
+    "                    # plain [num_tokens, hidden_size].\n"
+    "                    aux_hidden_state = hidden_states\n"
+    "                if self.is_sequence_parallel:\n"
+    "                    # Aux states are consumed at full-sequence granularity;\n"
+    "                    # gather the SP shard (deepseek_v4 pattern).\n"
+    "                    aux_hidden_state = sp_all_gather(aux_hidden_state)[\n"
+    "                        :full_num_tokens\n"
+    "                    ]\n"
+    "                aux_hidden_states.append(aux_hidden_state)\n"
+)
+REPLACEMENT_FORWARD_V11 = ANCHOR_FORWARD_V11 + FORWARD_BLOCK
+
 ANCHOR_DEFER = (
     "        if self.layer_idx == self.num_hidden_layers - 1:\n"
     "            x = self.hc_post(x, residual, post, comb)\n"
@@ -687,6 +729,16 @@ def main() -> int:
         if MARK in src:
             print(f"[steering-hotfix] already applied to {path}")
             continue
+
+        # Resolve the forward-apply variant against THIS image's source: the
+        # v11-dflash2 loop carries DFlash2 aux capture, v8 does not. All other
+        # anchors are shared.
+        patches = [
+            ("forward apply (v11 dflash2)", ANCHOR_FORWARD_V11, REPLACEMENT_FORWARD_V11)
+            if name == "forward apply" and old not in src and ANCHOR_FORWARD_V11 in src
+            else (name, old, new)
+            for name, old, new in patches
+        ]
 
         missing = [name for name, old, _ in patches if old not in src]
         if missing:

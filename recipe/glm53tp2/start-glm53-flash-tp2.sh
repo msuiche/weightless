@@ -136,14 +136,16 @@ for h in "" "$WORKER_HOST"; do
     test -f "$config" && awk '\''/"quant_method"[[:space:]]*:[[:space:]]*"compressed-tensors"/ {ok=1} END{exit !ok}'\'' "$config"
   ' bash "$hf" "$MODEL_CACHE_DIR" || die "Missing RedHatAI compressed-tensors main snapshot in $hf on ${h:-head}."
   if [ "${SPECULATIVE:-}" = dflash2 ]; then
-    # Same refs/main discipline for the drafter; the resolved snapshot is
-    # bind-mounted read-only at /models/dflash2-draft on each rank.
+    # Same refs/main discipline for the drafter. The whole cache dir (not the
+    # snapshot dir) is bind-mounted read-only at /models/dflash2-cache on each
+    # rank: snapshot entries are symlinks into ../blobs, and mounting the
+    # snapshot dir alone would break those links inside the container.
     drev=$(run_node "$h" bash -c '
       root="$1/$2"; revision=$(cat "$root/refs/main") || exit 1
       test -f "$root/snapshots/$revision/config.json" || exit 1
       printf "%s" "$revision"
     ' bash "$hf" "$DRAFTER_CACHE_DIR") || die "Missing drafter $DRAFTER_MODEL snapshot in $hf on ${h:-head}."
-    if [ -z "$h" ]; then DRAFTER_SNAP_HEAD="$hf/$DRAFTER_CACHE_DIR/snapshots/$drev"; else DRAFTER_SNAP_WORKER="$hf/$DRAFTER_CACHE_DIR/snapshots/$drev"; fi
+    if [ -z "$h" ]; then DRAFTER_DIR_HEAD="$hf/$DRAFTER_CACHE_DIR"; DRAFTER_REV_HEAD="$drev"; else DRAFTER_DIR_WORKER="$hf/$DRAFTER_CACHE_DIR"; DRAFTER_REV_WORKER="$drev"; fi
   fi
   if [ -n "${WEIGHTLESS_STEER_PATH:-}" ]; then
     run_node "$h" test -f "$hf/$(basename "$WEIGHTLESS_STEER_PATH")" || die "Missing steering vector on ${h:-head}."
@@ -158,14 +160,16 @@ for h in "" "$WORKER_HOST"; do
 done
 
 # --- launch: worker first, then head; no automatic removal or restart -------
-DRAFTER_SNAP_HEAD="${DRAFTER_SNAP_HEAD:-}"
-DRAFTER_SNAP_WORKER="${DRAFTER_SNAP_WORKER:-}"
-build_cmd() { # rank, host IP, HF cache, hotfix, kpool, drafter snapshot
-  local rank="$1" hostip="$2" hf="$3" hotfix="$4" kpool="$5" drafter="${6:-}"
+DRAFTER_DIR_HEAD="${DRAFTER_DIR_HEAD:-}"
+DRAFTER_REV_HEAD="${DRAFTER_REV_HEAD:-}"
+DRAFTER_DIR_WORKER="${DRAFTER_DIR_WORKER:-}"
+DRAFTER_REV_WORKER="${DRAFTER_REV_WORKER:-}"
+build_cmd() { # rank, host IP, HF cache, hotfix, kpool, drafter cache dir, drafter revision
+  local rank="$1" hostip="$2" hf="$3" hotfix="$4" kpool="$5" drafter_dir="${6:-}" drafter_rev="${7:-}"
   local -a DRAFT_MOUNT=()
   if [ "${SPECULATIVE:-}" = dflash2 ]; then
-    [ -n "$drafter" ] || die "build_cmd: missing drafter snapshot path for rank $rank."
-    DRAFT_MOUNT=(-v "$drafter:/models/dflash2-draft:ro")
+    [ -n "$drafter_dir" ] && [ -n "$drafter_rev" ] || die "build_cmd: missing drafter cache dir/revision for rank $rank."
+    DRAFT_MOUNT=(-v "$drafter_dir:/models/dflash2-cache:ro")
   fi
   CMD=(docker run -d --restart no --name "$CONTAINER"
     --log-opt max-size=50m --log-opt max-file=2
@@ -203,7 +207,7 @@ build_cmd() { # rank, host IP, HF cache, hotfix, kpool, drafter snapshot
     # with the drafter (their 2026-09-02 TP2 comparison), and graph capture
     # with our GLP hotfix is unvalidated.
     CMD+=(--enforce-eager
-      --speculative-config '{"method":"dflash","model":"/models/dflash2-draft","num_speculative_tokens":7}')
+      --speculative-config "{\"method\":\"dflash\",\"model\":\"/models/dflash2-cache/snapshots/$drafter_rev\",\"num_speculative_tokens\":7}")
   else
     CMD+=(--compilation-config '{"cudagraph_mode":"FULL_AND_PIECEWISE"}')
   fi
@@ -222,11 +226,11 @@ echo "Steering: ${WEIGHTLESS_STEER_PATH:-off}; alpha ${WEIGHTLESS_STEER_ALPHA:-2
 # blocks launch too. Docker's name reservation protects same-name races.
 check_idle ""
 check_idle "$WORKER_HOST"
-build_cmd 1 "$WORKER_VLLM_HOST_IP" "$WORKER_HF_CACHE" "$WORKER_DIR/patches/$(basename "$HOTFIX")" "$WORKER_DIR/patches/$(basename "$KPOOL")" "$DRAFTER_SNAP_WORKER"
+build_cmd 1 "$WORKER_VLLM_HOST_IP" "$WORKER_HF_CACHE" "$WORKER_DIR/patches/$(basename "$HOTFIX")" "$WORKER_DIR/patches/$(basename "$KPOOL")" "$DRAFTER_DIR_WORKER" "$DRAFTER_REV_WORKER"
 run_node "$WORKER_HOST" "${CMD[@]}"
 sleep "$RANK_STAGGER_SECONDS"
 is_running "$WORKER_HOST" || { show_logs; die "Worker exited before head launch; inspect logs before teardown."; }
-build_cmd 0 "$VLLM_HOST_IP" "$HF_CACHE" "$HOTFIX" "$KPOOL" "$DRAFTER_SNAP_HEAD"
+build_cmd 0 "$VLLM_HOST_IP" "$HF_CACHE" "$HOTFIX" "$KPOOL" "$DRAFTER_DIR_HEAD" "$DRAFTER_REV_HEAD"
 "${CMD[@]}" || { show_logs; die "Head launch failed; stop the worker explicitly before retrying."; }
 
 echo "Waiting for /health (~15 min boot; docker logs -f $CONTAINER)..."

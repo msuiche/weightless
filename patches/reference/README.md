@@ -25,6 +25,21 @@ diff the image's `vllm/models/glm5next/nvidia/model.py` against this copy and
 re-vendor if the image differs. The hotfix's fail-closed anchor check refuses
 to patch a drifted file either way.
 
+`glm5next_v11_dflash2.py` is a byte-identical copy of
+`vllm/models/glm5next/nvidia/model.py` pulled out of the
+`ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v11-dflash2` image on 2026-09-07
+(md5 `b6c8eb2d6a3e28339cda4e14deac874e`). v11 restructured the forward loop
+for DFlash2 EAGLE-3 aux hidden-state capture, so the hotfix carries a second
+forward-apply anchor variant (the steering apply runs after the aux capture:
+the block nulls residual/post/comb and widens hidden_states, which the aux
+branches cannot consume, and the drafter was trained on unsteered aux
+states). The structure test applies to both references:
+
+```
+python3 scripts/test-glm53-steering-structure.py            # v8 (glm5next.py)
+python3 scripts/test-glm53-steering-structure.py patches/reference/glm5next_v11_dflash2.py
+```
+
 The local `../vllm` checkout predates the arch — day-0 support for
 `qwen3_8_flash_next` is image-only — so the structure test for
 `../hotfix-qwen38fn-steering-projective.py` applies the hotfix to a scratch
