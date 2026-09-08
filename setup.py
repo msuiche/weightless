@@ -2016,12 +2016,31 @@ def run(io):
         *lane_items,
         "Agent clients — configure omp / hermes + endpoint smoke suite",
         "Diagnose endpoint — layered checks + remote container status",
+        "Watch a lane — live metrics (prefill/decode, queue, KV, spec decode)",
     ])
     if choice < len(LANES):
         return lane_chain(io, choice)
     if choice == len(LANES):
         return tests_chain(io)
-    return diagnose_chain(io)
+    if choice == len(LANES) + 1:
+        return diagnose_chain(io)
+    return dash_chain(io)
+
+
+def dash_chain(io):
+    """Live metrics view of a serving lane: hands the terminal to
+    scripts/dash.py (exec; re-run setup.py to return to the wizard)."""
+    base = io.text("Lane base URL to watch: ", default_base())
+    base = normalize_base(base).removesuffix("/v1")
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts", "dash.py")
+    io.info(f"starting {script} {base} — Ctrl-C exits; re-run setup.py for the wizard")
+    if curses is not None:
+        try:
+            curses.endwin()
+        except Exception:
+            pass
+    os.execvp(sys.executable, [sys.executable, script, base])
+    return 0  # unreachable
 
 
 def completion(io, rc):

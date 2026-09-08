@@ -198,6 +198,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `patches/0001-*.patch`, `0002-*.patch` | the hook + its vLLM-side test as git patches against v0.27.0 (fallback stack) |
 | `recipe/` (top level) | retired v027 stack: Dockerfiles + compose |
 | `scripts/` | structural guard tests for the steering patches: `test-dsv4-hotfix-structure.py`, `test-qwen-steering-structure.py`, `test-qwen38fn-steering-structure.py`, `test-glm53-steering-structure.py`, `test-glm53xl-steering-structure.py`, `test-glm53-exl3-steering-structure.py`, `test-steering-structure.py` (retired v027 overlay) |
+| `scripts/dash.py` | live terminal view of any serving lane (stdlib only): `python3 scripts/dash.py <url>` for a live view, `--once` for a scriptable snapshot — prefill/decode tok/s, queue depth, KV pressure, prefix-cache hit rate, TTFT, spec-decode acceptance. Also in the wizard menu ("Watch a lane") |
 | `tests/` | endpoint smoke tests: endpoint / chat / tool-call / headless omp agent loop — `tests/README.md` |
 | `spec/GLP.md` | the GLP format spec: the `glp.mode` contract, layer-id mapping, why an additive reader must refuse the file |
 | `BENCHMARK.md` | steering effectiveness (all GLP vectors, all suites, with domain coverage) + the serving run log |
