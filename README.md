@@ -31,8 +31,15 @@ retired v027 stack's patch is kept for reference and as the fallback path.
 ## Quick start
 
 ```sh
-python3 setup.py   # Python 3.9+, stdlib only — TUI wizard with a prompt fallback
+python3 weightless.py          # the one front door — interactive setup wizard
+python3 weightless.py dash     # live metrics for the serving lane
+python3 weightless.py test     # endpoint smoke suite
+python3 weightless.py --help   # all commands
 ```
+
+`weightless.py` (Python 3.9+, stdlib only) dispatches to the real scripts,
+which also work standalone: `setup.py` (TUI wizard with a prompt fallback),
+`scripts/dash.py`, `tests/run.sh`.
 
 Pick a lane and it walks the full chain: site values → env file → steering
 validation → asset preparation → confirm-gated ssh deploy → omp provider (registered in omp's
@@ -178,6 +185,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 
 | path | what it is |
 |---|---|
+| `weightless.py` | single front-door CLI: `weightless.py` (wizard), `weightless.py dash`, `weightless.py test` — dispatches to the scripts below |
 | `setup.py` | full-chain setup wizard (TUI or prompts, stdlib-only): lane pick → env file → steering validation → ssh deploy → omp provider + tests, plus a diagnose chain (DNS → TCP → HTTP → remote docker/GPU status, optional boot) |
 | `recipe/anemll/` | **live**: compose / start script / `.env.dsv4.example` for the MiaAI 2x clone, plus rebuild notes |
 | `recipe/qwen/` | Qwen TP=1 lane: serve script + `.env.qwen.example`; `STEER_MODE=gguf\|lora`, both hardware-validated |
@@ -198,7 +206,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `patches/0001-*.patch`, `0002-*.patch` | the hook + its vLLM-side test as git patches against v0.27.0 (fallback stack) |
 | `recipe/` (top level) | retired v027 stack: Dockerfiles + compose |
 | `scripts/` | structural guard tests for the steering patches: `test-dsv4-hotfix-structure.py`, `test-qwen-steering-structure.py`, `test-qwen38fn-steering-structure.py`, `test-glm53-steering-structure.py`, `test-glm53xl-steering-structure.py`, `test-glm53-exl3-steering-structure.py`, `test-steering-structure.py` (retired v027 overlay) |
-| `scripts/dash.py` | live terminal view of any serving lane (stdlib only): `python3 scripts/dash.py <url>` for a live view, `--once` for a scriptable snapshot — prefill/decode tok/s, queue depth, KV pressure, prefix-cache hit rate, TTFT, spec-decode acceptance. Also in the wizard menu ("Watch a lane") |
+| `scripts/dash.py` | live terminal view of any serving lane (stdlib only, ANSI colors on a terminal — brand pink/cyan, KV gauge green→yellow→red; `--no-color`/`NO_COLOR` for plain): `python3 scripts/dash.py <url>` for a live view, `--once` for a scriptable snapshot — prefill/decode tok/s, queue depth, KV pressure, prefix-cache hit rate, TTFT, spec-decode acceptance. Also in the wizard menu ("Watch a lane") |
 | `tests/` | endpoint smoke tests: endpoint / chat / tool-call / headless omp agent loop — `tests/README.md` |
 | `spec/GLP.md` | the GLP format spec: the `glp.mode` contract, layer-id mapping, why an additive reader must refuse the file |
 | `BENCHMARK.md` | steering effectiveness (all GLP vectors, all suites, with domain coverage) + the serving run log |

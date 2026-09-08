@@ -208,6 +208,8 @@ class AssetAndParkingTests(unittest.TestCase):
         Path(self.tmp.name, "tests").mkdir()
         shutil.copyfile(ROOT / "tests/models.yml", Path(self.tmp.name, "tests/models.yml"))
         for lane in setup.LANES:
+            if "example" not in lane:  # pure cloud lanes (e.g. Kimi K3) ship no env example
+                continue
             dest = Path(self.tmp.name) / lane["example"]
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / lane["example"], dest)

@@ -10,6 +10,11 @@ Usage:
     python3 scripts/dash.py [url]                 live view (2s refresh)
     python3 scripts/dash.py [url] --once          one snapshot, for scripts
     python3 scripts/dash.py [url] --interval 5    slower refresh
+    python3 scripts/dash.py [url] --no-color      plain output (also: NO_COLOR=1)
+
+Colors are on when stdout is a terminal: pink/cyan brand accents (the
+setup.py palette), green → yellow → red as KV pressure climbs, yellow on
+queued requests. Output piped to a file or pipe is always plain.
 
 Examples:
     python3 scripts/dash.py                                   # glm53-flash on the rig
@@ -20,6 +25,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 import time
@@ -28,6 +34,23 @@ from collections import deque
 
 SPARK = "▁▂▃▄▅▆▇█"
 HIST = 40
+
+
+def palette(enabled: bool) -> dict:
+    """ANSI codes, or empty strings when color is off. Pink/cyan are the
+    weightless brand ramp endpoints (setup.py LOGO_RAMP)."""
+    codes = {
+        "r": "\033[0m", "b": "\033[1m", "d": "\033[2m",
+        "pink": "\033[38;5;170m", "cyan": "\033[38;5;80m",
+        "green": "\033[32m", "yellow": "\033[33m", "red": "\033[31m",
+    }
+    return codes if enabled else dict.fromkeys(codes, "")
+
+
+def gauge(c: dict, pct: float) -> str:
+    """green < 70, yellow < 90, red ≥ 90."""
+    col = c["green"] if pct < 70 else c["yellow"] if pct < 90 else c["red"]
+    return f"{col}{pct:.0f}%{c['r']}"
 
 
 def fetch(url: str, timeout: float = 5.0) -> str:
@@ -73,7 +96,7 @@ def spark(vals: deque, width: int = HIST) -> str:
 
 
 def render(target: str, m: dict, prev: dict | None, dt: float,
-           hist_pre: deque, hist_dec: deque, up_s: float) -> str:
+           hist_pre: deque, hist_dec: deque, up_s: float, c: dict) -> str:
     def rate(name: str) -> float:
         if prev is None or dt <= 0:
             return 0.0
@@ -108,21 +131,24 @@ def render(target: str, m: dict, prev: dict | None, dt: float,
     pos_pct = " ".join(f"{int(v / max(1, per_pos[0][1]) * 100)}" for _, v in per_pos) if per_pos else ""
 
     L = []
-    L.append(f"weightless dash — {target}  ·  up {int(up_s // 60)}m  ·  {time.strftime('%H:%M:%S')}")
+    L.append(f"{c['pink']}{c['b']}weightless{c['r']} {c['cyan']}{c['b']}dash{c['r']}"
+             f" {c['d']}— {target}  ·  up {int(up_s // 60)}m  ·  {time.strftime('%H:%M:%S')}{c['r']}")
     L.append("")
-    L.append(f"  prefill {pre:7.0f} tok/s  {spark(hist_pre)}")
-    L.append(f"  decode  {dec:7.1f} tok/s  {spark(hist_dec)}")
+    L.append(f"  {c['cyan']}prefill{c['r']} {c['b']}{pre:7.0f}{c['r']} tok/s  {c['cyan']}{spark(hist_pre)}{c['r']}")
+    L.append(f"  {c['pink']}decode {c['r']} {c['b']}{dec:7.1f}{c['r']} tok/s  {c['pink']}{spark(hist_dec)}{c['r']}")
     L.append("")
-    wait_flag = f"  ← QUEUED (raise MAX_NUM_SEQS)" if waiting > 0 else ""
-    L.append(f"  requests   running {int(running)}  waiting {int(waiting)}{wait_flag}")
-    L.append(f"  kv cache   {kv:.0f}% used    prefix hit {hit_rate:.0f}%")
-    ttft_line = f"  ttft       {ttft_win:.1f}s recent   {ttft_avg:.1f}s lifetime (incl. queue wait)"
-    L.append(ttft_line)
+    if waiting > 0:
+        wait_txt = f"{c['yellow']}{int(waiting)}{c['r']}  {c['red']}← QUEUED (raise MAX_NUM_SEQS){c['r']}"
+    else:
+        wait_txt = f"{int(waiting)}"
+    L.append(f"  {c['d']}requests{c['r']}   running {int(running)}  waiting {wait_txt}")
+    L.append(f"  {c['d']}kv cache{c['r']}   {gauge(c, kv)} used    {c['d']}prefix hit{c['r']} {c['green']}{hit_rate:.0f}%{c['r']}")
+    L.append(f"  {c['d']}ttft{c['r']}       {ttft_win:.1f}s recent   {c['d']}{ttft_avg:.1f}s lifetime (incl. queue wait){c['r']}")
     if d_tot:
-        L.append(f"  spec dec   accept {acc_rate:.0f}%   draft {drafts:.1f} → accepted {accepted:.1f} tok/s   per-pos {pos_pct}")
+        L.append(f"  {c['d']}spec dec{c['r']}   accept {c['green']}{acc_rate:.0f}%{c['r']}   draft {drafts:.1f} → accepted {accepted:.1f} tok/s   {c['d']}per-pos {pos_pct}{c['r']}")
     L.append("")
-    L.append(f"  done {sum(done.values())}  ({', '.join(f'{k} {v}' for k, v in sorted(done.items()))})"
-             f"   prompt {int(g(m, 'vllm:prompt_tokens_total')):,} tok   gen {int(g(m, 'vllm:generation_tokens_total')):,} tok")
+    L.append(f"  {c['d']}done {sum(done.values())}  ({', '.join(f'{k} {v}' for k, v in sorted(done.items()))})"
+             f"   prompt {int(g(m, 'vllm:prompt_tokens_total')):,} tok   gen {int(g(m, 'vllm:generation_tokens_total')):,} tok{c['r']}")
     return "\n".join(L)
 
 
@@ -132,7 +158,12 @@ def main() -> int:
                     help="lane base URL (default: %(default)s)")
     ap.add_argument("--once", action="store_true", help="print one snapshot and exit")
     ap.add_argument("--interval", type=float, default=2.0, help="refresh seconds (default: %(default)s)")
+    ap.add_argument("--no-color", action="store_true",
+                    help="plain output (auto when piped or NO_COLOR is set)")
     args = ap.parse_args()
+
+    color = sys.stdout.isatty() and not os.environ.get("NO_COLOR") and not args.no_color
+    c = palette(color)
 
     hist_pre, hist_dec = deque(maxlen=HIST), deque(maxlen=HIST)
     prev, prev_t, t0 = None, 0.0, time.time()
@@ -140,13 +171,13 @@ def main() -> int:
         try:
             m = parse_metrics(fetch(args.url))
         except Exception as e:
-            print(f"\r\033[Kcannot reach {args.url}/metrics: {e}", file=sys.stderr)
+            print(f"\r\033[K{c['red']}cannot reach {args.url}/metrics: {e}{c['r']}", file=sys.stderr)
             if args.once:
                 return 1
             time.sleep(args.interval)
             continue
         now = time.time()
-        out = render(args.url, m, prev, now - prev_t, hist_pre, hist_dec, now - t0)
+        out = render(args.url, m, prev, now - prev_t, hist_pre, hist_dec, now - t0, c)
         if args.once:
             print(out)
             return 0

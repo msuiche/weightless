@@ -484,6 +484,8 @@ def read_lane_env():
     used to prefill wizard prompts and the diagnose ssh target."""
     vals = {}
     for lane in LANES:
+        if "target" not in lane:  # pure cloud lanes ship no env file
+            continue
         path = os.path.join(HERE, lane["target"])
         if not os.path.exists(path):
             continue
