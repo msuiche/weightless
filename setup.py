@@ -2010,23 +2010,29 @@ def run(io):
     io.info(f"bun: {bun or 'not found (only needed for omp/tests)'}")
     io.info(f"omp:  {omp or 'not found (only needed for tests)'}")
     io.info("")
-    lane_items = [
-        l["name"].split(" — ")[0] + " — full chain (env → assets → deploy → clients/tests)"
-        for l in LANES
-    ]
-    choice = io.menu("What to set up:", idle=getattr(io, "animate_logo", None), items=[
+    lane_items = []
+    for l in LANES:
+        name = re.sub(r" serving$", "", l["name"].split(" — ")[0])
+        if l.get("cloud"):
+            lane_items.append(f"Deploy {name} — cloud (Modal)")
+        elif os.path.exists(os.path.join(HERE, l["target"])):
+            lane_items.append(f"Serve {name} — configured")
+        else:
+            lane_items.append(f"Serve {name} — not configured")
+    choice = io.menu("What to do:  (serve/deploy = full chain: env → assets → deploy → clients/tests)",
+                     idle=getattr(io, "animate_logo", None), items=[
         *lane_items,
+        "Watch a lane — live metrics (prefill/decode, queue, KV, spec decode)",
         "Agent clients — configure omp / hermes + endpoint smoke suite",
         "Diagnose endpoint — layered checks + remote container status",
-        "Watch a lane — live metrics (prefill/decode, queue, KV, spec decode)",
     ])
     if choice < len(LANES):
         return lane_chain(io, choice)
     if choice == len(LANES):
-        return tests_chain(io)
+        return dash_chain(io)
     if choice == len(LANES) + 1:
-        return diagnose_chain(io)
-    return dash_chain(io)
+        return tests_chain(io)
+    return diagnose_chain(io)
 
 
 def dash_chain(io):
