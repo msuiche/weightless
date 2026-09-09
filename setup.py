@@ -8,7 +8,7 @@ and run the endpoint smoke tests. If the endpoint is down, the
 diagnose chain walks the layers (DNS → TCP → HTTP) and can check/boot the
 stack over ssh. Stdlib only: a light curses TUI with colors on a terminal,
 ANSI-colored prompts otherwise. Non-interactive alternative:
-`sh tests/install.sh && sh tests/run.sh` with DSPARK_* env overrides.
+`sh tests/smoke/install.sh && sh tests/smoke/run.sh` with DSPARK_* env overrides.
 """
 import json
 import os
@@ -89,7 +89,7 @@ LANES = [
          target="recipe/anemll/.env.dsv4",
          steer_key="WEIGHTLESS_STEER_PATH",
          steer_hook="ffn_out_pre_residual",
-         structure_test="scripts/test-dsv4-hotfix-structure.py",
+         structure_test="tests/structure/test-dsv4-hotfix-structure.py",
          vector_repo="msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29",
          model_repo="deepseek-ai/DeepSeek-V4-Flash-0731",
          docker_image="ghcr.io/anemll/dspark-vllm-gx10:0.1.1",
@@ -106,7 +106,7 @@ LANES = [
          example="recipe/qwen/.env.qwen.example",
          target="recipe/qwen/.env.qwen",
          steer_key="WEIGHTLESS_STEER_PATH",
-         structure_test="scripts/test-qwen-steering-structure.py",
+         structure_test="tests/structure/test-qwen-steering-structure.py",
          vector_repo="msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49",
          model_repo="unsloth/Qwen3.8-27B-NVFP4",
          docker_image="ghcr.io/drowzeys/keys-vllm-027-gb10-qwen38:mtp3-20260813",
@@ -119,7 +119,7 @@ LANES = [
          example="recipe/qwen38fn/.env.qwen38fn.example",
          target="recipe/qwen38fn/.env.qwen38fn",
          steer_key="WEIGHTLESS_STEER_PATH",
-         structure_test="scripts/test-qwen38fn-steering-structure.py",
+         structure_test="tests/structure/test-qwen38fn-steering-structure.py",
          vector_repo="msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47",
          model_repo="RadixArk/Qwen3.8-Flash-Next-NVFP4",
          docker_image="vllm/vllm-openai:qwen38-flash-next",
@@ -136,7 +136,7 @@ LANES = [
          example="recipe/glm53/.env.glm53.example",
          target="recipe/glm53/.env.glm53",
          steer_key="WEIGHTLESS_STEER_PATH",
-         structure_test="scripts/test-glm53-steering-structure.py",
+         structure_test="tests/structure/test-glm53-steering-structure.py",
          vector_repo="msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44",
          model_repo="RedHatAI/GLM-5.3-Flash-NVFP4",
          docker_image="radixark/vllm-glm53-flash:sm121-v8",
@@ -159,7 +159,7 @@ LANES = [
          example="recipe/glm53xl/.env.glm53xl.example",
          target="recipe/glm53xl/.env.glm53xl",
          steer_key="WEIGHTLESS_STEER_PATH",
-         structure_test="scripts/test-glm53xl-steering-structure.py",
+         structure_test="tests/structure/test-glm53xl-steering-structure.py",
          vector_repo="msuiche/GLM-5.3-abliterated-cyber-GLP-77",
          model_repo="RadixArk/GLM-5.3-NVFP4",
          steer_modes=None,
@@ -168,7 +168,7 @@ LANES = [
          example="recipe/inkling/.env.inkling.example",
          target="recipe/inkling/.env.inkling",
          steer_key="WEIGHTLESS_STEER_PATH",
-         structure_test="scripts/test-inkling-steering-structure.py",
+         structure_test="tests/structure/test-inkling-steering-structure.py",
          vector_repo="msuiche/Inkling-Small-abliterated-cyber-GLP-41",
          model_repo="thinkingmachines/Inkling-Small-NVFP4",
          docker_image="vllm/vllm-openai:v0.28.0",
@@ -190,7 +190,7 @@ LANES = [
          example="recipe/glm53tp2/.env.glm53tp2.example",
          target="recipe/glm53tp2/.env.glm53tp2",
          steer_key="WEIGHTLESS_STEER_PATH",
-         structure_test="scripts/test-glm53-steering-structure.py",
+         structure_test="tests/structure/test-glm53-steering-structure.py",
          vector_repo="msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44",
          model_repo="RedHatAI/GLM-5.3-Flash-NVFP4",
          docker_image="ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v8",
@@ -227,7 +227,7 @@ LANES = [
          cloud_weights="~1.56 TB",
          cloud_boot="45 min",
          steer_key="WEIGHTLESS_STEER_PATH",
-         structure_test="scripts/test-k3-steering-structure.py",
+         structure_test="tests/structure/test-k3-steering-structure.py",
          vector_repo="msuiche/Kimi-K3-abliterated-cyber-GLP-92-L1-92-a1.0",
          model_repo="moonshotai/Kimi-K3",
          steer_modes=None,
@@ -1115,13 +1115,13 @@ def url_host(host):
 
 def render_provider(head_host="localhost"):
     """Load all lanes and their per-model settings from the canonical template."""
-    with open(os.path.join(HERE, "tests", "models.yml")) as f:
+    with open(os.path.join(HERE, "tests", "smoke", "models.yml")) as f:
         text = f.read()
     providers = yaml_block(text, "providers")
     body = text[slice(*providers)] if providers else ""
     block = yaml_block(body, PROVIDER, 2)
     if not block:
-        raise ValueError(f"tests/models.yml has no '{PROVIDER}' provider")
+        raise ValueError(f"tests/smoke/models.yml has no '{PROVIDER}' provider")
     return re.sub(r"(?m)^( +baseUrl:[^\n]*)",
                   lambda m: m.group(0).replace("localhost", url_host(head_host)),
                   body[slice(*block)])
@@ -1289,10 +1289,10 @@ def prereqs():
 
 
 def run_suite(io, base, model):
-    """Run tests/0*.sh one by one, inside the wizard UI: each test's verdict
+    """Run tests/smoke/0*.sh one by one, inside the wizard UI: each test's verdict
     line lands as a colored ✓/~/✗ row instead of dropping out to a shell."""
     import glob
-    tests = sorted(glob.glob(os.path.join(HERE, "tests", "0*.sh")))
+    tests = sorted(glob.glob(os.path.join(HERE, "tests", "smoke", "0*.sh")))
     io.info("")
     io.header("endpoint test suite")
     io.info("─" * 40)
@@ -2010,7 +2010,7 @@ def tests_chain(io, head_host=None, lane_idx=None):
         io.info("Hermes configuration updated on this machine. Restart an existing gateway; saved /model session overrides take precedence.")
     if io.confirm("Run the test suite now?", True):
         return run_suite(io, base, model)
-    io.info(f"done — later: sh {os.path.join(HERE, 'tests', 'run.sh')}")
+    io.info(f"done — later: sh {os.path.join(HERE, 'tests', 'smoke', 'run.sh')}")
     return 0
 
 

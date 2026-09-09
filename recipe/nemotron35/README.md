@@ -110,13 +110,13 @@ curl --fail http://localhost:8083/health
 cd ../..
 export WEIGHTLESS_BASE_URL=http://localhost:8083/v1
 export WEIGHTLESS_MODEL=nemotron35-lightning-nvfp4
-bash tests/01-endpoint.sh
-bash tests/02-chat.sh
-bash tests/03-tool-call.sh
+bash tests/smoke/01-endpoint.sh
+bash tests/smoke/02-chat.sh
+bash tests/smoke/03-tool-call.sh
 ```
 
 These check model discovery, actual text generation, and a structured tool call.
-After configuring omp for this endpoint, run `tests/04-omp-headless.sh` with
+After configuring omp for this endpoint, run `tests/smoke/04-omp-headless.sh` with
 `WEIGHTLESS_OMP_MODEL` set to its provider/model ID. Test a fresh Hermes session
 with file creation/readback too. Read the live `/v1/models` limit before setting
 client context. Increasing `MAX_MODEL_LEN` requires a fresh launch and renewed

@@ -31,7 +31,7 @@ import pathlib
 import sys
 
 DEFAULT = (
-    pathlib.Path(__file__).resolve().parent.parent.parent
+    pathlib.Path(__file__).resolve().parent.parent.parent.parent
     / "vllm/vllm/models/deepseek_v4/nvidia/model.py"
 )
 

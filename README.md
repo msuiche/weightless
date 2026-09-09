@@ -39,7 +39,7 @@ python3 weightless.py --help   # all commands
 
 `weightless.py` (Python 3.9+, stdlib only) dispatches to the real scripts,
 which also work standalone: `setup.py` (TUI wizard with a prompt fallback),
-`scripts/dash.py`, `tests/run.sh`.
+`scripts/dash.py`, `tests/smoke/run.sh`.
 
 **Swapping lanes is the wizard, not ssh.** Pick `Serve <model>` for the lane
 you want: the wizard regenerates the env, re-validates it (multi-node fabric
@@ -55,7 +55,7 @@ validation → asset preparation → confirm-gated ssh deploy → omp provider (
 modelRoles — default role, or every text role) + endpoint smoke tests.
 Endpoint down? The diagnose chain isolates DNS → TCP → HTTP and can check and
 boot the stack over ssh. Non-interactive alternative:
-`sh tests/install.sh && sh tests/run.sh` with `DSPARK_*` env overrides.
+`sh tests/smoke/install.sh && sh tests/smoke/run.sh` with `DSPARK_*` env overrides.
 
 Asset preparation downloads the model on the head, rsyncs its HF cache to
 workers over the fabric, pulls the recipe image on each node, and downloads
@@ -214,9 +214,10 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `patches/reference/glm5next.py` | the GLM-5.3 structure test's reference — from the day-0 PR source (vllm-project/vllm#53906); re-vendor against the image on first deploy |
 | `patches/0001-*.patch`, `0002-*.patch` | the hook + its vLLM-side test as git patches against v0.27.0 (fallback stack) |
 | `recipe/` (top level) | retired v027 stack: Dockerfiles + compose |
-| `scripts/` | structural guard tests for the steering patches: `test-dsv4-hotfix-structure.py`, `test-qwen-steering-structure.py`, `test-qwen38fn-steering-structure.py`, `test-glm53-steering-structure.py`, `test-glm53xl-steering-structure.py`, `test-glm53-exl3-steering-structure.py`, `test-steering-structure.py` (retired v027 overlay) |
+| `tests/structure/` | structural guard tests for the steering patches (`test-*-structure.py`, incl. `test-steering-structure.py` for the retired v027 overlay) |
+| `scripts/` | `dash.py` (below), `dspark-router.py`, `memory-watchdog-gpu.sh`, `probe-refusal.py` |
 | `scripts/dash.py` | live terminal view of any serving lane (stdlib only, ANSI colors on a terminal — brand pink/cyan, KV gauge green→yellow→red; `--no-color`/`NO_COLOR` for plain): `python3 scripts/dash.py <url>` for a live view, `--once` for a scriptable snapshot — prefill/decode tok/s, queue depth, KV pressure, prefix-cache hit rate, TTFT, spec-decode acceptance. Also in the wizard menu ("Watch a lane") |
-| `tests/` | endpoint smoke tests: endpoint / chat / tool-call / headless omp agent loop — `tests/README.md` |
+| `tests/smoke/` | endpoint smoke tests: endpoint / chat / tool-call / headless omp agent loop — `tests/smoke/README.md` |
 | `spec/GLP.md` | the GLP format spec: the `glp.mode` contract, layer-id mapping, why an additive reader must refuse the file |
 | `BENCHMARK.md` | steering effectiveness (all GLP vectors, all suites, with domain coverage) + the serving run log |
 

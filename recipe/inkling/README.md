@@ -71,7 +71,7 @@ they do not reproduce the earlier H100 calibration at this lower strength.
 - **Test generation after readiness.** `/health` can pass while a first
   request is compiling kernels or processing a long prompt. Use
   `WEIGHTLESS_BASE_URL=http://HEAD:8000/v1 WEIGHTLESS_MODEL=inkling-small-nvfp4
-  bash tests/run.sh` from the repository root. Port 8000 also tests the
+  bash tests/smoke/run.sh` from the repository root. Port 8000 also tests the
   router's streaming path.
 
 ## Enabling GLP in the SM121 lane

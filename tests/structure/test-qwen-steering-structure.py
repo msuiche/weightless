@@ -40,7 +40,7 @@ import subprocess
 import sys
 import tempfile
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 HOTFIX = REPO / "patches/hotfix-qwen38-steering-projective.py"
 DEFAULT_MODELS = REPO.parent / "vllm/vllm/model_executor/models"
 

@@ -46,7 +46,7 @@ import subprocess
 import sys
 import tempfile
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 HOTFIX = REPO / "patches/hotfix-glm53xl-steering-projective.py"
 DEFAULT_REFERENCE = REPO / "patches/reference/deepseek_v2_glm53xl.py"
 

@@ -10,7 +10,7 @@ path — not just that it answers chat.
 
 The wizard tests a completed answer before changing client defaults and reads
 the selected server's `max_model_len` for both omp and Hermes. If that metadata
-is unavailable, it uses the selected model's window from `tests/models.yml`.
+is unavailable, it uses the selected model's window from `tests/smoke/models.yml`.
 Hermes is no longer capped to 65,536 tokens for every lane. The router lists
 only ready engines; an empty model list means no lane is ready.
 Both clients keep the exact verified endpoint, including custom ports and
@@ -54,7 +54,7 @@ Non-interactive equivalent:
 
 ```sh
 curl -fsSL https://omp.sh/install | sh   # needs bun >= 1.3.14 (`bun upgrade`)
-sh tests/install.sh                       # merges the dspark provider into ~/.omp/agent/models.yml
+sh tests/smoke/install.sh                 # merges the dspark provider into ~/.omp/agent/models.yml
                                           # and sets it as omp's default model
                                           # (WEIGHTLESS_OMP_ALL_ROLES=1 for every text role)
 ```
@@ -62,7 +62,7 @@ sh tests/install.sh                       # merges the dspark provider into ~/.o
 ## Run
 
 ```sh
-sh tests/run.sh
+sh tests/smoke/run.sh
 ```
 
 | test | what it proves |
@@ -87,7 +87,7 @@ Offline setup and router regression tests:
 python3 -m unittest discover -s tests -p 'test*.py'
 ```
 
-`tests/models.yml` is the omp provider definition. The `compat` block mirrors
+`tests/smoke/models.yml` is the omp provider definition. The `compat` block mirrors
 the official DeepSeek guidance for omp (system role, `max_tokens`, no
 `tool_choice`, reasoning-content round-trip) — those three fields are what
 keep thinking-mode tool conversations from 400ing. If the endpoint's chat

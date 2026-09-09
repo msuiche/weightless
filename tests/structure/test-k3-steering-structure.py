@@ -48,7 +48,7 @@ import subprocess
 import sys
 import tempfile
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 HOTFIX = REPO / "patches/hotfix-kimi-k3-steering-projective.py"
 REFERENCES = {
     "DSPARK_K3_MODEL_PY": REPO / "patches/reference/kimi_k3_nvidia_model.py",

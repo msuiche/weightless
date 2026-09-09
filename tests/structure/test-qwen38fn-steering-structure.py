@@ -1,44 +1,46 @@
 #!/usr/bin/env python3
-"""Structural checks on the Inkling steering+capture hotfix.
+"""Structural checks on the Qwen3.8-Flash-Next steering hotfix.
 
-Same production lessons as the Qwen3.8 lane's test, adapted to Inkling's
-deferred-MLP-add arch (no hyper-connection widening here):
+Same production lessons as the Qwen3.8 lane's test, adapted to the
+delayed-combine hyper-connection arch:
 
 1. The per-layer assignment once got dedented out of its loop on the DSV4
    lane; the server steered one layer while reporting all of them.
 2. The Qwen3.8 lane's first boot died because the buffers were registered
    on a class whose __init__ the serving subclass skips. Anchors matching
-   is NOT semantics being right -- so this test checks that the class whose
+   is NOT semantics being right — so this test checks that the class whose
    forward contains the apply registers the buffers in its OWN __init__.
-   (Inkling has no skip-parent trap: InklingModel is a direct nn.Module and
-   both serving entry classes delegate to it via _build -- the test asserts
-   the general property anyway, so an upstream refactor that introduces the
+   (qwen3_8_flash_next has no Qwen3_5Model-style __init__ override:
+   Qwen3_8FlashNextModel is a direct nn.Module and the serving
+   Qwen3_8FlashNextForCausalLM delegates to it — the test asserts the
+   general property anyway, so an upstream refactor that introduces the
    trap fails here.)
-3. The apply must steer the MATERIALIZED post-layer stream: the MLP residual
-   add is deferred via `pending`, so the apply must flush pending with the
-   file's own PP-boundary idiom
-   (_sconv_add_norm(pending[0], hidden_states, pending[1], None, pos)[1])
-   before projecting, and index the steer stack by the GLOBAL layer id
-   (start_layer + loop offset).
+3. The apply must steer the MATERIALIZED post-layer stream
+   (mlp_hyper_connection.combine of hidden_states/block_output/injection),
+   and the final mixer must be guarded for the consumed pending combine.
 
-This test applies patches/hotfix-inkling-steering-projective.py to a
+This test applies patches/hotfix-qwen38fn-steering-projective.py to a
 SCRATCH COPY of the reference model file (never the original) and
 AST-checks the result:
 
-  1. all anchors match and the patched file still parses/compiles;
+  1. all anchors match and the patched file still parses;
   2. the per-layer assignments are INSIDE the per-layer loop;
-  3. the forward apply flushes pending with the PP-boundary idiom, steers
-     the materialized stream, and indexes the steer stack by global layer id;
+  3. the forward apply steers the materialized post-layer stream and
+     indexes the steer stack by global layer id;
   4. the class whose forward applies steering registers the buffers in its
      own __init__ (the lesson-2 regression guard);
-  5. the capture lane is wired: DSPARK_PROBE_DUMP_DIR gating, pre-steer
-     store, stream-capture guard, and the dump after the final norm;
+  5. the final mixer takes the mix() path when the pending combine was
+     consumed (last-layer-steered guard);
   6. re-applying is a no-op, and anchors-missing fails closed when
-     WEIGHTLESS_STEER_PATH is set.
+     WEIGHTLESS_STEER_PATH is set;
+  7. the PLE FP8 patch (patch-qwen38fn-ple-fp8-nvfp4.py, required to serve
+     the RadixArk NVFP4 checkpoint at all) applies to the vendored
+     ple_layer.py, parses, is idempotent, and fails closed on anchor drift.
 
-Run: python3 scripts/test-inkling-steering-structure.py [reference.py]
-Default reference is /tmp/inkling_model.py (the vLLM v0.28.0
-vllm/models/inkling/nvidia/model.py download).
+Run: python3 scripts/test-qwen38fn-steering-structure.py [reference.py]
+Default is the vendored copy of the day-0 image's
+vllm/models/qwen3_8_flash_next/nvidia/model.py in patches/reference/ (the
+local ../vllm checkout predates the arch — support is image-only).
 No GPU, no torch, no vLLM import -- this runs the hotfix and parses source.
 """
 
@@ -52,9 +54,11 @@ import subprocess
 import sys
 import tempfile
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
-HOTFIX = REPO / "patches/hotfix-inkling-steering-projective.py"
-DEFAULT_REFERENCE = pathlib.Path("/tmp/inkling_model.py")
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent
+HOTFIX = REPO / "patches/hotfix-qwen38fn-steering-projective.py"
+PLE_PATCH = REPO / "patches/patch-qwen38fn-ple-fp8-nvfp4.py"
+DEFAULT_REFERENCE = REPO / "patches/reference/qwen3_8_flash_next.py"
+PLE_REFERENCE = REPO / "patches/reference/qwen3_8_flash_next_ple_layer.py"
 
 PER_LAYER_TARGETS = ("self._steer_dirs[layer_id]", "_GLP_HOOK_DIRS[layer_id]")
 
@@ -70,7 +74,8 @@ def run_hotfix(model_py: pathlib.Path,
 
 
 def find_load_loop(tree: ast.AST, src: str) -> ast.For | None:
-    """The per-layer loop in _load_steering. Match the loop whose body holds
+    """The per-layer loop in _load_steering. The stock file has an unrelated
+    `for layer_id in qsa_layer_ids` loop, so match the one whose body holds
     the steering assignments, not just the first `for layer_id`."""
     for node in ast.walk(tree):
         if (
@@ -105,21 +110,21 @@ def find_apply_class(tree: ast.AST, src: str) -> ast.ClassDef | None:
 def main(reference: pathlib.Path) -> int:
     if not reference.is_file():
         print(f"  [SKIP] reference file not found: {reference}")
-        print("         pass the reference explicitly: test-inkling-steering-structure.py <model.py>")
+        print("         pass the reference explicitly: test-qwen38fn-steering-structure.py <model.py>")
         return 2
 
     failures = 0
 
     def check(ok: bool, label: str, detail: str = ""):
         nonlocal failures
-        print(f"  [{'PASS' if ok else 'FAIL'}] {label}" + (f" -- {detail}" if detail and not ok else ""))
+        print(f"  [{'PASS' if ok else 'FAIL'}] {label}" + (f" — {detail}" if detail and not ok else ""))
         failures += 0 if ok else 1
 
     with tempfile.TemporaryDirectory() as td:
         scratch = pathlib.Path(td) / "model.py"
         shutil.copy(reference, scratch)
 
-        # 1. applies + parses + compiles
+        # 1. applies + parses
         r = run_hotfix(scratch)
         check(
             r.returncode == 0 and r.stdout.count("applied to") == 1,
@@ -129,10 +134,9 @@ def main(reference: pathlib.Path) -> int:
         src = scratch.read_text()
         try:
             tree = ast.parse(src)
-            compile(src, str(scratch), "exec")
-            check(True, "patched model.py parses and compiles")
+            check(True, "patched model.py parses")
         except SyntaxError as exc:
-            check(False, "patched model.py parses and compiles", str(exc))
+            check(False, "patched model.py parses", str(exc))
             return failures
 
         # 2. per-layer assignments inside the loop
@@ -143,21 +147,11 @@ def main(reference: pathlib.Path) -> int:
             for target in PER_LAYER_TARGETS:
                 check(target in body, f"{target} inside the per-layer loop")
 
-        # 3. forward apply materializes the post-layer stream (deferred MLP
-        #    add flushed with the PP-boundary idiom) and steers it
+        # 3. forward apply steers the materialized post-layer stream
         check(
-            "layer_idx = self.start_layer + _wlayer_off" in src,
-            "forward loop tracks the global layer id (start_layer offset)",
-        )
-        check(
-            "_sconv_add_norm(\n"
-            "                    pending[0], hidden_states, pending[1], None, positions\n"
-            "                )[1]" in src,
-            "forward apply flushes pending with the PP-boundary idiom",
-        )
-        check(
-            "pending = None" in src,
-            "forward apply consumes the pending delta after the flush",
+            "layer.mlp_hyper_connection.combine(" in src
+            and "steer_stream" in src,
+            "forward apply materializes the post-layer stream (delayed combine)",
         )
         check(
             "self._steer_stack[layer_idx]" in src,
@@ -165,7 +159,7 @@ def main(reference: pathlib.Path) -> int:
         )
         check(
             "steer_dirs = self._steer_stack[layer_idx]" in src
-            and "hidden_states - self._steer_alpha" in src,
+            and "steer_stream - self._steer_alpha" in src,
             "forward apply projects the materialized stream",
         )
 
@@ -176,8 +170,6 @@ def main(reference: pathlib.Path) -> int:
         cls = find_apply_class(tree, src)
         check(cls is not None, "steering apply found in a model class")
         if cls is not None:
-            check(cls.name == "InklingModel", "apply lives on InklingModel",
-                  f"found on {cls.name}")
             init = find_class_init(tree, cls.name)
             check(
                 init is not None,
@@ -189,31 +181,13 @@ def main(reference: pathlib.Path) -> int:
                     '"_steer_stack"' in seg and "_load_steering" in seg,
                     f"{cls.name}.__init__ registers the steering buffers",
                 )
-                check(
-                    "_probe_dump_dir" in seg and "_probe_layer_set" in seg,
-                    f"{cls.name}.__init__ initializes the probe state",
-                )
 
-        # 5. capture lane wiring
+        # 5. final mixer guarded for a consumed pending combine (the apply
+        #    materializes the last steered layer; stock combine_and_mix would
+        #    then re-combine None).
         check(
-            "DSPARK_PROBE_DUMP_DIR" in src and "_dspark_probe_store" in src,
-            "capture gated on DSPARK_PROBE_DUMP_DIR with a per-layer store",
-        )
-        check(
-            "_dspark_probe_store[layer_idx] = hidden_states" in src,
-            "capture stores the materialized pre-steer stream per layer",
-        )
-        check(
-            "is_current_stream_capturing" in src,
-            "capture dump guarded against CUDA graph capture",
-        )
-        check(
-            'torch.save(' in src and "probe_%06d.pt" in src,
-            "capture dumps .pt files (glm53 idiom)",
-        )
-        check(
-            "hidden_states = self.norm(hidden_states)" in src,
-            "dump site rewires the final-norm return",
+            "final_mixer.mix(" in src,
+            "final mixer guarded: mix() when the pending combine was consumed",
         )
 
         # 6a. idempotent
@@ -232,21 +206,36 @@ def main(reference: pathlib.Path) -> int:
         r4 = run_hotfix(bogus)
         check(r4.returncode == 0, "anchors missing + steering off stays stock")
 
-        # 6c. --status mode
-        r5 = run_hotfix(scratch)
-        r6 = subprocess.run(
-            [sys.executable, str(HOTFIX), "--status"],
-            env=dict(os.environ, WEIGHTLESS_STEERING_MODEL_PY=str(scratch)),
-            capture_output=True, text=True,
-        )
-        check(
-            r6.returncode == 0 and "APPLIED" in r6.stdout,
-            "--status reports APPLIED on the patched copy",
-            r6.stdout + r6.stderr,
-        )
+        # 7. the PLE FP8 patch (NVFP4 serving prerequisite): applies to the
+        #    vendored ple_layer.py, parses, idempotent, fail-closed on drift
+        if not PLE_REFERENCE.is_file():
+            check(False, "PLE reference vendored", f"missing {PLE_REFERENCE}")
+        else:
+            ple = pathlib.Path(td) / "ple_layer.py"
+            shutil.copy(PLE_REFERENCE, ple)
+            env = dict(os.environ, WEIGHTLESS_PLE_LAYER_PY=str(ple))
+            p1 = subprocess.run([sys.executable, str(PLE_PATCH)], env=env,
+                                capture_output=True, text=True)
+            check(p1.returncode == 0 and "applied to" in p1.stdout,
+                  "PLE FP8 patch applies to the reference ple_layer.py",
+                  p1.stdout + p1.stderr)
+            try:
+                ast.parse(ple.read_text())
+                check(True, "patched ple_layer.py parses")
+            except SyntaxError as exc:
+                check(False, "patched ple_layer.py parses", str(exc))
+            p2 = subprocess.run([sys.executable, str(PLE_PATCH)], env=env,
+                                capture_output=True, text=True)
+            check(p2.returncode == 0 and "already applied" in p2.stdout,
+                  "PLE FP8 patch re-apply is a no-op", p2.stdout + p2.stderr)
+            env_b = dict(os.environ, WEIGHTLESS_PLE_LAYER_PY=str(bogus))
+            p3 = subprocess.run([sys.executable, str(PLE_PATCH)], env=env_b,
+                                capture_output=True, text=True)
+            check(p3.returncode == 1, "PLE FP8 patch fails closed on anchor drift",
+                  p3.stdout + p3.stderr)
 
     print()
-    print("inkling steering structure: " + ("all checks passed" if not failures else f"{failures} failure(s)"))
+    print("qwen38fn steering structure: " + ("all checks passed" if not failures else f"{failures} failure(s)"))
     return 1 if failures else 0
 
 

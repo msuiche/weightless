@@ -54,6 +54,6 @@ Gotchas:
   tool-call response is malformed, then long clean stretches (25+/25).
   That signature points at a concurrency bug in the image's custom response
   assembly (the response carries nonstandard fields like `routed_experts`).
-  `tests/03-tool-call.sh` retries once and reports byte offset + context
+  `tests/smoke/03-tool-call.sh` retries once and reports byte offset + context
   when both attempts fail — during a burst both do, which is the signal.
   Reported upstream: https://github.com/Anemll/dspark-vllm-gx10/issues/10

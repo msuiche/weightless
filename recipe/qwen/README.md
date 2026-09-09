@@ -91,7 +91,7 @@ import the DSV4 lane's 4.0 — α is checkpoint-specific.
 
 ```sh
 # structural, no GPU/torch: anchors + per-layer-loop regression guard
-python3 ../../scripts/test-qwen-steering-structure.py
+python3 ../../tests/structure/test-qwen-steering-structure.py
 
 # the exact injected loader against the real vector (needs torch)
 WEIGHTLESS_STEER_PATH=$MODELS/cvec/Qwen3.8-27B-abliterated-cyber-GLP-49-L10-58-a1.gguf \

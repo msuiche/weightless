@@ -34,7 +34,7 @@ class SetupTests(unittest.TestCase):
             env = dict(os.environ, PATH=tmp + os.pathsep + os.environ["PATH"])
             for content, expected in [("pong", 0), ("We need to answer pong. Let me think.", 1), ("", 1)]:
                 env["TEST_CHAT_RESPONSE"] = json.dumps({"choices": [{"message": {"content": content}}]})
-                result = subprocess.run(["bash", str(ROOT / "tests/02-chat.sh")], env=env, capture_output=True, text=True)
+                result = subprocess.run(["bash", str(ROOT / "tests/smoke/02-chat.sh")], env=env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
 
     def test_endpoint_smoke_parses_formatted_json_and_exact_model_id(self):
@@ -46,7 +46,7 @@ class SetupTests(unittest.TestCase):
                        WEIGHTLESS_MODEL="inkling-small-nvfp4")
             for model, expected in [("inkling-small-nvfp4", 0), ("inkling-small-nvfp4-other", 1)]:
                 env["TEST_MODEL_RESPONSE"] = json.dumps({"data": [{"id": model}]}, indent=2)
-                result = subprocess.run(["bash", str(ROOT / "tests/01-endpoint.sh")],
+                result = subprocess.run(["bash", str(ROOT / "tests/smoke/01-endpoint.sh")],
                                         env=env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
 
@@ -141,7 +141,7 @@ class SetupTests(unittest.TestCase):
         self.assertIn("inkling-model-gb10-steered.py", steps[worker][1][-1])
 
     def test_legacy_provider_is_not_required_by_omp_smoke(self):
-        text = (ROOT / "tests/04-omp-headless.sh").read_text()
+        text = (ROOT / "tests/smoke/04-omp-headless.sh").read_text()
         self.assertNotIn('"^  dspark:"', text)
         self.assertIn("weightless/", text)
 
@@ -205,8 +205,8 @@ class AssetAndParkingTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        Path(self.tmp.name, "tests").mkdir()
-        shutil.copyfile(ROOT / "tests/models.yml", Path(self.tmp.name, "tests/models.yml"))
+        Path(self.tmp.name, "tests/smoke").mkdir(parents=True)
+        shutil.copyfile(ROOT / "tests/smoke/models.yml", Path(self.tmp.name, "tests/smoke/models.yml"))
         for lane in setup.LANES:
             if "example" not in lane:  # pure cloud lanes (e.g. Kimi K3) ship no env example
                 continue

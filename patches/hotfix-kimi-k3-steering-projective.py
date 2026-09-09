@@ -4,7 +4,7 @@
 # 2x H200:8 PP=2xTP=8). Keep byte-compatible with the experiment copy: the
 # DSPARK_PROBE_* envs arm the capture probe only; serving uses
 # WEIGHTLESS_STEER_PATH / WEIGHTLESS_STEER_ALPHA. Structure test:
-# scripts/test-k3-steering-structure.py
+# tests/structure/test-k3-steering-structure.py
 """Fail-closed runtime patch: CUDA-graph-safe activation probe AND weightless
 projective steering for vLLM's kimi_k3 NVIDIA model inside the day-0 container
 (vllm/vllm-openai:kimi-k3), TP=16 across 2 clustered H200:8 nodes.

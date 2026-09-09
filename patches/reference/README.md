@@ -36,8 +36,8 @@ branches cannot consume, and the drafter was trained on unsteered aux
 states). The structure test applies to both references:
 
 ```
-python3 scripts/test-glm53-steering-structure.py            # v8 (glm5next.py)
-python3 scripts/test-glm53-steering-structure.py patches/reference/glm5next_v11_dflash2.py
+python3 tests/structure/test-glm53-steering-structure.py            # v8 (glm5next.py)
+python3 tests/structure/test-glm53-steering-structure.py patches/reference/glm5next_v11_dflash2.py
 ```
 
 The local `../vllm` checkout predates the arch — day-0 support for

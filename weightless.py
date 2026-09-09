@@ -4,7 +4,7 @@
     python3 weightless.py                 interactive setup wizard (default)
     python3 weightless.py setup           same wizard: lane → env → deploy → clients
     python3 weightless.py dash [url]      live lane metrics (scripts/dash.py)
-    python3 weightless.py test            endpoint smoke suite (tests/run.sh)
+    python3 weightless.py test            endpoint smoke suite (tests/smoke/run.sh)
 
 Stdlib only. Each subcommand execs the real script with the remaining
 arguments, so the scripts keep working standalone and there is exactly one
@@ -21,7 +21,7 @@ COMMANDS = {
               "interactive setup wizard: lane pick → env → deploy → omp/hermes + tests"),
     "dash": ([PY, os.path.join(HERE, "scripts", "dash.py")],
              "live metrics for a serving lane (prefill/decode, queue, KV, spec decode)"),
-    "test": (["sh", os.path.join(HERE, "tests", "run.sh")],
+    "test": (["sh", os.path.join(HERE, "tests", "smoke", "run.sh")],
              "endpoint smoke suite against the configured base URL"),
 }
 

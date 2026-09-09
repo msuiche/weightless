@@ -91,7 +91,7 @@ stack, so the compiled graph is identical for every layer set. No
 
 ```sh
 # structural, no GPU/torch: anchors + per-layer-loop + serving-class guards
-python3 ../../scripts/test-qwen38fn-steering-structure.py
+python3 ../../tests/structure/test-qwen38fn-steering-structure.py
 
 # the exact injected loader against the real vector (needs torch)
 WEIGHTLESS_STEER_PATH=$HF_CACHE/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47-L1-47-a1.gguf \

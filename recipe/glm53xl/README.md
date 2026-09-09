@@ -223,5 +223,5 @@ over-projects on this model.
 
 ```sh
 # structural, no GPU/torch: anchors + per-layer-loop + serving-class guards
-python3 ../../scripts/test-glm53xl-steering-structure.py
+python3 ../../tests/structure/test-glm53xl-steering-structure.py
 ```

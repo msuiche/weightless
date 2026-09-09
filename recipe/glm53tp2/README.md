@@ -119,7 +119,7 @@ vLLM layer:   sha256:2c55b4653d4b2c7d4497169b14edc16f44b3fc3058a9ab9cd302e365783
 model.py:    sha256:ca6320e867b41a90b7c007d9d91021ac8bc1379292a98e8acb5ff9d01b24c2ea
 ```
 
-`python3 scripts/test-glm53-steering-structure.py /tmp/glm53tp2-image-model.py`
+`python3 tests/structure/test-glm53-steering-structure.py /tmp/glm53tp2-image-model.py`
 passed all checks: all five unique anchors, patched Python AST, per-layer
 buffers, post-layer mHC projection, last-layer deferral, idempotence, and
 failure with missing anchors when steering is requested. This is source

@@ -219,7 +219,7 @@ apply (both serving wrappers delegate to it; no skip-parent trap).
 
 ```sh
 # structural, no GPU/torch: anchors + per-layer-loop + serving-class guards
-python3 ../../scripts/test-glm53-steering-structure.py
+python3 ../../tests/structure/test-glm53-steering-structure.py
 
 # the exact injected loader against the real vector (needs torch)
 WEIGHTLESS_STEER_PATH=$HF_CACHE/GLM-5.3-Flash-abliterated-cyber-GLP-44-L1-44-a2.gguf \
