@@ -88,6 +88,7 @@ LANES = [
          example="recipe/anemll/.env.dsv4.example",
          target="recipe/anemll/.env.dsv4",
          steer_key="WEIGHTLESS_STEER_PATH",
+         steer_hook="ffn_out_pre_residual",
          structure_test="scripts/test-dsv4-hotfix-structure.py",
          vector_repo="msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29",
          model_repo="deepseek-ai/DeepSeek-V4-Flash-0731",
@@ -459,6 +460,19 @@ def validate_lane_env(lane, env_text):
     errors, warnings = [], []
     env = dict(re.findall(r"(?m)^([A-Z_]+)=(\S*)", env_text))
     nodes = lane.get("nodes", 1)
+    if nodes > 1:
+        # Container-mDNS rule (2026-09-09: three crash-looped DSV4 boots).
+        # Serving containers are host-networked with no avahi inside: a
+        # .local MASTER_ADDR is a silent 600s TCP-store timeout; a .local
+        # VLLM_HOST_IP hangs AFTER NCCL init in shm_broadcast's
+        # wait_until_ready with no log output (found via py-spy).
+        for key in ("MASTER_ADDR", "VLLM_HOST_IP", "WORKER_VLLM_HOST_IP"):
+            v = env.get(key, "")
+            if v.endswith(".local"):
+                errors.append(
+                    f"{key}={v} — serving containers cannot resolve .local "
+                    "names (host networking, no avahi inside): silent rendezvous"
+                    " timeouts / post-NCCL hangs. Use the literal fabric IP.")
     if lane.get("start_script", "").startswith("start-qwen38"):
         ple = env.get("VLLM_PLE_CPU_OFFLOAD", "1")
         util = float(env.get("GPU_MEMORY_UTILIZATION", "0.90") or 0.90)
@@ -961,6 +975,43 @@ def remote_preflight(io, lane_idx, values, ssh_host):
     else:
         io.warn(f"  container: not running")
     return all_match and running
+
+
+def steer_hook_remote_check(io, lane_idx, values, ssh_host):
+    """Wizard-side site check before deploy: the lane's hotfix enforces one
+    hook point (lane["steer_hook"]); a vector declaring another crash-loops
+    the boot (2026-09-09: .env.dsv4 named the retired keysdir residual vector,
+    the fail-closed hotfix refused it, three failed boots). Reads the GGUF
+    metadata on the node over ssh. Unreadable file → warn and let the
+    fail-closed hotfix be the gate; mismatch → block the deploy."""
+    lane = LANES[lane_idx]
+    hook = lane.get("steer_hook")
+    if not hook:
+        return True
+    env = lane_env(lane_idx, values)
+    path = env.get(lane["steer_key"], "")
+    if not path:
+        return True  # steering disabled for this lane
+    hf_cache = env.get("HF_CACHE") or f"/home/{values.get('user', '')}/.cache/huggingface"
+    remote_path = path.replace("/cache/huggingface", hf_cache, 1)
+    target = f"{values.get('user', os.environ.get('USER', ''))}@{ssh_host}"
+    probe = (f"head -c 1000000 {shlex.quote(remote_path)} 2>/dev/null | strings | "
+             "grep -A1 -m1 '^glp.hook_point$' | tail -1")
+    io.info(f"$ ssh {target} '<read glp.hook_point from the steering vector>'")
+    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
+                        target, probe], capture_output=True, text=True)
+    found = r.stdout.strip()
+    if not found:
+        io.warn(f"  steering vector: could not read glp.hook_point on the node "
+                f"({remote_path}) — the boot hotfix fails closed on a mismatch")
+        return True
+    if found != hook:
+        io.err(f"  steering vector declares glp.hook_point={found!r} but this "
+               f"lane's hotfix enforces {hook!r} — boot would crash-loop. Fix "
+               f"{lane['steer_key']} in the env before deploying.")
+        return False
+    io.ok(f"  steering vector hook_point={found} — matches the lane's enforced site")
+    return True
 
 
 def boot_command(lane_idx, values, ssh_host=None):
@@ -1736,6 +1787,8 @@ def lane_chain(io, lane_idx):
             if not io.confirm("Redeploy and restart anyway?", False):
                 io.info("deploy skipped")
                 return tests_chain(io, ssh_host, lane_idx)
+        if not steer_hook_remote_check(io, lane_idx, values, ssh_host):
+            return 1
         if not prepare_assets(io, lane_idx, values, ssh_host):
             return 1
         cmds = deploy_commands(lane_idx, values, ssh_host)

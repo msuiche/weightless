@@ -271,6 +271,21 @@ class AssetAndParkingTests(unittest.TestCase):
         self.assertIn("rsync -aL", qwen)
         self.assertEqual(setup.validate_lane_env(setup.LANES[1], ""), ([], []))
 
+    def test_multinode_env_rejects_mdns_fabric_addresses(self):
+        # 2026-09-09: .local in MASTER_ADDR/VLLM_HOST_IP crash-looped three
+        # DSV4 boots — host-networked containers cannot resolve mDNS names.
+        self.assertEqual(setup.LANES[0]["steer_hook"], "ffn_out_pre_residual")
+        env = ("MASTER_ADDR=spark-4687.local\nVLLM_HOST_IP=spark-4687.local\n"
+               "WORKER_VLLM_HOST_IP=spark-5bc3.local\n")
+        errors, _ = setup.validate_lane_env(setup.LANES[0], env)
+        self.assertEqual(len(errors), 3)
+        self.assertIn("fabric IP", errors[0])
+        ok_env = ("MASTER_ADDR=192.168.100.1\nVLLM_HOST_IP=192.168.100.1\n"
+                  "WORKER_VLLM_HOST_IP=192.168.100.2\n")
+        self.assertEqual(setup.validate_lane_env(setup.LANES[0], ok_env), ([], []))
+        # single-node lanes are exempt (no cross-node rendezvous)
+        self.assertEqual(setup.validate_lane_env(setup.LANES[1], env), ([], []))
+
     def test_nemotron35_single_node_lane(self):
         lane = setup.LANES[7]
         self.assertEqual(lane["steer_key"], "WEIGHTLESS_GLP")
