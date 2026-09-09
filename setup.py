@@ -2005,34 +2005,58 @@ def splash_cli(io):
     box(io, "local setup", detect_state())
 
 
+def pick_lane(io, cloud):
+    """Submenu for Serve (local rig lanes) / Deploy (cloud lanes). Returns the
+    LANES index, or None on Back. Empty categories say so and bounce back."""
+    picked = [(i, l) for i, l in enumerate(LANES) if bool(l.get("cloud")) == cloud]
+    if not picked:
+        io.info("no lanes in this category")
+        return None
+    items = []
+    for i, l in picked:
+        name = re.sub(r" serving$", "", l["name"].split(" — ")[0])
+        if cloud:
+            items.append(f"{name} — Modal")
+        elif os.path.exists(os.path.join(HERE, l["target"])):
+            items.append(f"{name} — configured")
+        else:
+            items.append(f"{name} — not configured")
+    items.append("Back")
+    verb = "Deploy" if cloud else "Serve"
+    sel = io.menu(f"{verb} which lane:  (full chain: env → assets → deploy → clients/tests)",
+                  items=items)
+    if sel == len(items) - 1:
+        return None
+    return picked[sel][0]
+
+
 def run(io):
     bun, omp = prereqs()
     io.info(f"bun: {bun or 'not found (only needed for omp/tests)'}")
     io.info(f"omp:  {omp or 'not found (only needed for tests)'}")
     io.info("")
-    lane_items = []
-    for l in LANES:
-        name = re.sub(r" serving$", "", l["name"].split(" — ")[0])
-        if l.get("cloud"):
-            lane_items.append(f"Deploy {name} — cloud (Modal)")
-        elif os.path.exists(os.path.join(HERE, l["target"])):
-            lane_items.append(f"Serve {name} — configured")
+    while True:
+        choice = io.menu("What to do:", idle=getattr(io, "animate_logo", None), items=[
+            "Serve — a lane on the rig (env → assets → deploy → clients/tests)",
+            "Deploy — a cloud lane (Modal)",
+            "Watch — live lane metrics (prefill/decode, queue, KV, spec decode)",
+            "Configure — agent clients (omp / hermes) + endpoint smoke suite",
+            "Endpoint — layered diagnosis + remote container status",
+        ])
+        if choice == 0:
+            idx = pick_lane(io, cloud=False)
+            if idx is not None:
+                return lane_chain(io, idx)
+        elif choice == 1:
+            idx = pick_lane(io, cloud=True)
+            if idx is not None:
+                return lane_chain(io, idx)
+        elif choice == 2:
+            return dash_chain(io)
+        elif choice == 3:
+            return tests_chain(io)
         else:
-            lane_items.append(f"Serve {name} — not configured")
-    choice = io.menu("What to do:  (serve/deploy = full chain: env → assets → deploy → clients/tests)",
-                     idle=getattr(io, "animate_logo", None), items=[
-        *lane_items,
-        "Watch a lane — live metrics (prefill/decode, queue, KV, spec decode)",
-        "Agent clients — configure omp / hermes + endpoint smoke suite",
-        "Diagnose endpoint — layered checks + remote container status",
-    ])
-    if choice < len(LANES):
-        return lane_chain(io, choice)
-    if choice == len(LANES):
-        return dash_chain(io)
-    if choice == len(LANES) + 1:
-        return tests_chain(io)
-    return diagnose_chain(io)
+            return diagnose_chain(io)
 
 
 def dash_chain(io):
