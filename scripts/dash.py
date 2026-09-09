@@ -154,8 +154,8 @@ def render(target: str, m: dict, prev: dict | None, dt: float,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Live terminal view of a vLLM lane.")
-    ap.add_argument("url", nargs="?", default="http://spark-4687.local:8081",
-                    help="lane base URL (default: %(default)s)")
+    ap.add_argument("url", nargs="?", default="http://spark-4687.local:8888",
+                    help="lane base URL (default: %(default)s — DSV4 on the rig)")
     ap.add_argument("--once", action="store_true", help="print one snapshot and exit")
     ap.add_argument("--interval", type=float, default=2.0, help="refresh seconds (default: %(default)s)")
     ap.add_argument("--no-color", action="store_true",
