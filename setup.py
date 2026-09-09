@@ -590,18 +590,28 @@ def asset_commands(lane_idx, values, ssh_host=None):
         steps.append((desc, node_command(values, ssh_host, command, worker)))
 
     # Read before installing tooling so pip never consumes the credential.
-    download = ('IFS= read -r HF_TOKEN; export HF_TOKEN; '
-                'unset HF_HUB_OFFLINE TRANSFORMERS_OFFLINE; '
-                'if [ ! -x "$HOME/.cache/weightless-hf/bin/hf" ]; then '
-                'python3 -m venv "$HOME/.cache/weightless-hf" && '
-                '"$HOME/.cache/weightless-hf/bin/pip" install huggingface_hub || exit 1; fi; '
-                '"$HOME/.cache/weightless-hf/bin/hf" download ')
+    # Cached-complete fast path first: HF_HUB_OFFLINE=1 succeeds in seconds
+    # when the snapshot is whole, and the online fetch runs only on a miss.
+    # Re-verifying 74 files over a flaky ISP otherwise eats an hour
+    # (2026-09-09: a wizard swap run died inside this step).
+    dl_pre = ('IFS= read -r HF_TOKEN; export HF_TOKEN; '
+              'if [ ! -x "$HOME/.cache/weightless-hf/bin/hf" ]; then '
+              'python3 -m venv "$HOME/.cache/weightless-hf" && '
+              '"$HOME/.cache/weightless-hf/bin/pip" install huggingface_hub || exit 1; fi; ')
+
+    def dl(dl_args):
+        quoted = shlex.join(dl_args)
+        return (dl_pre
+                + 'HF_HUB_OFFLINE=1 "$HOME/.cache/weightless-hf/bin/hf" download ' + quoted
+                + ' || { echo "cache incomplete — fetching online"; '
+                  'unset HF_HUB_OFFLINE TRANSFORMERS_OFFLINE; '
+                  '"$HOME/.cache/weightless-hf/bin/hf" download ' + quoted + '; }')
     revision = (env.get("DSPARK_REVISION") if lane_idx == 0
                 else env.get("MODEL_REVISION") if lane_idx == 7 else None)
     args = [repo, "--cache-dir", cache]
     if revision:
         args += ["--revision", revision]
-    add(f"download model weights: {repo}", download + shlex.join(args))
+    add(f"download model weights: {repo}", dl(args))
     for worker in workers:
         dest = f"{user}@{worker}:{worker_cache}/"
         mkdir = shlex.join(["ssh", "-o", "BatchMode=yes", f"{user}@{worker}",
@@ -642,7 +652,7 @@ def asset_commands(lane_idx, values, ssh_host=None):
         if steer:
             fname = os.path.basename(steer)
             add(f"download GLP vector on {label}: {lane['vector_repo']}",
-                download + shlex.join([lane["vector_repo"], fname, "--local-dir", node_cache]), worker)
+                dl([lane["vector_repo"], fname, "--local-dir", node_cache]), worker)
             if lane_idx == 1:
                 dest = env["MODELS"] + "/cvec"
                 add("stage Qwen vector in the /models mount",
@@ -655,8 +665,8 @@ def asset_commands(lane_idx, values, ssh_host=None):
         dest = env["MODELS"] + mount[len("/models"):]
         config = json.dumps(dict(peft_type="LORA", r=1, lora_alpha=1, bias="none",
                                  task_type="CAUSAL_LM", target_modules=["mlp.down_proj"]))
-        add("download Qwen LoRA adapter", download + shlex.join([lane["vector_repo"], adapter,
-                                                               "--local-dir", cache]))
+        add("download Qwen LoRA adapter", dl([lane["vector_repo"], adapter,
+                                              "--local-dir", cache]))
         add("package Qwen LoRA for the launcher",
             f"mkdir -p {q(dest)} && cp {q(cache + '/' + adapter)} {q(dest + '/adapter_model.safetensors')} && "
             f"printf '%s\\n' {q(config)} > {q(dest + '/adapter_config.json')}")
