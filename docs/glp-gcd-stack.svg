@@ -1,0 +1,201 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1440" font-family="Helvetica, Arial, sans-serif">
+  <rect width="1400" height="1440" fill="#ffffff"/>
+  <text x="700" y="42" font-size="24" font-weight="bold" text-anchor="middle" fill="#1a1a1a">The stack, on two axes: the request lifecycle and the forward pass</text>
+  <text x="700" y="68" font-size="14" text-anchor="middle" fill="#777777">prefill/decode are phases in time · residual stream / logits / mask are places in the machinery · GLP and GCD sit in different places, active in both phases</text>
+
+  <!-- ================= PANEL A: lifecycle ================= -->
+  <text x="80" y="118" font-size="17" font-weight="bold" fill="#1a1a1a">1 · The request lifecycle — time flows left to right</text>
+
+  <rect x="60" y="140" width="170" height="142" rx="8" fill="#f4f4f4" stroke="#999999" stroke-width="1.5"/>
+  <text x="145" y="164" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">TEXT</text>
+  <text x="145" y="184" font-size="11.5" text-anchor="middle" fill="#666666">the prompt</text>
+  <text x="145" y="202" font-size="11.5" text-anchor="middle" fill="#666666">(injection rides here)</text>
+  <text x="145" y="226" font-size="10.5" text-anchor="middle" fill="#666666">+ the chat template:</text>
+  <text x="145" y="242" font-size="10.5" text-anchor="middle" fill="#666666">in-band defenses ride</text>
+  <text x="145" y="258" font-size="10.5" text-anchor="middle" fill="#666666">the same channel</text>
+  <text x="145" y="276" font-size="10.5" text-anchor="middle" fill="#666666">(system prompt)</text>
+
+  <polygon points="232,192 246,187 246,197" fill="#444444"/><line x1="230" y1="192" x2="244" y2="192" stroke="#444444" stroke-width="2"/>
+
+  <rect x="248" y="140" width="200" height="104" rx="8" fill="#f4f4f4" stroke="#999999" stroke-width="1.5"/>
+  <text x="348" y="166" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">TOKENIZE</text>
+  <text x="348" y="188" font-size="11.5" text-anchor="middle" fill="#666666">text → token ids</text>
+  <text x="348" y="206" font-size="11.5" text-anchor="middle" fill="#666666">lookup table · no model · µs</text>
+
+  <polygon points="450,192 464,187 464,197" fill="#444444"/><line x1="448" y1="192" x2="462" y2="192" stroke="#444444" stroke-width="2"/>
+
+  <rect x="466" y="140" width="330" height="104" rx="8" fill="#eaf4fb" stroke="#2471a3" stroke-width="2"/>
+  <text x="631" y="164" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a5276">PREFILL — the model reads</text>
+  <text x="631" y="184" font-size="11.5" text-anchor="middle" fill="#444444">ONE forward pass over ALL prompt positions in parallel</text>
+  <text x="631" y="202" font-size="11.5" text-anchor="middle" fill="#444444">builds the KV cache · ends with the first-token logits</text>
+  <text x="631" y="224" font-size="11.5" text-anchor="middle" fill="#666666">fast: thousands of tokens per pass · sets "time to first token"</text>
+
+  <polygon points="798,192 812,187 812,197" fill="#444444"/><line x1="796" y1="192" x2="810" y2="192" stroke="#444444" stroke-width="2"/>
+
+  <rect x="814" y="140" width="330" height="104" rx="8" fill="#eafaf1" stroke="#1e8449" stroke-width="2"/>
+  <text x="979" y="164" font-size="14" font-weight="bold" text-anchor="middle" fill="#145a32">DECODE ×T — the model writes</text>
+  <text x="979" y="184" font-size="11.5" text-anchor="middle" fill="#444444">one forward pass PER token, serial — logits → mask → sample</text>
+  <text x="979" y="202" font-size="11.5" text-anchor="middle" fill="#444444">reads + appends the KV cache · stops at EOS / cap</text>
+  <text x="979" y="224" font-size="11.5" text-anchor="middle" fill="#666666">slow: this is where the money goes · "tokens per second"</text>
+
+  <polygon points="1146,192 1160,187 1160,197" fill="#444444"/><line x1="1144" y1="192" x2="1158" y2="192" stroke="#444444" stroke-width="2"/>
+
+  <rect x="1162" y="140" width="178" height="104" rx="8" fill="#f4f4f4" stroke="#999999" stroke-width="1.5"/>
+  <text x="1251" y="166" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">DETOKENIZE</text>
+  <text x="1251" y="188" font-size="11.5" text-anchor="middle" fill="#666666">ids → text</text>
+  <text x="1251" y="206" font-size="11.5" text-anchor="middle" fill="#666666">the reply you read</text>
+
+  <rect x="466" y="262" width="678" height="44" rx="6" fill="#fef9e7" stroke="#b7950b" stroke-width="1.5"/>
+  <text x="805" y="280" font-size="12" text-anchor="middle" fill="#7d6608">the grammar mask + sampler act only where a token is CHOSEN:</text>
+  <text x="805" y="298" font-size="12" text-anchor="middle" fill="#7d6608">the last prefill position (first answer token) and every decode step</text>
+
+  <!-- ================= PANEL B: inside the forward pass ================= -->
+  <text x="80" y="352" font-size="17" font-weight="bold" fill="#1a1a1a">2 · Inside one forward pass — the same machinery runs in prefill and in every decode step</text>
+  <text x="80" y="374" font-size="12.5" fill="#777777">prefill runs it once over N positions in parallel (stream is [N × hidden]) · decode runs it per token (stream is [1 × hidden])</text>
+
+  <!-- embedding -->
+  <rect x="80" y="394" width="560" height="52" rx="8" fill="#f4f4f4" stroke="#999999" stroke-width="1.5"/>
+  <text x="100" y="416" font-size="14" font-weight="bold" fill="#1a1a1a">EMBEDDING</text>
+  <text x="100" y="435" font-size="12" fill="#666666">token ids → vectors (a table lookup owned by the weights)</text>
+
+  <line x1="360" y1="446" x2="360" y2="458" stroke="#444444" stroke-width="2"/><polygon points="360,460 355,450 365,450" fill="#444444"/>
+
+  <!-- layers box with the stream as a flowing band -->
+  <rect x="80" y="462" width="560" height="272" rx="10" fill="#fdf2f0" stroke="#c0392b" stroke-width="2.5"/>
+  <text x="100" y="488" font-size="14" font-weight="bold" fill="#c0392b">LAYERS ×40 — two writers, one stream</text>
+
+  <!-- the stream band -->
+  <rect x="110" y="504" width="500" height="42" rx="6" fill="#ffffff" stroke="#c0392b" stroke-width="2" stroke-dasharray="5 3"/>
+  <line x1="120" y1="525" x2="588" y2="525" stroke="#c0392b" stroke-width="2"/>
+  <polygon points="590,525 578,520 578,530" fill="#c0392b"/>
+  <text x="360" y="521" font-size="13" font-weight="bold" text-anchor="middle" fill="#7b241c">RESIDUAL STREAM — the running draft, one vector per token</text>
+
+  <!-- writers -->
+  <rect x="110" y="576" width="240" height="64" rx="6" fill="#ffffff" stroke="#c0392b" stroke-width="1.5"/>
+  <text x="230" y="598" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#7b241c">ATTENTION writer → attn_out</text>
+  <text x="230" y="616" font-size="11" text-anchor="middle" fill="#666666">adds context from other tokens —</text>
+  <text x="230" y="631" font-size="11" text-anchor="middle" fill="#666666">the only cross-token reader</text>
+
+  <rect x="370" y="576" width="240" height="64" rx="6" fill="#ffffff" stroke="#c0392b" stroke-width="1.5"/>
+  <text x="490" y="598" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#7b241c">FFN writer → ffn_out</text>
+  <text x="490" y="616" font-size="11" text-anchor="middle" fill="#666666">adds per-token knowledge —</text>
+  <text x="490" y="631" font-size="11" text-anchor="middle" fill="#666666">refusal's main writer (71.9%)</text>
+
+  <!-- read/add arrows -->
+  <line x1="230" y1="546" x2="230" y2="560" stroke="#c0392b" stroke-width="1.5"/><polygon points="230,546 226,554 234,554" fill="#c0392b"/><polygon points="230,560 226,552 234,552" fill="#c0392b"/>
+  <line x1="490" y1="546" x2="490" y2="560" stroke="#c0392b" stroke-width="1.5"/><polygon points="490,546 486,554 494,554" fill="#c0392b"/><polygon points="490,560 486,552 494,552" fill="#c0392b"/>
+
+  <text x="100" y="666" font-size="12" fill="#666666">each branch's output (attn_out / ffn_out) is ADDED in, never overwriting: h ← h + attn_out + ffn_out, ×40</text>
+  <text x="100" y="685" font-size="12" fill="#666666">the draft carries the accumulated contributions — the writers are not in it</text>
+  <text x="100" y="704" font-size="12" font-style="italic" fill="#7b241c">the refusal direction is a pattern the writers keep adding — measured at 99.85% of entry mass</text>
+  <text x="100" y="724" font-size="12.5" font-weight="bold" fill="#c0392b">◀ GLP edits the draft here: h ← h − α(h·d̂)d̂, per layer, every pass</text>
+
+  <line x1="360" y1="734" x2="360" y2="746" stroke="#444444" stroke-width="2"/><polygon points="360,748 355,738 365,738" fill="#444444"/>
+
+  <!-- unembedding -->
+  <rect x="80" y="750" width="560" height="76" rx="8" fill="#f4f4f4" stroke="#999999" stroke-width="1.5"/>
+  <text x="100" y="772" font-size="14" font-weight="bold" fill="#1a1a1a">FINAL NORM → UNEMBEDDING → LOGITS</text>
+  <text x="100" y="791" font-size="12" fill="#666666">the final draft vector × the output head → the menu: one score per vocab entry (~248k ids)</text>
+  <text x="100" y="813" font-size="11.5" fill="#7d6608">Z_t probe reads pre-mask mass here: collapsed → grammar too tight · healthy + vacuous → disposition (GLP)</text>
+
+  <circle cx="648" cy="788" r="9" fill="#f9e79f" stroke="#b7950b" stroke-width="1.5"/>
+
+  <line x1="360" y1="826" x2="360" y2="838" stroke="#444444" stroke-width="2"/><polygon points="360,840 355,830 365,830" fill="#444444"/>
+
+  <!-- grammar mask -->
+  <rect x="80" y="844" width="560" height="70" rx="8" fill="#eef5fb" stroke="#2471a3" stroke-width="2.5"/>
+  <text x="100" y="868" font-size="14" font-weight="bold" fill="#1a1a1a">GRAMMAR MASK (GCD) — stateful token-id filter</text>
+  <text x="100" y="888" font-size="12" fill="#2471a3">forbidden ids → −inf, renormalize · the menu with items crossed off</text>
+  <text x="100" y="905" font-size="12" fill="#666666">membership only: closes exits, cannot move mass</text>
+
+  <line x1="360" y1="914" x2="360" y2="926" stroke="#444444" stroke-width="2"/><polygon points="360,928 355,918 365,918" fill="#444444"/>
+
+  <!-- sampler -->
+  <rect x="80" y="930" width="560" height="56" rx="8" fill="#eafaf1" stroke="#1e8449" stroke-width="2"/>
+  <text x="100" y="952" font-size="14" font-weight="bold" fill="#1a1a1a">SAMPLER — the pick: one token id per pass</text>
+  <text x="100" y="972" font-size="12" fill="#666666">the only irreversible act in the pipeline · temperature / top-p reshuffle mass within the mask's support</text>
+
+  <!-- ================= right column ================= -->
+  <!-- GLP panel -->
+  <rect x="720" y="394" width="620" height="240" rx="10" fill="#ffffff" stroke="#c0392b" stroke-width="2"/>
+  <text x="740" y="422" font-size="16" font-weight="bold" fill="#c0392b">GLP — disposition side (inside the forward pass)</text>
+  <text x="740" y="446" font-size="12.5" fill="#444444">subtracts the refusal direction from the draft at every layer</text>
+  <text x="740" y="466" font-size="12.5" fill="#444444">deployment-scoped: applies to every rollout while bound · ships as a file (GGUF vector, ~hundreds of KB)</text>
+  <text x="740" y="486" font-size="12.5" fill="#444444">continuous dial (α) · composable · changes what the model IS</text>
+  <text x="740" y="514" font-size="12.5" font-weight="bold" fill="#7b241c">vacuity pressure is born here: refusal pressure with its exits masked</text>
+  <text x="740" y="532" font-size="12.5" fill="#7b241c">reroutes to the emptiest legal shape — "The result is: 1."</text>
+  <text x="740" y="560" font-size="12.5" fill="#666666">fix at this level: dampen the direction in the stream itself,</text>
+  <text x="740" y="578" font-size="12.5" fill="#666666">so less pressure goes looking for holes (the complement to the mask)</text>
+  <text x="740" y="606" font-size="12.5" fill="#666666">capture reads the draft at the last prompt position (end of prefill) —</text>
+  <text x="740" y="622" font-size="12.5" fill="#666666">the decision point; derivation stays prompt-driven, never forced</text>
+
+  <!-- alternate decode paths seam -->
+  <rect x="720" y="646" width="620" height="72" rx="8" fill="#ffffff" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="740" y="668" font-size="13" font-weight="bold" fill="#c0392b">ALTERNATE DECODE PATHS — the bypass-shaped seam</text>
+  <text x="740" y="688" font-size="12" fill="#444444">every path that can emit a token must pass the mask: beam search, speculative</text>
+  <text x="740" y="706" font-size="12" fill="#444444">draft-verify, parallel / n-best — the FATALs live on the alternate paths</text>
+
+  <!-- GCD automaton panel -->
+  <rect x="720" y="730" width="620" height="264" rx="10" fill="#ffffff" stroke="#2471a3" stroke-width="2"/>
+  <text x="740" y="758" font-size="16" font-weight="bold" fill="#2471a3">THE AUTOMATON — where the grammar actually lives (outside the model)</text>
+  <text x="740" y="782" font-size="12.5" fill="#444444">GBNF text → compiled per request (character automaton + tokenizer lift</text>
+  <text x="740" y="800" font-size="12.5" fill="#444444">over the ~248k-token vocab) → per-position state → bitmask (~8 KB)</text>
+
+  <!-- mini state machine -->
+  <circle cx="790" cy="850" r="16" fill="#eef5fb" stroke="#2471a3" stroke-width="2"/>
+  <text x="790" y="855" font-size="11" text-anchor="middle" fill="#1a5276">s₀</text>
+  <line x1="808" y1="850" x2="858" y2="850" stroke="#2471a3" stroke-width="1.5"/><polygon points="860,850 850,845 850,855" fill="#2471a3"/>
+  <text x="834" y="838" font-size="10.5" text-anchor="middle" fill="#666666">token</text>
+  <circle cx="884" cy="850" r="16" fill="#eef5fb" stroke="#2471a3" stroke-width="2"/>
+  <text x="884" y="855" font-size="11" text-anchor="middle" fill="#1a5276">s₁</text>
+  <line x1="902" y1="850" x2="952" y2="850" stroke="#2471a3" stroke-width="1.5"/><polygon points="954,850 944,845 944,855" fill="#2471a3"/>
+  <text x="928" y="838" font-size="10.5" text-anchor="middle" fill="#666666">token</text>
+  <circle cx="978" cy="850" r="16" fill="#eef5fb" stroke="#2471a3" stroke-width="2"/>
+  <text x="978" y="855" font-size="11" text-anchor="middle" fill="#1a5276">s₂</text>
+  <text x="1030" y="846" font-size="11.5" fill="#666666">each state = the set of</text>
+  <text x="1030" y="862" font-size="11.5" fill="#666666">token ids legal next</text>
+
+  <text x="740" y="896" font-size="12.5" fill="#444444">after each sampled token: accept_token(id) advances the state —</text>
+  <text x="740" y="914" font-size="12.5" fill="#444444">the mask is recomputed from what was emitted, not what was asked</text>
+  <text x="740" y="934" font-size="12.5" fill="#666666">the model never sees it · it never reads the prompt · it only tracks the exit</text>
+  <text x="740" y="956" font-size="12.5" font-weight="bold" fill="#1a5276">EOS is a token id like any other — admitted only in accepting states</text>
+  <text x="740" y="974" font-size="12" fill="#666666">fail-closed termination: grammar-incomplete → loud error, never a silent pass</text>
+  <text x="740" y="990" font-size="12" fill="#666666">the anti-vacuity floor works here: EOS ungenerable until the body clears it</text>
+
+  <!-- automaton → mask arrow -->
+  <line x1="720" y1="879" x2="648" y2="879" stroke="#2471a3" stroke-width="2"/>
+  <polygon points="646,879 656,874 656,884" fill="#2471a3"/>
+
+  <!-- ================= PANEL C: failure map ================= -->
+  <text x="80" y="1004" font-size="17" font-weight="bold" fill="#1a1a1a">3 · The failure map — the vacuity case, placed on the stack</text>
+
+  <rect x="80" y="1024" width="400" height="92" rx="8" fill="#fdf2f0" stroke="#c0392b" stroke-width="1.5"/>
+  <text x="100" y="1050" font-size="13" font-weight="bold" fill="#7b241c">pressure born (residual stream)</text>
+  <text x="100" y="1070" font-size="12" fill="#666666">extreme refusal attractor; the worst prompts</text>
+  <text x="100" y="1088" font-size="12" fill="#666666">are the extreme tail — GLP territory</text>
+
+  <polygon points="488,1070 502,1065 502,1075" fill="#444444"/><line x1="486" y1="1070" x2="500" y2="1070" stroke="#444444" stroke-width="2"/>
+
+  <rect x="506" y="1024" width="400" height="92" rx="8" fill="#eef5fb" stroke="#2471a3" stroke-width="1.5"/>
+  <text x="526" y="1050" font-size="13" font-weight="bold" fill="#1a5276">exits closed (grammar mask)</text>
+  <text x="526" y="1070" font-size="12" fill="#666666">refusal phrases ungenerable; anchor committed;</text>
+  <text x="526" y="1088" font-size="12" fill="#666666">structure guaranteed — membership satisfied</text>
+
+  <polygon points="914,1070 928,1065 928,1075" fill="#444444"/><line x1="912" y1="1070" x2="926" y2="1070" stroke="#444444" stroke-width="2"/>
+
+  <rect x="932" y="1024" width="408" height="92" rx="8" fill="#fef9e7" stroke="#b7950b" stroke-width="1.5"/>
+  <text x="952" y="1050" font-size="13" font-weight="bold" fill="#7d6608">mass pools in the emptiest legal shape</text>
+  <text x="952" y="1070" font-size="12" fill="#666666">"The result is: 1." — refusal-by-vacuity; no membership</text>
+  <text x="952" y="1088" font-size="12" fill="#666666">edit can move mass — that is what a grammar IS</text>
+
+  <!-- wall + supporting cast -->
+  <rect x="80" y="1144" width="1260" height="120" rx="10" fill="#f8f8f8" stroke="#bbbbbb" stroke-width="1.5"/>
+  <text x="100" y="1172" font-size="15" font-weight="bold" fill="#1a1a1a">The wall, and the supporting cast</text>
+  <text x="100" y="1196" font-size="12.5" fill="#444444"><tspan font-weight="bold">membership vs mass:</tspan> grammar can make "nothing" illegal; mass then pools in the next-emptiest legal shape · moving mass is disposition work (GLP)</text>
+  <text x="100" y="1218" font-size="12.5" fill="#444444"><tspan font-weight="bold">KV cache:</tspan> cross-token memory — built in prefill, read/appended in decode · <tspan font-weight="bold">sampler knobs</tspan> (temperature, top-p, seed): reshuffle mass inside the support; cannot reopen a closed exit</text>
+  <text x="100" y="1240" font-size="12.5" fill="#444444"><tspan font-weight="bold">embeddings gate:</tspan> semantic paraphrase screen over the free-text surfaces the grammar deliberately leaves open (post-hoc, corrective — a different security class)</text>
+
+  <text x="700" y="1304" font-size="14" text-anchor="middle" font-weight="bold" fill="#1a1a1a">GLP changes what the model is. GCD constrains what it may emit. The mask owns the support; the sampler owns the measure; the weights own the mass.</text>
+  <text x="700" y="1328" font-size="12.5" text-anchor="middle" fill="#777777">weightless (GLP spec) × hf2q ADR-053/054/057 × Tantalus GCD replica — 2026-09-09 · v4: EOS gating, alternate-path seam, template layer, deployment-scope (Rob's review)</text>
+  <text x="1380" y="1420" font-size="11.5" text-anchor="end" fill="#999999">Illustration: Matt Suiche (@msuiche)</text>
+</svg>
