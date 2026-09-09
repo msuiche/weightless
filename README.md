@@ -41,6 +41,15 @@ python3 weightless.py --help   # all commands
 which also work standalone: `setup.py` (TUI wizard with a prompt fallback),
 `scripts/dash.py`, `tests/run.sh`.
 
+**Swapping lanes is the wizard, not ssh.** Pick `Serve <model>` for the lane
+you want: the wizard regenerates the env, re-validates it (multi-node fabric
+addresses must be literal IPs — containers cannot resolve `.local`; the
+steering vector's `glp.hook_point` is read on the node and must match the
+lane's enforced site), parks the running lane's containers, drops page
+caches, boots, then reconfigures omp/hermes and runs the smoke suite. If a
+swap ever needs a manual ssh incantation, that gap goes into the wizard —
+not into shell history.
+
 Pick a lane and it walks the full chain: site values → env file → steering
 validation → asset preparation → confirm-gated ssh deploy → omp provider (registered in omp's
 modelRoles — default role, or every text role) + endpoint smoke tests.

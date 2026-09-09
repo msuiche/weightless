@@ -238,6 +238,7 @@ PLACEHOLDER_HINTS = {
     "worker-ip": ("Worker node IP or hostname", ""),
     "worker2-ip": ("Worker 2 node IP or hostname", ""),
     "worker3-ip": ("Worker 3 node IP or hostname", ""),
+    "worker-fabric-ip": ("Worker fabric IP (used inside containers — literal IP, never .local)", ""),
     "user": ("Remote username on the node(s)", os.environ.get("USER", "")),
 }
 
@@ -510,6 +511,8 @@ def read_lane_env():
             vals.setdefault("host", env["MASTER_ADDR"])
         if env.get("WORKER_HOST"):
             vals.setdefault("worker-ip", env["WORKER_HOST"])
+        if env.get("WORKER_VLLM_HOST_IP"):
+            vals.setdefault("worker-fabric-ip", env["WORKER_VLLM_HOST_IP"])
         for i in ("2", "3"):
             w = env.get(f"WORKER{i}_HOST")
             if w:
@@ -722,6 +725,15 @@ def deploy_commands(lane_idx, values, ssh_host=None):
              ["scp", *[os.path.join(HERE, "patches", p)
                        for p in [lane["hotfix"], *lane.get("extra_patches", [])]],
               f"{head}:{remote}/patches/"]),
+            # Cheap wedge insurance before a big boot: page-cache pressure is
+            # what stalls weight loads on these nodes. Needs the sudoers
+            # drop_caches entry; no-ops (|| true) everywhere without it.
+            ("drop page caches on all nodes (skippable)",
+             ["ssh", head, "echo 3 | sudo -n tee /proc/sys/vm/drop_caches >/dev/null 2>&1 || true"
+              + "".join(f"; ssh {w} 'echo 3 | sudo -n tee /proc/sys/vm/drop_caches"
+                        " >/dev/null 2>&1' || true"
+                        for w in (values.get(k) for k in
+                                  ("worker-ip", "worker2-ip", "worker3-ip")) if w)]),
             ("boot the stack (start script syncs the worker itself)",
              ["ssh", head, f"cd {remote} && bash {lane['start_script']}"]),
         ]
@@ -1896,6 +1908,8 @@ def remote_diagnose(io, host):
     if io.confirm("Boot the stack on that node?", False):
         lane_idx = io.menu("Which lane runs there?", [l["name"] for l in LANES])
         values = dict(saved, user=target.split("@")[0])
+        if not steer_hook_remote_check(io, lane_idx, values, ssh_host):
+            return 1
         desc, argv = boot_command(lane_idx, values, ssh_host=ssh_host)
         io.info(f"$ {' '.join(argv)}")
         if io.confirm(f"run: {desc}?", True):
