@@ -86,6 +86,11 @@ services:
       VLLM_API_KEY: "${VLLM_API_KEY:-}"
       VLLM_CACHE_ROOT: /cache/huggingface/vllm-cache
       VLLM_HOST_IP: "${VLLM_HOST_IP:-}"
+      # Peer gate (2026-09-10 incident): rank 0 waits for the worker before
+      # booting instead of restart-looping vLLM against a dead peer.
+      WORKER_VLLM_HOST_IP: "${WORKER_VLLM_HOST_IP:-}"
+      # Optional override, comma-separated addresses to wait for at boot.
+      DSPARK_WAIT_FOR: "${DSPARK_WAIT_FOR:-}"
 
       VLLM_ALLOW_LONG_MAX_MODEL_LEN: "${VLLM_ALLOW_LONG_MAX_MODEL_LEN:-1}"
       VLLM_SPARSE_INDEXER_MAX_LOGITS_MB: "${VLLM_SPARSE_INDEXER_MAX_LOGITS_MB:-256}"
@@ -193,6 +198,14 @@ services:
         export CUDA_PATH="$${CUDA_PATH:-$${CUDA_HOME}}";
         export CUDAToolkit_ROOT="$${CUDAToolkit_ROOT:-$${CUDA_HOME}}";
         export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$${LD_LIBRARY_PATH:-}";
+        # Peer gate (2026-09-10 incident): a dead far node must NEVER
+        # restart-loop this container. 2825 restarts in 9h happened because
+        # vllm exits fast when the fabric peer is gone and unless-stopped
+        # re-ran the whole entrypoint every ~12s. Wait here instead; the
+        # boot proceeds by itself when the peer returns.
+        WAIT_PEERS="$${DSPARK_WAIT_FOR:-}";
+        if [ -z "$$WAIT_PEERS" ]; then if [ "$${NODE_RANK:-0}" = "0" ]; then WAIT_PEERS="$${WORKER_VLLM_HOST_IP:-}"; else WAIT_PEERS="$${MASTER_ADDR:-}"; fi; fi;
+        for PEER in $$WAIT_PEERS; do until ping -c1 -W2 "$$PEER" >/dev/null 2>&1; do echo "[peer-gate] $$PEER unreachable - waiting 30s (a dead peer must not restart-loop vLLM)"; sleep 30; done; done;
         if [ -z "$${NCCL_IB_MERGE_NICS:-}" ]; then unset NCCL_IB_MERGE_NICS; fi;
         if [ -z "$${NCCL_NET_GDR_LEVEL:-}" ]; then unset NCCL_NET_GDR_LEVEL; fi;
         if [ -z "$${NCCL_NET_GDR_READ:-}" ]; then unset NCCL_NET_GDR_READ; fi;

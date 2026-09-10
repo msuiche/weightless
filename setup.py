@@ -1876,6 +1876,7 @@ def diagnose_chain(io, base=None):
     io.ok(f"HTTP: /v1/models answers — serving: {', '.join(ids)}")
     if not ids:
         io.err("No model is ready. A running router alone is not a serving engine.")
+        remote_diagnose(io, host)
         return 1
     model = ids[io.menu("Model to diagnose:", ids)] if len(ids) > 1 else ids[0]
     io.info("Checking generation (up to 180 seconds)...")
@@ -1888,7 +1889,8 @@ def diagnose_chain(io, base=None):
 
 
 def remote_diagnose(io, host):
-    """ssh to the serving node: container status, GPU, offer to boot."""
+    """ssh to the serving node: container status, restart loops, fabric/peer
+    state, GPU — with interpretation, then offer to boot."""
     if DEMO:
         io.info("demo: remote diagnosis and boot skipped")
         return
@@ -1900,21 +1902,57 @@ def remote_diagnose(io, host):
     omp_host = urllib.parse.urlparse(default_base()).hostname
     ssh_host = host if not loopback else (omp_host or saved.get("host", host))
     default_target = f"{saved.get('user', os.environ.get('USER', ''))}@{ssh_host}"
-    if not io.confirm("Check the node over ssh (docker ps, GPU)?", True):
+    if not io.confirm("Check the node over ssh (containers, restarts, fabric, GPU)?", True):
         return
     ssh_host = pick_host(io, "ssh host", ssh_host)
     target = f"{saved.get('user', os.environ.get('USER', ''))}@{ssh_host}"
     io.info(f"ssh target: {target}")
-    probe = ("docker ps -a --format '{{.Names}} {{.Status}}' "
-             "| grep -i -E 'deepseek|qwen|vllm|inkling|glm' || echo '(no serving container)'; "
-             "nvidia-smi --query-gpu=clocks.sm,power.draw,utilization.gpu "
-             "--format=csv,noheader 2>/dev/null || echo '(no GPU?)'")
-    io.info(f"$ ssh {target} '<container + GPU status>'")
-    rc = subprocess.call(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6",
-                          target, probe])
-    if rc != 0:
-        io.err(f"ssh failed ({rc}) — node off, or keys/password not set up")
+    peers = [saved.get(k) for k in ("worker-fabric-ip", "worker2-ip", "worker3-ip")]
+    peers = [p for p in peers if p]
+    probe = (
+        "echo '== containers =='; "
+        "docker ps -a --format '{{.Names}} {{.Status}}' "
+        "| grep -i -E 'deepseek|qwen|vllm|inkling|glm|muse|nemotron' || echo '(no serving container)'; "
+        "echo '== restart-counts =='; "
+        "docker inspect -f '{{.Name}} {{.State.Status}} restarts={{.RestartCount}}' "
+        "$(docker ps -aq) 2>/dev/null "
+        "| grep -i -E 'deepseek|qwen|vllm|inkling|glm|muse|nemotron' || true; "
+        "echo '== fabric =='; "
+        "ip -br addr 2>/dev/null | grep -E '192\\.168\\.100' || echo '(no fabric address on this node)'; "
+        "echo '== peers =='; "
+        + " ".join(
+            f"ping -c1 -W2 {p} >/dev/null 2>&1 && echo '{p} UP' || echo '{p} DOWN';"
+            for p in peers)
+        + " echo '== gpu =='; "
+        "nvidia-smi --query-gpu=clocks.sm,power.draw,utilization.gpu "
+        "--format=csv,noheader 2>/dev/null || echo '(no GPU?)'")
+    io.info(f"$ ssh {target} '<containers + restarts + fabric + peers + GPU>'")
+    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6",
+                        target, probe], capture_output=True, text=True)
+    if r.returncode != 0:
+        io.err(f"ssh failed ({r.returncode}) — node off, or keys/password not set up")
         return
+    out = r.stdout
+    for line in out.splitlines():
+        io.info(f"  {line}")
+    # Interpretation, learned 2026-09-10 (worker wedge → 2825-restart loop).
+    crash = re.findall(r"restarts=(\d+)", out)
+    if crash and max(int(c) for c in crash) > 50:
+        io.err("crash loop: a serving container restarted "
+               f"{max(int(c) for c in crash)} times — vLLM exits fast when its "
+               "fabric peer is gone and the restart policy re-runs the boot.")
+        io.info("the peer gate in recipe/anemll/docker-compose.dsv4.yml holds the "
+                "boot instead of looping — redeploy the lane to pick it up")
+    if "(no fabric address on this node)" in out:
+        io.err("fabric: this node has NO 192.168.100.x address — the inter-Spark "
+               "link is down on this side (NO-CARRIER class)")
+    down = [p for p in peers if f"{p} DOWN" in out]
+    if down:
+        io.err(f"peer(s) unreachable: {', '.join(down)} — the node is off or "
+               "wedged. Check power + QSFP cable physically; a dead peer cannot "
+               "be fixed by any restart policy")
+    elif peers and all(f"{p} UP" in out for p in peers):
+        io.ok(f"fabric peers all reachable: {', '.join(peers)}")
     if io.confirm("Boot the stack on that node?", False):
         lane_idx = io.menu("Which lane runs there?", [l["name"] for l in LANES])
         values = dict(saved, user=target.split("@")[0])
