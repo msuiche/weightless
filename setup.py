@@ -10,6 +10,7 @@ stack over ssh. Stdlib only: a light curses TUI with colors on a terminal,
 ANSI-colored prompts otherwise. Non-interactive alternative:
 `sh tests/smoke/install.sh && sh tests/smoke/run.sh` with DSPARK_* env overrides.
 """
+import base64
 import json
 import os
 import re
@@ -731,6 +732,37 @@ def prepare_assets(io, lane_idx, values, ssh_host):
     return True
 
 
+def harden_steps(host, workers=()):
+    """Idempotent node hardening as deploy steps: arm the SBSA hardware
+    watchdog (systemd pings it; a full OS freeze hard-resets the board in
+    60s) + panic-on-hang sysctls (softlockup/hung_task -> panic -> reboot).
+    Learned from the 2026-09-10 wedge: a silent worker freeze cost a 9h
+    outage and a 2825-restart crash loop. Script travels base64-encoded so
+    nested ssh quoting cannot mangle it; sudo reads its password from the
+    tty (ssh -t), which is why these steps are interactive."""
+    script = (
+        "set -e; CHG=0\n"
+        "mkdir -p /etc/systemd/system.conf.d\n"
+        "[ -f /etc/systemd/system.conf.d/watchdog.conf ] || "
+        "{ printf '[Manager]\\nRuntimeWatchdogSec=60\\n' "
+        "> /etc/systemd/system.conf.d/watchdog.conf; CHG=1; }\n"
+        "[ -f /etc/sysctl.d/99-wedge-heal.conf ] || "
+        "{ printf 'kernel.softlockup_panic=1\\nkernel.hung_task_panic=1\\n"
+        "kernel.panic=30\\n' > /etc/sysctl.d/99-wedge-heal.conf; CHG=1; }\n"
+        "sysctl --system >/dev/null 2>&1 || true\n"
+        "[ $CHG = 1 ] && systemctl daemon-reexec || true\n"
+        "echo node-hardening-ok\n")
+    b64 = base64.b64encode(script.encode()).decode()
+    steps = [("harden head: hardware watchdog + panic sysctls (sudo may prompt)",
+              ["ssh", "-t", host, f"echo {b64} | base64 -d | sudo bash"])]
+    for w in workers:
+        steps.append((f"harden {w}: hardware watchdog + panic sysctls (sudo may prompt)",
+                      ["ssh", "-t", host,
+                       f"echo {b64} | base64 -d > /tmp/.weightless-harden.sh && "
+                       f"ssh -t {w} 'sudo bash /tmp/.weightless-harden.sh'"]))
+    return steps
+
+
 def deploy_commands(lane_idx, values, ssh_host=None):
     """(description, argv) pairs to push the lane to its node(s) and boot it.
     Multi-node lanes (nodes: 2|4) target a remote dir on the head (their
@@ -774,6 +806,9 @@ def deploy_commands(lane_idx, values, ssh_host=None):
             ("boot the stack (start script syncs the worker itself)",
              ["ssh", head, f"cd {remote} && bash {lane['start_script']}"]),
         ]
+        workers = [w for w in (values.get(k) for k in
+                               ("worker-ip", "worker2-ip", "worker3-ip")) if w]
+        sync_steps[-1:-1] = harden_steps(head, workers)
         if lane_idx == 5:
             worker = values.get("worker-ip", "<worker-ip>")
             staged = " ".join(f"{remote}/{f}" for f in lane["recipe_files"] if f.startswith("files/"))
@@ -808,6 +843,7 @@ def deploy_commands(lane_idx, values, ssh_host=None):
         steps.append(
             ("boot the container",
              ["ssh", host, f"bash {remote}/{recipe}/{lane['start_script']}"]))
+        steps[-1:-1] = harden_steps(host)
         return steps
     host = f"{user}@{ssh_host or '<node-host>'}"
     remote = "dspark-deploy"
