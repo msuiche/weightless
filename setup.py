@@ -251,6 +251,28 @@ LANES = [
          docker_image="vllm/vllm-openai:v0.28.0",
          image_key="MUSE_IMAGE",
          port=8084),
+    # Appended last: tests address LANES by positional index, so new lanes
+    # go at the end. This one is deliberately NOT DEPLOYABLE (2026-09-10).
+    dict(name="[BLOCKED] DSV4.1-Flash — deepseek_v41, no merged vLLM, no 2x128GB quant",
+         # Serving needs vllm-project/vllm PR #56201 (branch dsv41-feat),
+         # which is not merged; the 510 GB FP8+MXFP4 checkpoint does not
+         # fit 2x DGX Spark (256 GB) in any quant that exists today. The
+         # GLP-39 vector (residual hook, L1-39) was derived and validated
+         # on Modal (4x H200 TP=4) — see
+         # refusal-research/experiments/20260910-dsv41-flash-glp/.
+         # Unblock conditions: (1) #56201 merged, (2) a 2x128GB-fitting
+         # quant published. Do NOT point this lane at the rig.
+         blocked=("vLLM #56201 (dsv41-feat) is unmerged and no "
+                  "2x128GB-fitting quant of DeepSeek-V4.1-Flash exists"),
+         blocked_doc="recipe/dsv41/README.md",
+         example="recipe/dsv41/.env.dsv41.example",
+         target="recipe/dsv41/.env.dsv41",
+         steer_key="WEIGHTLESS_STEER_PATH",
+         steer_hook="residual_stream_post_layer",
+         vector_repo="msuiche/DeepSeek-V4.1-Flash-abliterated-cyber-GLP-39",
+         model_repo="deepseek-ai/DeepSeek-V4.1-Flash",
+         steer_modes=None,
+         port=8889),
 ]
 PLACEHOLDER_HINTS = {
     "head-ip": ("Head node IP or hostname", ""),
@@ -528,6 +550,8 @@ def read_lane_env():
         if env.get("MASTER_ADDR"):
             vals.setdefault("head-ip", env["MASTER_ADDR"])
             vals.setdefault("host", env["MASTER_ADDR"])
+        if env.get("HEAD_LAN_IP"):
+            vals.setdefault("lan-ip", env["HEAD_LAN_IP"])
         if env.get("WORKER_HOST"):
             vals.setdefault("worker-ip", env["WORKER_HOST"])
         if env.get("WORKER_VLLM_HOST_IP"):
@@ -559,12 +583,25 @@ def lane_env(lane_idx, values):
     return env
 
 
+def ssh_key_args():
+    """Identity-file args for ssh, when a key is discoverable. Explicit env var
+    wins; otherwise the NVIDIA Sync key this project's DGX nodes authorize."""
+    key = os.environ.get("WEIGHTLESS_SSH_KEY", "")
+    if not key:
+        default = os.path.expanduser(
+            "~/Library/Application Support/NVIDIA/Sync/config/nvsync.key")
+        if os.path.exists(default):
+            key = default
+    return ["-i", key] if key else []
+
+
 def node_command(values, ssh_host, command, worker=None):
     """Reach workers through the head, using their fabric addresses."""
     user = values.get("user", os.environ.get("USER", ""))
     if worker:
-        command = shlex.join(["ssh", "-o", "BatchMode=yes", f"{user}@{worker}", command])
-    return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
+        command = shlex.join(["ssh", "-o", "BatchMode=yes"] + ssh_key_args()
+                             + [f"{user}@{worker}", command])
+    return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8"] + ssh_key_args() + [
             f"{user}@{ssh_host or values.get('head-ip', '<head-ip>')}", command]
 
 
@@ -1777,6 +1814,13 @@ def cloud_chain(io, lane_idx):
 
 def lane_chain(io, lane_idx):
     lane = LANES[lane_idx]
+    if lane.get("blocked"):
+        io.header(lane["name"])
+        io.info("─" * 60)
+        io.info("NOT DEPLOYABLE — " + lane["blocked"])
+        io.info("See " + lane.get("blocked_doc", "the lane README") +
+                " for the unblock conditions.")
+        return 0
     if lane.get("cloud"):
         return cloud_chain(io, lane_idx)
     example = os.path.join(HERE, lane["example"])
@@ -1928,8 +1972,28 @@ def diagnose_chain(io, base=None):
         io.ok(f"DNS: {host} → {ip}")
     except socket.gaierror as e:
         io.err(f"DNS: cannot resolve {host} ({e})")
-        io.info("fix the name first — /etc/hosts, mDNS (is the node on?), or use an IP")
-        return 1
+        # mDNS names vanish when the node is down; fall back to the last-known
+        # LAN IP before giving up at this layer. The omp provider's host is the
+        # serving IP; the lane env's MASTER_ADDR is the RoCE fabric (no sshd,
+        # and often no route from the client), so it is only a last resort.
+        candidates = []
+        omp_host = urllib.parse.urlparse(default_base()).hostname
+        if omp_host:
+            candidates.append(omp_host)
+        saved = read_lane_env()
+        # lan-ip: head's LAN address recorded at deploy time. host: the RoCE
+        # fabric address (no sshd, often unrouted from the client) — last resort.
+        for key in ("lan-ip", "host"):
+            if saved.get(key):
+                candidates.append(saved[key])
+        fallback = next((c for c in candidates
+                         if c != host and not c.endswith(".local")), None)
+        if host.endswith(".local") and fallback:
+            io.info(f"mDNS is served by the node itself — retrying last-known IP {fallback}")
+            host, base = fallback, f"{u.scheme}://{fallback}:{port}"
+        else:
+            io.info("fix the name first — /etc/hosts, mDNS (is the node on?), or use an IP")
+            return 1
 
     # layer 2: TCP
     try:
@@ -2002,10 +2066,12 @@ def remote_diagnose(io, host):
         "nvidia-smi --query-gpu=clocks.sm,power.draw,utilization.gpu "
         "--format=csv,noheader 2>/dev/null || echo '(no GPU?)'")
     io.info(f"$ ssh {target} '<containers + restarts + fabric + peers + GPU>'")
-    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6",
-                        target, probe], capture_output=True, text=True)
+    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6"]
+                       + ssh_key_args() + [target, probe],
+                       capture_output=True, text=True)
     if r.returncode != 0:
-        io.err(f"ssh failed ({r.returncode}) — node off, or keys/password not set up")
+        io.err(f"ssh failed ({r.returncode}) — node off, or keys/password not set up "
+               "(set WEIGHTLESS_SSH_KEY to the identity file if it uses a non-default key)")
         return
     out = r.stdout
     for line in out.splitlines():
