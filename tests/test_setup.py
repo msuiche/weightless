@@ -226,6 +226,12 @@ class AssetAndParkingTests(unittest.TestCase):
     def test_lane_metadata_and_asset_paths_match_recipes(self):
         for idx, lane in enumerate(setup.LANES):
             with self.subTest(lane=idx):
+                if lane.get("blocked"):
+                    # Blocked lanes ship a recipe dir + a fail-closed wizard
+                    # guard, not deployable assets (no docker image, no
+                    # downloads).
+                    self.assertTrue(os.path.exists(ROOT / lane["blocked_doc"]))
+                    continue
                 if lane.get("cloud"):
                     # Cloud lanes hold assets on Modal volumes, not the rig.
                     self.assertEqual(lane["cloud"], "modal")
