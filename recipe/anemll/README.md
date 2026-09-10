@@ -57,3 +57,29 @@ Gotchas:
   `tests/smoke/03-tool-call.sh` retries once and reports byte offset + context
   when both attempts fail — during a burst both do, which is the signal.
   Reported upstream: https://github.com/Anemll/dspark-vllm-gx10/issues/10
+
+## Ops: wedge self-healing (armed 2026-09-10)
+
+The 2026-09-10 incident: the worker wedged at 21:05 UTC (silent freeze —
+journal stops mid-cron, no panic/OOM; the known GB10 wedge class). The head
+lost its fabric address, vLLM exited fast against the dead peer, and
+`unless-stopped` crash-looped it 2,825 times in 9h. Fixes, in layers:
+
+- **Peer gate** (`docker-compose.dsv4.yml`, top of the boot command): rank 0
+  waits for `WORKER_VLLM_HOST_IP`, rank 1 for `MASTER_ADDR`, pinging every
+  30s instead of crash-looping. Takes effect at next container recreate —
+  and remember the start script does NOT sync this file to the nodes; copy
+  it over manually when it changes.
+- **Hardware watchdog** (both Sparks): `/etc/systemd/system.conf.d/watchdog.conf`
+  sets `RuntimeWatchdogSec=60` — systemd pings the SBSA watchdog at
+  `/dev/watchdog0`; a full OS freeze hard-resets the board within 60s.
+- **Panic-on-hang sysctls** (both Sparks, `/etc/sysctl.d/99-wedge-heal.conf`):
+  `softlockup_panic=1`, `hung_task_panic=1`, `panic=30` — kernel lockups and
+  hung tasks (the GPU-driver D-state class) panic and reboot instead of
+  sitting frozen.
+- Diagnose: wizard option 5 checks restart counts (>50 = crash loop), the
+  node's fabric address, and per-peer pings, with interpretation.
+
+Untested live: the watchdog has not been fired deliberately (needs a worker
+reboot window). kdump/pstore for post-mortem evidence is NOT armed —
+`crashkernel=` needs a boot-param change and a maintenance window.
