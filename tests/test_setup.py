@@ -243,11 +243,15 @@ class AssetAndParkingTests(unittest.TestCase):
                 plan = setup.asset_commands(idx, self.values, "head.local")
                 commands = "\n".join(shlex.join(argv) for _, argv in plan)
                 self.assertIn(lane["model_repo"], commands)
-                self.assertIn(lane["vector_repo"], commands)
-                self.assertIn(os.path.basename(env[lane["steer_key"]]), commands)
+                # Stock lanes ship no GLP vector (e.g. museglimmer) — no
+                # steering downloads to assert on those.
+                if lane.get("vector_repo"):
+                    self.assertIn(lane["vector_repo"], commands)
+                    self.assertIn(os.path.basename(env[lane["steer_key"]]), commands)
                 self.assertIn("/home/tester/.cache/huggingface", commands)
                 nodes = lane.get("nodes", 1)
-                self.assertEqual(sum(desc.startswith("download GLP") for desc, _ in plan), nodes)
+                self.assertEqual(sum(desc.startswith("download GLP") for desc, _ in plan),
+                                 nodes if lane.get("vector_repo") else 0)
                 self.assertEqual(sum(desc.startswith("rsync model cache") for desc, _ in plan), nodes - 1)
                 pulls = [argv for desc, argv in plan if desc.startswith("pull Docker")]
                 self.assertEqual(len(pulls), 0 if lane.get("local_image") else nodes)
@@ -308,6 +312,30 @@ class AssetAndParkingTests(unittest.TestCase):
         self.assertEqual(setup.CONTAINER_GREP[7], "nemotron35")
         self.assertIn((7, "nemotron35"),
                       setup.current_lanes("nemotron35\ninkling-sm121\n"))
+
+    def test_museglimmer_single_node_lane(self):
+        lane = setup.LANES[9]
+        self.assertFalse(lane["steering_supported"])  # no GLP vector exists yet
+        env = setup.lane_env(9, self.values)
+        self.assertEqual(env["MUSE_IMAGE"], "vllm/vllm-openai:v0.28.0")
+        self.assertEqual(env["SPECULATIVE_MODE"], "dflash")
+        plan = setup.asset_commands(9, self.values, "head.local")
+        commands = "\n".join(shlex.join(argv) for _, argv in plan)
+        self.assertIn("nvidia/Muse-Glimmer-30B-NVFP4", commands)
+        self.assertIn("--revision f45fad5689e9a4d937f7e872fbec20c4e8a74154", commands)
+        # The DFlash drafter is prefetched alongside the target weights.
+        self.assertIn("meta-models/Muse-Glimmer-30B-assistant", commands)
+        self.assertIn("--revision e8192f3a8f617f74be2ce220360c89ef4789f39f",
+                      commands)
+        self.assertNotIn("rsync model cache", commands)  # single node
+        deploy = setup.deploy_commands(9, self.values, "head.local")
+        text = "\n".join(shlex.join(argv) for _, argv in deploy)
+        self.assertIn("museglimmer/recipe/museglimmer", text)
+        self.assertNotIn("hotfix", text)  # stock vLLM serves the arch natively
+        self.assertIn("serve-museglimmer.sh", deploy[-1][1][-1])
+        self.assertEqual(setup.CONTAINER_GREP[9], "museglimmer")
+        self.assertIn((9, "museglimmer"),
+                      setup.current_lanes("museglimmer\ninkling-sm121\n"))
 
     def test_saved_env_overrides_cache_workers_image_and_disabled_steering(self):
         path = Path(self.tmp.name) / setup.LANES[6]["target"]

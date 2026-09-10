@@ -232,6 +232,24 @@ LANES = [
          model_repo="moonshotai/Kimi-K3",
          steer_modes=None,
          port=8000),
+    dict(name="Muse-Glimmer-30B NVFP4 TP=1 — single DGX Spark",
+         # Stock vLLM 0.28.0 serves muse_glimmer + its ATEM tool/reasoning
+         # parsers + the DFlash block-diffusion drafter natively; multimodal
+         # (text+image in). No GLP vector exists for this arch yet, so the
+         # wizard does not offer steering on this lane.
+         example="recipe/museglimmer/.env.museglimmer.example",
+         target="recipe/museglimmer/.env.museglimmer",
+         steer_key="WEIGHTLESS_GLP",
+         steer_modes=None,
+         steering_supported=False,
+         nodes=1,
+         remote_dir="museglimmer",
+         recipe_files=[".env.museglimmer", "serve-museglimmer.sh"],
+         start_script="serve-museglimmer.sh",
+         model_repo="nvidia/Muse-Glimmer-30B-NVFP4",
+         docker_image="vllm/vllm-openai:v0.28.0",
+         image_key="MUSE_IMAGE",
+         port=8084),
 ]
 PLACEHOLDER_HINTS = {
     "head-ip": ("Head node IP or hostname", ""),
@@ -607,11 +625,20 @@ def asset_commands(lane_idx, values, ssh_host=None):
                   'unset HF_HUB_OFFLINE TRANSFORMERS_OFFLINE; '
                   '"$HOME/.cache/weightless-hf/bin/hf" download ' + quoted + '; }')
     revision = (env.get("DSPARK_REVISION") if lane_idx == 0
-                else env.get("MODEL_REVISION") if lane_idx == 7 else None)
+                else env.get("MODEL_REVISION") if lane_idx in (7, 9) else None)
     args = [repo, "--cache-dir", cache]
     if revision:
         args += ["--revision", revision]
     add(f"download model weights: {repo}", dl(args))
+    if lane_idx == 9 and env.get("SPECULATIVE_MODE", "dflash") == "dflash":
+        # The DFlash drafter is a separate repo the serve command references
+        # by id; prefetch it too so the boot stays offline-first.
+        drafter = env.get("DRAFTER_MODEL_ID")
+        if drafter:
+            dargs = [drafter, "--cache-dir", cache]
+            if env.get("DRAFTER_REVISION"):
+                dargs += ["--revision", env["DRAFTER_REVISION"]]
+            add(f"download DFlash drafter: {drafter}", dl(dargs))
     for worker in workers:
         dest = f"{user}@{worker}:{worker_cache}/"
         mkdir = shlex.join(["ssh", "-o", "BatchMode=yes", f"{user}@{worker}",
@@ -754,24 +781,34 @@ def deploy_commands(lane_idx, values, ssh_host=None):
                 ["ssh", head, f"ssh {user}@{worker} mkdir -p {remote}/files && "
                               f"scp {staged} {user}@{worker}:{remote}/files/"]))
         return sync_steps
-    if lane_idx == 7:
-        # Nemotron single-node: repo-shaped remote (recipe/ + patches/), the
-        # serve script resolves the hotfix at ../../patches/.
+    lane = LANES[lane_idx]
+    if lane.get("nodes", 1) == 1 and lane.get("remote_dir"):
+        # Single-node lanes: repo-shaped remote (recipe/<name>/, plus
+        # patches/ when the lane ships a hotfix — the serve script resolves
+        # it at ../../patches/).
         host = f"{user}@{ssh_host or values.get('head-ip', '<node-host>')}"
-        remote = LANES[7]["remote_dir"]
-        return [
-            (f"prepare {host}:{remote}/ (repo-shaped: recipe + patches)",
-             ["ssh", host, f"mkdir -p {remote}/recipe/nemotron35 {remote}/patches"]),
+        remote = lane["remote_dir"]
+        recipe = os.path.dirname(lane["example"])  # recipe/<name>
+        hotfix = lane.get("hotfix")
+        steps = [
+            (f"prepare {host}:{remote}/ (repo-shaped: recipe"
+             + (" + patches" if hotfix else "") + ")",
+             ["ssh", host, f"mkdir -p {remote}/{recipe}"
+                           + (f" {remote}/patches" if hotfix else "")]),
             ("sync serve script + env",
-             ["scp", os.path.join(HERE, "recipe", "nemotron35", "serve-nemotron35.sh"),
-              os.path.join(HERE, "recipe", "nemotron35", ".env.nemotron35"),
-              f"{host}:{remote}/recipe/nemotron35/"]),
-            ("sync steering hotfix",
-             ["scp", os.path.join(HERE, "patches", "hotfix-nemotron35-steering-projective.py"),
-              f"{host}:{remote}/patches/"]),
-            ("boot the container",
-             ["ssh", host, f"bash {remote}/recipe/nemotron35/serve-nemotron35.sh"]),
+             ["scp", os.path.join(HERE, recipe, lane["start_script"]),
+              os.path.join(HERE, lane["target"]),
+              f"{host}:{remote}/{recipe}/"]),
         ]
+        if hotfix:
+            steps.append(
+                ("sync steering hotfix",
+                 ["scp", os.path.join(HERE, "patches", hotfix),
+                  f"{host}:{remote}/patches/"]))
+        steps.append(
+            ("boot the container",
+             ["ssh", host, f"bash {remote}/{recipe}/{lane['start_script']}"]))
+        return steps
     host = f"{user}@{ssh_host or '<node-host>'}"
     remote = "dspark-deploy"
     return [
@@ -849,9 +886,11 @@ DEPLOY_MAP = {
     7: [("recipe/nemotron35/.env.nemotron35", "nemotron35-glp/recipe/nemotron35/.env.nemotron35"),
         ("recipe/nemotron35/serve-nemotron35.sh", "nemotron35-glp/recipe/nemotron35/serve-nemotron35.sh"),
         ("patches/hotfix-nemotron35-steering-projective.py", "nemotron35-glp/patches/hotfix-nemotron35-steering-projective.py")],
+    9: [("recipe/museglimmer/.env.museglimmer", "museglimmer/recipe/museglimmer/.env.museglimmer"),
+        ("recipe/museglimmer/serve-museglimmer.sh", "museglimmer/recipe/museglimmer/serve-museglimmer.sh")],
 }
 CONTAINER_GREP = {0: "deepseek", 1: "qwen38", 2: "qwen38fn", 3: "glm53", 4: "glm5xl",
-                  5: "inkling-sm121", 6: "glm53tp2", 7: "nemotron35"}
+                  5: "inkling-sm121", 6: "glm53tp2", 7: "nemotron35", 9: "museglimmer"}
 
 
 def current_lanes(output):

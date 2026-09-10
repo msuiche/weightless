@@ -85,3 +85,19 @@ providers:
           supportsReasoningEffort: false
           maxTokensField: max_tokens
           supportsToolChoice: false
+      - id: muse-glimmer-nvfp4
+        name: Muse-Glimmer-30B NVFP4 (1x DGX Spark, :8084)
+        baseUrl: http://localhost:8084/v1
+        reasoning: true
+        input: [text]
+        contextWindow: 131072
+        maxTokens: 16384
+        # Card sampling: temp 1.0, top_p 0.95, top_k 64. Reasoning strength
+        # is a system-prompt knob (low/medium/high/xhigh; template default
+        # high). Requires --tool-call-parser muse_glimmer (ATEM markup).
+        supportsTools: true
+        compat:
+          supportsDeveloperRole: false
+          supportsReasoningEffort: false
+          maxTokensField: max_tokens
+          supportsToolChoice: true
