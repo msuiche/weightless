@@ -605,5 +605,127 @@ else:
             else:
                 os.environ["HF_HUB_CACHE"] = old_cache
 
+# --- apply_transformers: GLP vectors on a real HF decoder model -------------
+# Needs transformers on top of torch; skip cleanly without it. The model is a
+# 4-layer random Llama: small enough for CPU, real enough that layer location
+# and tuple/tensor output handling are the production code paths.
+try:
+    import transformers
+except ImportError:
+    print("  [SKIP] apply_transformers section: transformers not installed")
+else:
+    import apply_transformers as at
+    H, L = 64, 4
+    cfg = transformers.LlamaConfig(hidden_size=H, intermediate_size=2 * H,
+                                   num_hidden_layers=L, num_attention_heads=4,
+                                   num_key_value_heads=4, vocab_size=128,
+                                   max_position_embeddings=64)
+    torch.manual_seed(3)
+    model = transformers.LlamaForCausalLM(cfg).eval()
+    x = torch.randint(0, 128, (2, 7))
+
+    def _record(mdl):
+        """Post-layer residual stream at every layer, captured via hooks so the
+        test does not depend on output_hidden_states indexing conventions."""
+        store, hs = {}, []
+        for i, layer in enumerate(mdl.model.layers):
+            def mk(i):
+                def h(mod, args, out):
+                    t, _ = cv.Adapter.unwrap(out)
+                    store[i] = t.detach()
+                return h
+            hs.append(layer.register_forward_hook(mk(i)))
+        try:
+            with torch.no_grad():
+                mdl(x)
+        finally:
+            for h in hs:
+                h.remove()
+        return store
+
+    torch.manual_seed(4)
+    d1, d2 = cv._unit(torch.randn(H)), cv._unit(torch.randn(H))
+    with tempfile.TemporaryDirectory() as t:
+        gg = os.path.join(t, "v.gguf")
+        _gguf(gg, _GOOD_KVS, {1: d1.tolist(), 2: d2.tolist()})
+
+        dirs = at.load_directions(gg)
+        check("apply: loader returns F32 unit directions keyed by layer",
+              sorted(dirs) == [1, 2]
+              and all(v.shape == (H,) and v.dtype == torch.float32
+                      and abs(float(v.norm()) - 1.0) < 1e-5
+                      for v in dirs.values()))
+
+        base = _record(model)
+        with torch.no_grad():
+            logits_base = model(x).logits
+
+        with at.glp_steered(model, gg) as st:
+            check("apply: alpha defaults to glp.alpha_default, layers listed",
+                  st.alpha == 1.0 and st.layers == [1, 2] and st.attached)
+            steered = _record(model)
+            with torch.no_grad():
+                logits_steered = model(x).logits
+        check("apply: hooks removed on context exit", not st.attached)
+
+        check("apply: steered layers lose the d-component",
+              float((steered[1] @ d1).abs().max()) < 1e-4
+              and float((steered[2] @ d2).abs().max()) < 1e-4,
+              f"max |h'.d| {float((steered[1] @ d1).abs().max()):.2e}, "
+              f"{float((steered[2] @ d2).abs().max()):.2e}")
+        check("apply: unlisted layers are bit-exact untouched",
+              torch.equal(steered[0], base[0]))
+        check("apply: steering actually changes the logits",
+              not torch.equal(logits_steered, logits_base))
+        with torch.no_grad():
+            logits_after = model(x).logits
+        check("apply: exit restores the original model bit-exactly",
+              torch.equal(logits_after, logits_base))
+
+        st2 = at.attach_glp_steering(model, gg, alpha=2.0)
+        try:
+            refl = _record(model)
+        finally:
+            st2.detach()
+        check("apply: alpha=2 reflects the component (h'.d == -h.d)",
+              torch.allclose(refl[1] @ d1, -(base[1] @ d1), atol=1e-4)
+              and not st2.attached)
+
+        # --- refusal paths must raise, not silently misapply ----------------
+        wide = os.path.join(t, "wide.gguf")
+        _gguf(wide, _GOOD_KVS, {1: [0.25] * 32})
+        try:
+            at.attach_glp_steering(model, wide)
+            check("apply: width mismatch refuses", False, "it did not")
+        except ValueError as e:
+            check("apply: width mismatch refuses", "32" in str(e) and "64" in str(e))
+
+        add = os.path.join(t, "add.gguf")
+        kvs_add = [b for b in _GOOD_KVS if b"glp.mode" not in b]
+        _gguf(add, kvs_add + [_kv_str("glp.mode", "add")], {1: d1.tolist()})
+        try:
+            at.attach_glp_steering(model, add)
+            check("apply: additive-mode GGUF refuses", False, "it did not")
+        except ValueError as e:
+            check("apply: additive-mode GGUF refuses", "add" in str(e))
+
+        deep = os.path.join(t, "deep.gguf")
+        _gguf(deep, _GOOD_KVS, {1: d1.tolist(), 7: d2.tolist()})
+        try:
+            at.attach_glp_steering(model, deep)
+            check("apply: layer id past model depth refuses", False, "it did not")
+        except ValueError:
+            check("apply: layer id past model depth refuses", True)
+
+        odd = torch.nn.Module()
+        odd.config = cfg            # right width, but no known layer list
+        try:
+            at.attach_glp_steering(odd, gg)
+            check("apply: unknown architecture fails with evidence",
+                  False, "it did not")
+        except RuntimeError as e:
+            check("apply: unknown architecture fails with evidence",
+                  "model.layers" in str(e), str(e)[-90:])
+
 print(f"\n  {len(fails)} failure(s)" + (": " + ", ".join(fails) if fails else ""))
 sys.exit(1 if fails else 0)
