@@ -98,7 +98,20 @@ def _hidden_size(model):
 
 
 def _make_hook(d, alpha):
-    """h <- h - alpha*(h.d)d on the layer output, tuple or bare tensor."""
+    """h <- h - alpha*(h.d)d on the layer output, tuple or bare tensor.
+
+    Why the layer output IS the residual stream here: a forward hook on a
+    decoder *layer* module fires after that layer's forward returns, and
+    for standard HF decoder layers the returned hidden_states already has
+    attention + MLP folded into the residual -- exactly the tensor the GLP
+    spec calls residual_stream_post_layer. The hook's return value replaces
+    the module's output, so returning the projected tensor IS the edit; no
+    surgery on the model file. Archs whose layer output is not the plain
+    stream (widened hyper-connection streams, exotic fused norms) would
+    need their own hook-site adapter -- same lesson as the vLLM lanes.
+    Output convention varies by arch (bare tensor vs tuple with
+    hidden_states first), hence unwrap/rewrap.
+    """
     def hook(mod, args, out):
         t, was_tuple = _cv.Adapter.unwrap(out)
         dv = d.to(device=t.device, dtype=t.dtype)
@@ -173,6 +186,13 @@ def attach_glp_steering(model, gguf_path, alpha=None):
         raise ValueError(f"direction.{deep} but the model has {len(layers)} "
                          "decoder layers -- refusing")
 
+    # register_forward_hook fires after each listed layer's forward, on every
+    # call -- prefill and every decode step of generate(), KV cache or not, so
+    # every token that passes through a steered layer gets projected. This is
+    # the easy lane precisely because transformers runs eager: no CUDA graphs
+    # or torch.compile capture, so none of the vLLM hotfix discipline (dense
+    # zero-padded stacks, tensor alpha buffers, unconditional apply inside the
+    # traced region) is needed here.
     handles = [layers[i].register_forward_hook(_make_hook(dirs[i], alpha))
                for i in sorted(dirs)]
     return GLPSteering(model, gguf_path, alpha, dirs, handles)

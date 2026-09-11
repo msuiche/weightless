@@ -100,6 +100,63 @@ The model weights are never redistributed — what this repo ships is the
 Internals write-up:
 [Abliteration without redistributing the model](https://www.msuiche.com/posts/autoresearch-abliteration-without-redistributing-the-model/).
 
+## Streams and writers — and why GLP is not a LoRA
+
+Two objects get confused often enough that GLP ends up misfiled as a LoRA
+variant. They are different objects, and the difference is the whole design:
+
+- **The residual stream** is the running sum a token carries through the
+  network: the embedding output plus everything every layer has added so
+  far. It is an *activation* — it exists only at runtime, and no single
+  weight matrix sits behind it. A behavioral direction "in the residual
+  stream" means a direction in that accumulated quantity.
+- **A residual writer** is one of the matmuls whose output gets *added
+  into* the stream: `self_attn.o_proj`, `mlp.down_proj`
+  (`linear_attn.out_proj` on hybrid archs). Each writer has a concrete `W`
+  you can read and edit.
+
+GLP's native object is a direction `d̂` in the stream, and its native
+operation projects the *accumulated* stream at runtime:
+`h ← h − α(h·d̂)d̂`, applied by a hook after each listed layer. Activation
+space, α tunable at serve time, architecture-blind, nothing re-baked.
+
+A LoRA can only express a weight delta `ΔW = B·A` on an existing matmul.
+"Project the stream" has no single `W` behind it, so it cannot be written
+as a LoRA. What can be written is "project each residual writer": at
+`h = Wx` the projection is exactly `ΔW = −α·d̂(d̂ᵀW)` — the Arditi et al.
+weight-orthogonalization form, which is what `captain-vector bake` emits as
+a rank-1 adapter. Every limitation of the baked form follows from that one
+substitution:
+
+- **Writer ≠ stream.** Projecting all of a layer's writers at α equals
+  projecting that layer's *new contributions* at α (linearity) — but a
+  d̂-component already riding the incoming stream (embeddings, an unbaked
+  writer) passes through, where the runtime hook removes it regardless of
+  origin. Close in practice, not bit-identical.
+- **Dense-only in practice.** On MoE the writers are per-expert — hundreds
+  of matrices per layer — so a bake explodes into thousands of rank-1s
+  against quantized weights. Runtime stream steering is architecture-blind;
+  the MoE lanes here (DSV4, GLM, Hy4, K3) exist because of it.
+- **α is frozen** into `lora_A` — not tunable at serve time, and scaling
+  the adapter double-doses.
+- **Checkpoint-bound.** `lora_A` carries `W`; baked against the wrong base
+  revision the adapter is garbage and nothing downstream flags it (bake's
+  pin check fails closed for exactly this reason).
+
+The same constraint runs the other way: llama.cpp control vectors and the
+steering-LoRAs that circulated before GLP are *addition*-only
+(`h ← h + scale·d`), and addition cannot express "remove the d̂-component
+of whatever passes through here" — nor bake exactly anywhere (a constant
+shift is a bias, not a weight delta). Add-vs-project and runtime-vs-baked
+are two independent axes. GLP occupies the projective, runtime-native
+quadrant; the baked adapter is its portable shadow for stacks that only
+speak LoRA.
+
+Deeper: [`spec/GLP.md`](spec/GLP.md) (the format contract),
+[`docs/llama-cpp-compat.md`](docs/llama-cpp-compat.md) (source-verified
+mechanics), [`tools/captain-vector/README.md`](tools/captain-vector/README.md)
+(bake's troubleshooting/interop role).
+
 ## The stack
 
 Serving is **vLLM** (the only runtime with working sm_121a NVFP4 + MTP paths
