@@ -161,7 +161,7 @@ llama-server -m qwen3.8-27b-q8_0.gguf --lora glp-49-lora.gguf
 Why the chain type-checks, from source:
 
 - bake writes peft-standard `base_model.model.<stem>.lora_A/lora_B.weight`
-  names with `r=1, lora_alpha=1` (`captain_vector.py:1130-1135, 1165-1174`).
+  names with `r=1, lora_alpha=1` (`captain_vector.py:1159-1160, 1191-1194`).
   `convert_lora_to_gguf.py` strips exactly that prefix/suffix pair
   (`convert_lora_to_gguf.py:269-276`), emits `<name>.lora_a` / `.lora_b`
   tensors, and writes `adapter.lora.alpha` from `lora_alpha` (= 1.0)

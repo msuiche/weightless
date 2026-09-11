@@ -19,7 +19,7 @@ Usage:
   captain_vector.py --model <path> --harmful h.json --harmless b.json --out v.gguf
   captain_vector.py inspect v.gguf [--json] [--topk N]   (stdlib only)
   captain_vector.py export v.gguf --out v.safetensors    (stdlib only)
-  captain_vector.py bake v.gguf --base <model> --out <dir>   (needs torch)
+  captain_vector.py bake v.gguf --base <model> --out <dir>   (troubleshooting; needs torch)
 
 See README.md for the full parameter reference and the design rationale.
 """
@@ -945,6 +945,16 @@ def export_safetensors(gguf_path, out_path):
 # so B(Ax) = -alpha * (d.Wx) d. lora_A CARRIES W, which makes the adapter
 # checkpoint-bound: baked against the wrong base revision it is garbage, and
 # nothing downstream will flag it. Hence the pin check below fails closed.
+#
+# Semantic gap vs runtime steering: this projects each residual WRITER's
+# output, not the accumulated residual stream the runtime hooks steer.
+# Linearity makes that equal to projecting the layer's NEW contributions at
+# alpha, but a d-component already in the incoming stream (embeddings,
+# unbaked writers) passes through untouched -- runtime projection at the
+# layer removes it regardless of origin. Close in practice when writers
+# re-inject the direction every layer; NOT bit-identical. bake is a
+# troubleshooting/interop option (validate a direction lands, probe a merge
+# for survival), not the serving path -- the patches/ hotfixes are.
 
 # Residual-writing suffixes bake auto-detects, per layer, from the base
 # model's own weight index. Longer names first so a hybrid model's
@@ -1062,6 +1072,21 @@ def bake_lora(gguf_path, base, out_dir, alpha=None, modules=None,
     merge ecosystem, the GLP GGUF covers what LoRA cannot practically reach
     (MoE, quantized bases, runtime/multi-vector steering) and is designed to
     extend (rank-k, per-expert) if a baked form is ever needed for those.
+
+    Two caveats before you read anything into baked results:
+
+    bake is a troubleshooting/interop option. Use it to validate that a
+    direction lands at all, or to probe a merge/re-quant for direction
+    survival. The runtime hotfixes remain how GLP is served.
+
+    The adapter projects each residual writer's output, not the accumulated
+    residual stream the runtime hooks steer. Projecting every writer of a
+    layer at alpha equals projecting the layer's NEW contributions at alpha
+    (linearity), but a d-component already in the incoming stream --
+    embeddings, or a writer not baked -- passes through untouched, where
+    runtime projection at the layer removes it regardless of origin. Close
+    in practice when writers re-inject the direction every layer; not
+    bit-identical to runtime steering.
     """
     from safetensors import safe_open
     from safetensors.torch import save_file
@@ -1203,8 +1228,10 @@ def _bake_cmd(argv):
     p = argparse.ArgumentParser(
         prog="captain-vector bake",
         description="Bake a GLP control-vector GGUF into a rank-1 PEFT/LoRA "
-                    "adapter against the pinned base checkpoint. Requires "
-                    "torch + safetensors.")
+                    "adapter against the pinned base checkpoint. "
+                    "Troubleshooting/interop option (validate a direction "
+                    "lands, probe a merge) -- the runtime hotfixes remain "
+                    "the serving path. Requires torch + safetensors.")
     p.add_argument("file", help="control-vector GGUF")
     p.add_argument("--base", required=True,
                    help="local snapshot dir or HF repo id; must resolve to the "

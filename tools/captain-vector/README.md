@@ -31,8 +31,12 @@ python3 ../../weightless.py export some.gguf --out v.safetensors
 ```
 
 `bake` is the one command that produces something other than a view of the
-GGUF — and even then the GGUF stays canonical: the adapter is a *derived
-artifact*, regenerable from the GGUF plus the base checkpoint at any time:
+GGUF. Treat it as a **troubleshooting and interop option, not a serving
+path**: reach for it to validate that a direction lands at all (attach the
+adapter, diff generations), to probe a merge or re-quant for direction
+survival, or to feed an external stack that only takes adapters. The GGUF
+stays canonical — the adapter is a *derived artifact*, regenerable from the
+GGUF plus the base checkpoint at any time:
 
 ```sh
 python3 ../../weightless.py bake some.gguf --base Qwen/Qwen3.8-27B --out adapter/
@@ -51,6 +55,17 @@ LoRA with `lora_B = d̂`, `lora_A = −α·d̂ᵀW`, `r = lora_alpha = 1` (peft 
 GGUF's `glp.alpha_default`; `--alpha` overrides. Modules auto-detect per layer
 from the base's shard index (the residual-writing set: `self_attn.o_proj` /
 `linear_attn.out_proj` / `mlp.down_proj`); `--modules suf1,suf2` overrides.
+
+One caveat to know before you read anything into baked results: the adapter
+projects each residual *writer's* output, not the accumulated residual stream
+that the runtime hooks steer. By linearity, projecting every writer of a
+layer at α equals projecting that layer's *new contributions* at α — but a
+d̂-component already sitting in the incoming stream (from the embeddings, or
+from a writer you chose not to bake) passes through untouched, where runtime
+projection at the layer removes it regardless of origin. Close in practice
+when writers re-inject the direction every layer; not bit-identical to
+runtime steering. bake validates the per-writer identity numerically on the
+first and last baked matrix (`bake-report.json` → `roundtrip`).
 
 When *not* to use it: `bake` works for **dense models only**. On MoE models
 the residual writers are per-expert — hundreds of matrices per layer — so a
