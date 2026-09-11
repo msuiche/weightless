@@ -276,6 +276,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `scripts/dash.py` | live terminal view of any serving lane (stdlib only, ANSI colors on a terminal — brand pink/cyan, KV gauge green→yellow→red; `--no-color`/`NO_COLOR` for plain): `python3 scripts/dash.py <url>` for a live view, `--once` for a scriptable snapshot — prefill/decode tok/s, queue depth, KV pressure, prefix-cache hit rate, TTFT, spec-decode acceptance. Also in the wizard menu ("Watch a lane") |
 | `tests/smoke/` | endpoint smoke tests: endpoint / chat / tool-call / headless omp agent loop — `tests/smoke/README.md` |
 | `spec/GLP.md` | the GLP format spec: the `glp.mode` contract, layer-id mapping, why an additive reader must refuse the file |
+| `CHANGELOG.md` | date-based ship log (no versioned releases yet); steering numbers live in BENCHMARK.md |
 | `BENCHMARK.md` | steering effectiveness (all GLP vectors, all suites, with domain coverage) + the serving run log |
 
 Real `.env` files are gitignored — only `*.example` templates are tracked.
