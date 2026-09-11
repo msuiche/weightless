@@ -84,4 +84,7 @@ sections it builds on) and are required practice, not suggestions.
 - `captain_vector.py` — the library and its CLI (single file on purpose)
 - `calibrate_null.py` — measures what held/null ratio pure noise reaches
 - `test_captain_vector.py` — self-test script; also runs in `../../tests/`
-- `examples/` — a form-matched, benign prompt-pair template
+- `examples/` — a form-matched, benign prompt-pair template;
+  `examples/peft_merge.py` loads a baked adapter with peft (attach, with/without
+  generate, `merge_and_unload`) and enforces the no-rescale / pinned-revision
+  gotchas
