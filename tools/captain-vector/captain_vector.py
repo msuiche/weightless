@@ -51,7 +51,7 @@ _no_grad = torch.no_grad if torch is not None else lambda: (lambda f: f)
 # gguf package), because that is where a bad file hurts. The torch import
 # above stays mandatory for derivation itself.
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # Internal --hook names to the GLP.md hook-point strings. An unknown hook must
 # fail loud here rather than ship a file whose hook_point lies about where the
@@ -520,6 +520,30 @@ def validate_layer(A, B, fn, reps=20, seed=0):
 # ---------------------------------------------------------------------------
 # export
 # ---------------------------------------------------------------------------
+def _gram_schmidt(rows):
+    """Modified Gram-Schmidt over a stack of direction rows (float64 inside).
+
+    Orthogonalisation happens HERE, at write time -- never on load. The
+    shipped bytes ARE the orthonormal basis every reader applies, so
+    glp.content_sha256 covers the exact vectors in use and no two readers
+    can orthogonalise differently (order, numerics). Row 0 comes back
+    unchanged beyond normalisation, which is deliberate: direction.N stays
+    the dominant direction, so a rank-1 reader applying only direction.N
+    gets the rank-1 behaviour.
+    """
+    q = []
+    for v in rows:
+        v = v.double().clone()
+        for u in q:
+            v = v - (v @ u) * u
+        n = v.norm()
+        if float(n) < 1e-8:
+            raise ValueError("directions are linearly dependent; the "
+                             "subspace basis cannot be orthogonalised")
+        q.append(v / n)
+    return torch.stack(q).float()
+
+
 def write_gguf(path, dirs, meta):
     """GGUF control vector, llama.cpp tensor convention plus a mode contract.
 
@@ -537,11 +561,37 @@ def write_gguf(path, dirs, meta):
     An additive consumer loading a projective direction applies cleanly and is
     silently wrong. A reader that does not understand mode=project must refuse
     the file rather than fall back to adding.
+
+    RANK-K: `dirs` values may be a single 1-D direction (the rank-1 case,
+    byte-identical to earlier versions) or a stack of k directions per layer
+    -- a (k, n_embd) tensor or a list of k tensors. A stack is Gram-Schmidt
+    orthogonalised HERE (see _gram_schmidt for why not on load), direction 0
+    ships as direction.N and the rest as direction.N.j, and the file is
+    marked glp.spec_version=2 so rank-1-only readers refuse rather than
+    silently apply direction 0 alone. meta may carry "dir_scales" (k floats,
+    per-direction alpha multipliers) and "layer_scales" ({layer: m}).
     """
     import gguf
     layers = sorted(dirs)
     if layers and layers[0] < 1:
         raise ValueError("direction.0 is rejected by llama.cpp; exclude layer 0")
+
+    stacks = {}
+    for L, v in dirs.items():
+        t = v if isinstance(v, torch.Tensor) else torch.stack(list(v))
+        stacks[L] = (t.float().unsqueeze(0) if t.dim() == 1 else t.float())
+    ks = {s.shape[0] for s in stacks.values()}
+    if len(ks) != 1:
+        raise ValueError(f"direction count differs across layers: {sorted(ks)}")
+    k = ks.pop()
+    if k == 1:
+        stacks = {L: _unit(s[0]).unsqueeze(0) for L, s in stacks.items()}
+    else:
+        stacks = {L: _gram_schmidt(s) for L, s in stacks.items()}
+    dir_scales = meta.get("dir_scales")
+    if dir_scales is not None and len(dir_scales) != k:
+        raise ValueError(f"dir_scales has {len(dir_scales)} entries, rank is {k}")
+    layer_scales = meta.get("layer_scales")
 
     w = gguf.GGUFWriter(path, "controlvector")
     w.add_string("controlvector.model_hint", meta["model_hint"])
@@ -562,12 +612,20 @@ def write_gguf(path, dirs, meta):
         w.add_string("general.base_model.0.name", base)
     w.add_string("general.base_model.0.version", meta["revision"])
 
-    w.add_uint32("glp.spec_version", 1)
+    w.add_uint32("glp.spec_version",
+                 2 if (k > 1 or dir_scales or layer_scales) else 1)
     w.add_string("glp.generator", f"captain-vector {__version__}")
     w.add_string("glp.mode", "project")
     w.add_float32("glp.alpha_default", float(meta["alpha"]))
-    w.add_uint32("glp.rank", 1)
+    w.add_uint32("glp.rank", k)
     w.add_bool("glp.orthonormal", True)
+    if k > 1 or dir_scales:
+        scales = dir_scales if dir_scales is not None else [1.0] * k
+        w.add_string("glp.dir_scales", ",".join(f"{s:g}" for s in scales))
+    if layer_scales:
+        w.add_string("glp.layer_scales",
+                     ",".join(f"{L}:{m:g}" for L, m in
+                              sorted(layer_scales.items())))
     # captain-vector captures and applies at the same site, so derived_at is
     # always the hook here; a transferred vector (derived_at != hook_point) is
     # a relabel job for other tooling, not a derivation. Accept both internal
@@ -586,21 +644,73 @@ def write_gguf(path, dirs, meta):
     if meta.get("validation"):
         w.add_string("glp.validation", meta["validation"])
 
-    # Hash the exact bytes written (post-normalisation): content_sha256 is the
-    # field a consumer recomputes from the file it holds, so it must cover the
-    # shipped tensors, not the pre-_unit directions.
-    normed = {L: _unit(dirs[L].float()).contiguous().numpy() for L in layers}
+    # Hash the exact bytes written (post-normalisation, post-orthogonalisation):
+    # content_sha256 is the field a consumer recomputes from the file it holds,
+    # so it must cover the shipped tensors, not the pre-_unit directions. Order
+    # is (layer, direction) -- for rank 1 that is the historical layer order.
+    normed = {L: [row.contiguous().numpy() for row in stacks[L]]
+              for L in layers}
     h = hashlib.sha256()
     for L in layers:
-        h.update(normed[L].tobytes())
+        for j in range(k):
+            h.update(normed[L][j].tobytes())
     w.add_string("glp.content_sha256", h.hexdigest())
     w.add_string("glp.created", datetime.date.today().isoformat())
 
     for L in layers:
-        w.add_tensor(f"direction.{L}", normed[L])
+        w.add_tensor(f"direction.{L}", normed[L][0])
+        for j in range(1, k):
+            w.add_tensor(f"direction.{L}.{j}", normed[L][j])
     w.write_header_to_file(); w.write_kv_data_to_file()
     w.write_tensors_to_file(); w.close()
     return h.hexdigest(), layers
+
+
+# ---------------------------------------------------------------------------
+# direction naming and the alpha model -- shared by every reader below
+# ---------------------------------------------------------------------------
+def _parse_direction_name(name):
+    """direction.N -> (N, 0); direction.N.j -> (N, j). None for anything else.
+
+    direction.N IS direction 0 of layer N: a rank-1 file and the dominant
+    direction of a rank-k file share one name. That is what makes a rank-1
+    reader's behaviour on a rank-k file a defined degradation (it applies the
+    dominant direction) rather than a parse error -- though a conformant
+    reader must still refuse on glp.spec_version it does not implement.
+    """
+    m = re.fullmatch(r"direction\.(\d+)(?:\.(\d+))?", name)
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2) or 0)
+
+
+def glp_alphas(meta, layer_ids, alpha=None):
+    """Effective per-direction alpha at each layer: ({L: [a_0..a_{k-1}]}, k).
+
+        a_{L,j} = alpha * dir_scales[j] * layer_scales[L]
+
+    alpha defaults to glp.alpha_default. dir_scales is a comma list of k
+    floats (default 1.0 per direction); layer_scales a comma list of L:m
+    pairs (default 1.0 per layer). A rank-1 file carrying neither key reduces
+    to a_L = alpha_default -- the pre-subspace semantics, unchanged. Values
+    may be strings: the safetensors __metadata__ map is all strings.
+    """
+    k = int(meta.get("glp.rank") or 1)
+    base = float(alpha if alpha is not None
+                 else meta.get("glp.alpha_default", 1.0))
+    raw = meta.get("glp.dir_scales")
+    scales = [float(x) for x in raw.split(",")] if raw else [1.0] * k
+    if len(scales) != k:
+        raise ValueError(f"glp.dir_scales has {len(scales)} entries but "
+                         f"glp.rank is {k}")
+    per_layer = {}
+    raw = meta.get("glp.layer_scales")
+    if raw:
+        for pair in raw.split(","):
+            L, _, m = pair.partition(":")
+            per_layer[int(L)] = float(m)
+    return ({L: [base * s * per_layer.get(L, 1.0) for s in scales]
+             for L in layer_ids}, k)
 
 
 # ---------------------------------------------------------------------------
@@ -711,8 +821,10 @@ def validate_gguf(path, out=print):
               f"glp.mode = {mode!r}" + (" (unrecognised: readers must refuse)"
                                         if mode not in ("project", "add") else ""))
     if "glp.spec_version" in meta:
-        check(meta["glp.spec_version"] == 1,
-              f"glp.spec_version = {meta['glp.spec_version']}")
+        check(meta["glp.spec_version"] in (1, 2),
+              f"glp.spec_version = {meta['glp.spec_version']}" +
+              (" (unrecognised: readers must refuse)"
+               if meta["glp.spec_version"] not in (1, 2) else ""))
 
     # apply parameters
     hook = meta.get("glp.hook_point")
@@ -730,9 +842,22 @@ def validate_gguf(path, out=print):
     for k in ("glp.alpha_default", "glp.rank", "glp.orthonormal"):
         if mode == "project":
             check(k in meta, f"{k} present", warn=False)
-    if meta.get("glp.rank", 1) != 1:
-        out(f"  [WARN] glp.rank = {meta['glp.rank']}: no reader implements rank > 1")
-        warns.append(None)
+    rank = int(meta.get("glp.rank", 1) or 1)
+    version = int(meta.get("glp.spec_version", 1) or 1)
+    if rank != 1:
+        out(f"  [note] glp.rank = {rank}: subspace projection -- readers that "
+            f"implement rank 1 only must refuse this file")
+    # rank > 1 or alpha-scaling keys change what a reader computes, so they
+    # require spec_version 2: a version-1 reader would otherwise apply the
+    # file with the wrong alphas and nothing would flag it.
+    if version == 1:
+        check(rank == 1, "glp.rank > 1 requires glp.spec_version 2")
+        for k in ("glp.dir_scales", "glp.layer_scales"):
+            check(k not in meta, f"{k} requires glp.spec_version 2")
+    if rank > 1:
+        check(meta.get("glp.orthonormal") is True,
+              "glp.orthonormal = true (required for rank > 1: per-direction "
+              "alphas only commute on an orthonormal basis)")
 
     # provenance
     for k in ("general.base_model.0.name", "general.base_model.0.organization",
@@ -749,12 +874,13 @@ def validate_gguf(path, out=print):
     # tensors
     layer_ids = []
     n_embd = None
+    grouped = {}                    # layer -> {j: unit-norm float list}
     for name, dims, dtype, raw in tensors:
-        m = re.fullmatch(r"direction\.(\d+)", name)
-        if not m:
+        pj = _parse_direction_name(name)
+        if pj is None:
             check(False, f"unexpected tensor {name!r}")
             continue
-        n = int(m.group(1))
+        n, j = pj
         check(n >= 1, f"{name}: direction.0 is invalid (llama.cpp rejects it)")
         check(dtype == 0, f"{name}: dtype F32" if dtype == 0 else f"{name}: not F32")
         check(len(dims) == 1, f"{name}: 1-D (shape {dims})")
@@ -762,12 +888,53 @@ def validate_gguf(path, out=print):
             n_embd = dims[0]
         check(dims[0] == n_embd, f"{name}: n_embd {dims[0]} (uniform {n_embd})")
         if dtype == 0 and len(raw) == 4 * dims[0]:
-            norm = struct.unpack(f"<{dims[0]}f", raw)
-            norm = sum(x * x for x in norm) ** 0.5
+            vals = struct.unpack(f"<{dims[0]}f", raw)
+            grouped.setdefault(n, {})[j] = vals
+            norm = sum(x * x for x in vals) ** 0.5
             if abs(norm - 1.0) > 1e-3:
                 check(False, f"{name}: norm {norm:.4f}, expected unit", warn=True)
-        layer_ids.append(n)
-    check(bool(layer_ids), f"{len(layer_ids)} direction tensors")
+        if n not in layer_ids:
+            layer_ids.append(n)
+    check(bool(layer_ids), f"{len(layer_ids)} steered layers")
+
+    # rank: every layer must carry directions 0..k-1, and k must be the
+    # declared glp.rank. A missing direction.N.j is a partial subspace --
+    # applying it steers a different subspace than the one measured.
+    for n, js in sorted(grouped.items()):
+        check(sorted(js) == list(range(len(js))),
+              f"layer {n}: directions 0..{len(js) - 1} contiguous"
+              if sorted(js) == list(range(len(js))) else
+              f"layer {n}: direction indices {sorted(js)} are not 0..k-1")
+    ks = {len(js) for js in grouped.values()}
+    check(len(ks) <= 1, "uniform direction count across layers"
+          if len(ks) <= 1 else
+          f"direction count differs across layers: {sorted(ks)}")
+    if mode == "project" and len(ks) == 1:
+        got = next(iter(ks))
+        check(got == rank, f"tensor count matches glp.rank = {rank}"
+              if got == rank else
+              f"directions per layer ({got}) != glp.rank ({rank})")
+
+    # rank > 1: the basis must actually be orthonormal -- the apply math
+    # (independent per-direction alphas) assumes it, and a file claiming it
+    # without holding it misapplies silently.
+    if rank > 1 and meta.get("glp.orthonormal") is True:
+        worst = (0.0, "")
+        for n, js in sorted(grouped.items()):
+            for a, b in itertools.combinations(sorted(js), 2):
+                va, vb = js[a], js[b]
+                c = sum(x * y for x, y in zip(va, vb))
+                if abs(c) > worst[0]:
+                    worst = (abs(c), f"layer {n} cos(d{a},d{b})")
+        check(worst[0] <= 1e-3,
+              f"orthonormal basis (max |cos| {worst[0]:.2e}, {worst[1]})")
+
+    # alpha keys must parse and match the rank
+    try:
+        glp_alphas(meta, sorted(grouped))
+        check(True, "glp.dir_scales / glp.layer_scales parse")
+    except (ValueError, TypeError) as e:
+        check(False, f"alpha keys: {e}")
 
     declared = meta.get("glp.layer_ids_zero_based", "")
     if declared:
@@ -780,8 +947,8 @@ def validate_gguf(path, out=print):
     if "glp.content_sha256" in meta:
         h = hashlib.sha256()
         for name, dims, dtype, raw in sorted(
-                (t for t in tensors if t[0].startswith("direction.")),
-                key=lambda t: int(t[0].split(".")[1])):
+                (t for t in tensors if _parse_direction_name(t[0])),
+                key=lambda t: _parse_direction_name(t[0])):
             h.update(raw)
         actual = h.hexdigest()
         check(actual == meta["glp.content_sha256"],
@@ -822,26 +989,56 @@ def inspect_gguf(path, topk=5):
     A file with the tensors but no glp.* metadata is still reported -- that is
     exactly the legacy additive llama.cpp case validate warns about -- with
     the gap flagged in the report rather than hidden.
+
+    Rank-k (subspace) files report direction 0 in the per-layer fields that
+    predate rank (norm, cos_prev, top_dims -- cos_prev is between adjacent
+    layers' direction 0), plus "k" and, for k > 1, "dirs" (per-direction
+    norms), "cos_dirs" (pairwise cosines within the layer) and "alphas"
+    (the effective per-direction alpha at that layer).
     """
     meta, tensors = _read_gguf(path)
-    layers = []
+    grouped = {}
     for name, dims, dtype, raw in tensors:
-        m = re.fullmatch(r"direction\.(\d+)", name)
-        if not m:
+        pj = _parse_direction_name(name)
+        if pj is None:
             continue
         vals = _tensor_floats(dims, dtype, raw)
         if vals is None:
             raise ValueError(f"{name}: unreadable tensor payload "
                              f"(dtype {dtype}, {len(raw)} bytes)")
-        entry = {"layer": int(m.group(1)), "norm": sum(x * x for x in vals) ** 0.5,
-                 "cos_prev": None, "_vals": vals}
-        if topk > 0:
-            order = sorted(range(len(vals)), key=lambda i: -abs(vals[i]))
-            entry["top_dims"] = [[i, vals[i]] for i in order[:topk]]
-        layers.append(entry)
-    if not layers:
+        grouped.setdefault(pj[0], {})[pj[1]] = vals
+    if not grouped:
         raise ValueError("not a GLP control vector: no direction.N tensors "
                          "(run --validate for a full diagnosis)")
+    for L, js in grouped.items():
+        if 0 not in js:
+            raise ValueError(f"direction.{L} missing (found direction "
+                             f"indices {sorted(js)}) -- a partial subspace; "
+                             "run --validate for a full diagnosis")
+    is_glp = "glp.mode" in meta
+    alphas, rank = (glp_alphas(meta, sorted(grouped)) if is_glp
+                    else ({}, max(len(js) for js in grouped.values())))
+    layers = []
+    for L in sorted(grouped):
+        js = grouped[L]
+        vals0 = js[0]
+        entry = {"layer": L, "k": len(js),
+                 "norm": sum(x * x for x in vals0) ** 0.5,
+                 "cos_prev": None, "_vals": vals0}
+        if topk > 0:
+            order = sorted(range(len(vals0)), key=lambda i: -abs(vals0[i]))
+            entry["top_dims"] = [[i, vals0[i]] for i in order[:topk]]
+        if is_glp:
+            entry["alphas"] = alphas[L]
+        if len(js) > 1:
+            entry["dirs"] = [{"j": j,
+                              "norm": sum(x * x for x in js[j]) ** 0.5}
+                             for j in sorted(js)]
+            entry["cos_dirs"] = [
+                [a, b, sum(x * y for x, y in zip(js[a], js[b]))
+                 / (entry["dirs"][a]["norm"] * entry["dirs"][b]["norm"] + 1e-12)]
+                for a, b in itertools.combinations(sorted(js), 2)]
+        layers.append(entry)
     layers.sort(key=lambda e: e["layer"])
     for prev, cur in zip(layers, layers[1:]):
         cur["cos_prev"] = (sum(x * y for x, y in zip(prev["_vals"], cur["_vals"]))
@@ -851,7 +1048,8 @@ def inspect_gguf(path, topk=5):
         del e["_vals"]
     return {
         "file": os.path.basename(path),
-        "glp": "glp.mode" in meta,
+        "glp": is_glp,
+        "rank": rank,
         "metadata": {k: meta[k] for k in sorted(meta)
                      if k.startswith("glp.") or k.startswith("general.base_model.")},
         "n_embd": widths[0] if len(widths) == 1 else widths,
@@ -870,9 +1068,10 @@ def format_inspect(rep):
         for k, v in rep["metadata"].items():
             out.append(f"    {k:36s} {v}")
     layers = rep["layers"]
-    out.append(f"  {len(layers)} direction tensors, layers "
-               f"{layers[0]['layer']}..{layers[-1]['layer']}, "
-               f"n_embd {rep['n_embd']}")
+    n_tensors = sum(e["k"] for e in layers)
+    out.append(f"  {len(layers)} steered layers ({n_tensors} direction "
+               f"tensors), layers {layers[0]['layer']}..{layers[-1]['layer']}, "
+               f"n_embd {rep['n_embd']}, rank {rep['rank']}")
     hdr = f"  {'layer':>5} {'norm':>8} {'cos(prev)':>10}"
     if "top_dims" in layers[0]:
         hdr += "   top dims by |value|"
@@ -883,6 +1082,23 @@ def format_inspect(rep):
         if "top_dims" in e:
             line += "   " + " ".join(f"{i}:{v:+.3f}" for i, v in e["top_dims"])
         out.append(line)
+    if rep["rank"] > 1:
+        # the table above is direction 0; a subspace file has more to say
+        out.append(f"  rank {rep['rank']} subspace: h <- h - sum_j "
+                   f"alpha_j (h.d_j) d_j")
+        has_alphas = "alphas" in layers[0]
+        out.append(f"  {'layer':>5} {'j':>3} {'norm':>8}"
+                   + ("   alpha" if has_alphas else ""))
+        for e in layers:
+            for dj in e["dirs"]:
+                line = f"  {e['layer']:>5} {dj['j']:>3} {dj['norm']:>8.4f}"
+                if has_alphas:
+                    line += f"   {e['alphas'][dj['j']]:+.3f}"
+                out.append(line)
+        out.append("  pairwise cosines within each layer:")
+        for e in layers:
+            for a, b, c in e["cos_dirs"]:
+                out.append(f"  {e['layer']:>5}  cos(d{a},d{b}) {c:+.4f}")
     return "\n".join(out)
 
 
@@ -898,25 +1114,27 @@ def export_safetensors(gguf_path, out_path):
 
     F32 1-D direction tensors only: anything else is not a captain-vector
     export and converting it here would silently change dtype semantics, so
-    refuse. Returns the exported tensor names, sorted by layer.
+    refuse. Rank-k files export every direction: direction.N (j=0) plus
+    direction.N.j. Returns the exported tensor names, sorted by (layer, j).
     """
     import struct
     meta, tensors = _read_gguf(gguf_path)
     entries = []
     for name, dims, dtype, raw in tensors:
-        if not re.fullmatch(r"direction\.\d+", name):
+        pj = _parse_direction_name(name)
+        if pj is None:
             continue
         if dtype != 0:
             raise ValueError(f"{name}: dtype is not F32 -- refusing to convert")
         if len(dims) != 1:
             raise ValueError(f"{name}: shape {dims} is not 1-D -- refusing")
-        entries.append((int(name.split(".")[1]), name, dims[0], raw))
+        entries.append((pj[0], pj[1], name, dims[0], raw))
     if not entries:
         raise ValueError("no direction.N tensors in this file")
     entries.sort()
 
     header, buf = {}, b""
-    for _, name, n, raw in entries:
+    for _, _, name, n, raw in entries:
         header[name] = {"dtype": "F32", "shape": [n],
                         "data_offsets": [len(buf), len(buf) + len(raw)]}
         buf += raw
@@ -926,11 +1144,11 @@ def export_safetensors(gguf_path, out_path):
     hj = json.dumps(header).encode()
     with open(out_path, "wb") as f:
         f.write(struct.pack("<Q", len(hj)) + hj + buf)
-    return [name for _, name, _, _ in entries]
+    return [name for _, _, name, _, _ in entries]
 
 
 # ---------------------------------------------------------------------------
-# bake -- fold a shipped vector into a rank-1 PEFT/LoRA adapter (needs torch)
+# bake -- fold a shipped vector into a rank-k PEFT/LoRA adapter (needs torch)
 # ---------------------------------------------------------------------------
 # inspect/export stay stdlib-only because they run where files are served;
 # bake runs where the BASE WEIGHTS live, so torch + safetensors are required
@@ -942,9 +1160,16 @@ def export_safetensors(gguf_path, out_path):
 #   lora_B = d                 (out, 1)   unit norm
 #   lora_A = -alpha * d^T W    (1, in)    alpha baked in
 #   r = 1, lora_alpha = 1      (peft scaling 1.0 -- do not scale the adapter)
-# so B(Ax) = -alpha * (d.Wx) d. lora_A CARRIES W, which makes the adapter
-# checkpoint-bound: baked against the wrong base revision it is garbage, and
-# nothing downstream will flag it. Hence the pin check below fails closed.
+# so B(Ax) = -alpha * (d.Wx) d. A rank-k (subspace) vector generalises with
+# no new structure: dW = -sum_j alpha_j d_j (d_j^T W) is rank k, so
+#   lora_B = [d_0 .. d_{k-1}]            (out, k)   the stacked basis
+#   lora_A = [-alpha_j * d_j^T W]_j      (k, in)    per-direction alpha baked
+#   r = k, lora_alpha = 1
+# which is why the orthonormal basis matters here too: it is what makes the
+# per-direction alphas independent of each other. lora_A CARRIES W, which
+# makes the adapter checkpoint-bound: baked against the wrong base revision
+# it is garbage, and nothing downstream will flag it. Hence the pin check
+# below fails closed.
 #
 # Semantic gap vs runtime steering: this projects each residual WRITER's
 # output, not the accumulated residual stream the runtime hooks steer.
@@ -1055,11 +1280,12 @@ def _bake_weight_index(snap):
 
 def bake_lora(gguf_path, base, out_dir, alpha=None, modules=None,
               revision=None, out=print):
-    """Bake a GLP GGUF's directions into a rank-1 PEFT/LoRA adapter.
+    """Bake a GLP GGUF's directions into a rank-k PEFT/LoRA adapter.
 
-    Writes adapter_model.safetensors (fp32), adapter_config.json (r=1,
-    lora_alpha=1 -- alpha is baked into lora_A, so peft must not scale) and
-    bake-report.json into out_dir. Returns 0.
+    Writes adapter_model.safetensors (fp32), adapter_config.json (r=k, the
+    file's glp.rank, lora_alpha=1 -- alphas are baked into lora_A, so peft
+    must not scale) and bake-report.json into out_dir. k=1 for a
+    single-direction vector, unchanged from earlier versions. Returns 0.
 
     Scope: the adapter form is DENSE-MODELS-ONLY, for EXTERNAL workflows --
     static weight merges, adapter-serving stacks. It is NOT the weightless
@@ -1097,24 +1323,34 @@ def bake_lora(gguf_path, base, out_dir, alpha=None, modules=None,
         raise ValueError(
             f"{gguf_path}: general.base_model.0.version is {pin!r}, not a full "
             f"commit sha. bake is checkpoint-bound and refuses an unpinned vector.")
-    if alpha is None:
-        alpha = float(meta.get("glp.alpha_default", 1.0))
     if meta.get("glp.mode", "project") != "project":
         raise ValueError("bake implements the projective edit h -= alpha*(h.d)d; "
                          f"this GGUF declares mode={meta.get('glp.mode')!r}")
 
-    dirs = {}
+    grouped = {}
     for name, dims, dtype, raw in tensors:
-        m = re.fullmatch(r"direction\.(\d+)", name)
-        if not m:
+        pj = _parse_direction_name(name)
+        if pj is None:
             continue
         vals = _tensor_floats(dims, dtype, raw)
         if vals is None:
             raise ValueError(f"{name}: unreadable payload (dtype {dtype})")
         d = torch.tensor(vals, dtype=torch.float32)
-        dirs[int(m.group(1))] = d / d.norm()
-    if not dirs:
+        grouped.setdefault(pj[0], {})[pj[1]] = d / d.norm()
+    if not grouped:
         raise ValueError("no direction.N tensors in this file")
+    dirs = {}
+    for L, js in grouped.items():
+        if sorted(js) != list(range(len(js))):
+            raise ValueError(f"layer {L}: direction indices {sorted(js)} are "
+                             "not 0..k-1 -- a partial subspace would bake a "
+                             "different edit than the file describes")
+        dirs[L] = torch.stack([js[j] for j in sorted(js)])   # (rank, n_embd)
+    # alpha overrides the base (glp.alpha_default); per-direction dir_scales
+    # and per-layer layer_scales still apply on top of it.
+    alphas, rank = glp_alphas(meta, sorted(dirs), alpha)
+    alpha = float(alpha if alpha is not None
+                  else meta.get("glp.alpha_default", 1.0))
 
     snap, resolved_rev = _bake_resolve_base(base, pin, revision, out=out)
     wmap = _bake_weight_index(snap)
@@ -1148,12 +1384,13 @@ def bake_lora(gguf_path, base, out_dir, alpha=None, modules=None,
         with safe_open(os.path.join(snap, shard), framework="pt") as f:
             for L, k in sorted(by_shard[shard]):
                 W = f.get_tensor(k).to(torch.float32)      # (out, in)
-                d = dirs[L]
-                if W.shape[0] != d.numel():
+                D = dirs[L]                                # (rank, out)
+                if W.shape[0] != D.shape[1]:
                     raise ValueError(f"{k}: out dim {W.shape[0]} != direction "
-                                     f"dim {d.numel()} -- wrong base model")
-                A = (-alpha * (d @ W)).unsqueeze(0).clone()   # (1, in)
-                B = d.unsqueeze(1).clone()                    # (out, 1)
+                                     f"dim {D.shape[1]} -- wrong base model")
+                av = torch.tensor(alphas[L], dtype=torch.float32)
+                A = (-av.unsqueeze(1) * (D @ W)).clone()   # (rank, in)
+                B = D.T.contiguous().clone()               # (out, rank)
                 stem = k[:-len(".weight")]
                 mod = stem.split(f".layers.{L}.", 1)[-1]
                 adapter[f"base_model.model.{stem}.lora_A.weight"] = A
@@ -1166,7 +1403,7 @@ def bake_lora(gguf_path, base, out_dir, alpha=None, modules=None,
                     g = torch.Generator().manual_seed(L)
                     x = torch.randn(W.shape[1], generator=g)
                     h = W @ x
-                    direct = h - alpha * torch.dot(h, d) * d
+                    direct = h - D.T @ (av * (D @ h))
                     via = h + (B @ (A @ x.unsqueeze(1))).squeeze(1)
                     roundtrip[f"{L}:{mod}"] = float(
                         (direct - via).abs().max() / (h.norm() + 1e-9))
@@ -1175,13 +1412,14 @@ def bake_lora(gguf_path, base, out_dir, alpha=None, modules=None,
     st_path = os.path.join(out_dir, "adapter_model.safetensors")
     save_file(adapter, st_path, metadata={
         "format": "pt", "peft_type": "LORA", "task_type": "CAUSAL_LM",
-        "r": "1", "lora_alpha": "1",
+        "r": str(rank), "lora_alpha": "1",
         "alpha_baked": repr(alpha),
         "target_modules": ",".join(used_suffixes),
         "base_model": base_name, "revision": resolved_rev,
         "source_gguf": os.path.basename(gguf_path),
         "glp_content_sha256": str(meta.get("glp.content_sha256", "")),
-        "derivation": "rank-1 abliteration, dW = -alpha*d(d^T W)",
+        "derivation": f"rank-{rank} abliteration, "
+                      "dW = -sum_j alpha_j d_j(d_j^T W)",
         "generator": f"captain-vector {__version__} bake",
         "warning": "lora_alpha/r = 1.0, alpha is baked into lora_A -- do not "
                    "scale the adapter. Checkpoint-bound: lora_A carries W of "
@@ -1190,7 +1428,7 @@ def bake_lora(gguf_path, base, out_dir, alpha=None, modules=None,
     config = {
         "peft_type": "LORA", "task_type": "CAUSAL_LM",
         "base_model_name_or_path": base_name, "revision": resolved_rev,
-        "inference_mode": True, "r": 1, "lora_alpha": 1, "lora_dropout": 0.0,
+        "inference_mode": True, "r": rank, "lora_alpha": 1, "lora_dropout": 0.0,
         "bias": "none", "fan_in_fan_out": False, "use_rslora": False,
         "init_lora_weights": True,
         "target_modules": sorted({s.rsplit(".", 1)[-1] for s in used_suffixes}),
@@ -1204,7 +1442,8 @@ def bake_lora(gguf_path, base, out_dir, alpha=None, modules=None,
         "source_gguf": os.path.basename(gguf_path),
         "base_model": base_name, "base_revision": resolved_rev,
         "revision_overridden": bool(revision),
-        "alpha": alpha,
+        "alpha": alpha, "rank": rank,
+        "alphas": {str(L): a for L, a in sorted(alphas.items())},
         "modules": sorted({k.split(":", 1)[1] for k in report_layers}),
         "layers": report_layers, "roundtrip": roundtrip,
         "n_tensors": len(adapter), "n_layers": len(wanted),
@@ -1227,8 +1466,9 @@ def bake_lora(gguf_path, base, out_dir, alpha=None, modules=None,
 def _bake_cmd(argv):
     p = argparse.ArgumentParser(
         prog="captain-vector bake",
-        description="Bake a GLP control-vector GGUF into a rank-1 PEFT/LoRA "
-                    "adapter against the pinned base checkpoint. "
+        description="Bake a GLP control-vector GGUF into a rank-k PEFT/LoRA "
+                    "adapter against the pinned base checkpoint (k = the "
+                    "file's glp.rank; 1 for single-direction vectors). "
                     "Troubleshooting/interop option (validate a direction "
                     "lands, probe a merge) -- the runtime hotfixes remain "
                     "the serving path. Requires torch + safetensors.")
@@ -1239,7 +1479,9 @@ def _bake_cmd(argv):
     p.add_argument("--out", required=True, metavar="DIR",
                    help="output directory for the adapter")
     p.add_argument("--alpha", type=float, default=None,
-                   help="bake strength; default is the GGUF's glp.alpha_default")
+                   help="bake strength, replacing glp.alpha_default as the "
+                        "base alpha (per-direction and per-layer scales still "
+                        "apply on top); default is the GGUF's alpha_default")
     p.add_argument("--modules", default="", metavar="SUF1,SUF2",
                    help="comma-separated module suffixes; default auto-detects "
                         "residual writers (o_proj/out_proj/down_proj) per layer")

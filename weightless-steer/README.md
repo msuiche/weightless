@@ -1,0 +1,64 @@
+# weightless-steer — GLP steering as a vLLM plugin
+
+Applies `h ← h − α(h·d̂)d̂` on the post-layer residual stream of every
+steered decoder layer, with per-layer unit directions `d̂` from a GLP GGUF
+control vector (`../spec/GLP.md`). This is the plugin successor to the
+`../patches/hotfix-*-steering-projective.py` fleet: same container gates,
+same CUDA-graph discipline (dense zero-padded stack indexed by global
+layer id, tensor alpha buffer, unconditional apply, fail-closed), but no
+in-container file rewrites — vLLM's `vllm.general_plugins` entry point
+shadows the model class in the `ModelRegistry` with a steered subclass.
+Design: `../docs/vllm-plugin-design.md`, path (1).
+
+## Install
+
+Into the same environment that runs vLLM:
+
+```bash
+pip install /path/to/weightless/weightless-steer
+```
+
+## Serve
+
+```bash
+export WEIGHTLESS_STEER_PATH=/path/to/vector.gguf
+vllm serve <model>            # arch must be one the plugin shadows
+```
+
+Env vars (unchanged from the hotfixes):
+
+| var | meaning |
+|---|---|
+| `WEIGHTLESS_STEER_PATH` | GLP `.gguf` control vector. **Unset: the plugin registers nothing and the served model is byte-for-byte stock.** |
+| `WEIGHTLESS_STEER_ALPHA` | float; overrides the file's `glp.alpha_default` (which is the default when unset) |
+| `WEIGHTLESS_STEER_LAYERS` | optional comma list restricting steered layer ids |
+| `WEIGHTLESS_STEER_HOOK` | if set, must equal the adapter's hook (`residual_stream_post_layer`) — anything else fails closed |
+
+Supported archs today: `NemotronHForCausalLM` (nemotron_h / Nemotron-H
+3.5). Each additional lane is one module under `weightless_steer/archs/`.
+
+## Behaviour contract
+
+- **Fail-closed.** `WEIGHTLESS_STEER_PATH` set + a vector that is missing,
+  non-`project`, wrong `glp.hook_point`, wrong width, out of layer range,
+  or filtered to nothing: model construction raises and the engine boot
+  dies. A boot asked for steering never serves unsteered. (Validation
+  deliberately lives in the model `__init__`, not the plugin entry point —
+  vLLM swallows plugin-load exceptions.)
+- **Unsupported arch + `WEIGHTLESS_STEER_PATH` set serves stock.** Only
+  shadowed archs are steered; confirm from the boot log line
+  `weightless GLP steering active: hook=... alpha=... layers=...`.
+- **Speculative decoding:** the steering applies to the trunk layers only.
+  On checkpoints with MTP/nextn draft layers, serve without speculative
+  decoding (same caveat as the nemotron hotfix).
+- torch.compile / CUDA graphs: the apply lives inside the overridden
+  forward, so it is traced and captured exactly as the hotfix-patched
+  version was.
+
+## Tests
+
+No GPU, no vllm install needed (torch + numpy only):
+
+```bash
+cd weightless-steer && python -m unittest discover -s tests
+```

@@ -1,7 +1,9 @@
 # Upstreaming GLP steering into vLLM: extension-point survey and recommended path
 
-Status: design doc + skeleton, 2026-09-11. No upstream PR has been opened or is
-proposed here as a first step.
+Status: design doc; the recommended path (1) is implemented in
+`weightless-steer/` (plugin package + nemotron_h adapter + offline tests),
+2026-09-11. No upstream PR has been opened or is proposed here as a first
+step.
 
 Today we serve steered models through `patches/hotfix-*-steering-projective.py`:
 fail-closed boot scripts that rewrite vLLM model files inside the container
@@ -217,7 +219,8 @@ level of investment.** The plugin package subsumes today's hotfixes lane by
 lane; when/if upstream lands a hook, the per-arch subclasses shrink to
 interface implementations and the steering core is untouched.
 
-Skeleton (no implementation):
+Skeleton (as implemented, with the nemotron_h adapter as the first lane;
+glm5_next and qwen3_next adapters remain follow-up lanes):
 
 ```
 weightless-steer/

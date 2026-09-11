@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "weightless-steer"
+version = "0.1.0"
+description = "GLP projective activation steering for vLLM, as a general plugin (registry shadowing, no in-container patches)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+# torch and numpy come with the vLLM install; do not re-pin them here.
+dependencies = []
+
+[project.entry-points."vllm.general_plugins"]
+weightless_steer = "weightless_steer.plugin:register"
+
+[tool.setuptools.packages.find]
+include = ["weightless_steer*"]

@@ -28,14 +28,19 @@ def _kv_u32(k, v):
     return struct.pack("<Q", len(k)) + k.encode() + struct.pack("<I", 4) + struct.pack("<I", v)
 
 def _gguf(path, kvs, tensors, dtype=0):
-    """kvs: list of bytes blobs; tensors: {layer: [floats]}."""
+    """kvs: list of bytes blobs; tensors: {layer or (layer, j): [floats]}.
+
+    An int key writes direction.L; a (layer, j) tuple with j >= 1 writes
+    direction.L.j -- the rank-k (subspace) naming.
+    """
     blob = b"GGUF" + struct.pack("<IQQ", 3, len(tensors), len(kvs)) + b"".join(kvs)
     infos, data = b"", b""
     off = 0
     fmt, sz = ("f", 4) if dtype == 0 else ("e", 2)
-    for L in sorted(tensors):
-        vals = tensors[L]
-        name = f"direction.{L}"
+    for key in sorted(tensors, key=lambda x: (x, 0) if isinstance(x, int) else x):
+        L, j = key if isinstance(key, tuple) else (key, 0)
+        vals = tensors[key]
+        name = f"direction.{L}" if j == 0 else f"direction.{L}.{j}"
         infos += struct.pack("<Q", len(name)) + name.encode()
         infos += struct.pack("<I", 1) + struct.pack("<Q", len(vals))
         infos += struct.pack("<I", dtype) + struct.pack("<Q", off)
@@ -66,6 +71,20 @@ _u1, _u2 = [0.5, 0.5, 0.5, 0.5], [1.0, 0.0, 0.0, 0.0]
 _sha = hashlib.sha256()
 for _v in (_u1, _u2):
     _sha.update(struct.pack("<4f", *_v))
+
+# Rank-2 (subspace) fixture: an orthonormal pair per layer, per-direction
+# scales, a per-layer scale at layer 2, and spec_version 2 -- every feature
+# that requires the version gate, in one file.
+_e0, _e1 = [1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]
+_R2_KVS = ([b for b in _GOOD_KVS
+            if b"glp.spec_version" not in b and b"glp.rank" not in b]
+           + [_kv_u32("glp.spec_version", 2), _kv_u32("glp.rank", 2),
+              _kv_str("glp.dir_scales", "1.0,0.5"),
+              _kv_str("glp.layer_scales", "2:2.0")])
+_R2_TENSORS = {1: _e0, (1, 1): _e1, 2: _e0, (2, 1): _e1}
+_sha2 = hashlib.sha256()
+for _v in (_e0, _e1, _e0, _e1):           # (layer, direction) order
+    _sha2.update(struct.pack("<4f", *_v))
 
 with tempfile.TemporaryDirectory() as t:
     quiet = lambda *a: None
@@ -138,6 +157,101 @@ with tempfile.TemporaryDirectory() as t:
           md.get("glp.mode") == "project"
           and md.get("glp.hook_point") == "residual_stream_post_layer"
           and md.get("glp.content_sha256") == _sha.hexdigest())
+
+    # --- rank-2 (subspace): validate, inspect, export ----------------------
+    r2 = os.path.join(t, "rank2.gguf")
+    _gguf(r2, _R2_KVS + [_kv_str("glp.content_sha256", _sha2.hexdigest())],
+          _R2_TENSORS)
+    check("validate: conformant rank-2 file passes",
+          cv.validate_gguf(r2, out=quiet) == 0)
+
+    # spec_version 1 with rank-2 tensors/scale keys: a version-1 reader would
+    # ignore the keys it doesn't know and apply the wrong alphas, silently --
+    # the version gate exists to make that a refusal
+    r2v1 = os.path.join(t, "rank2_v1.gguf")
+    _gguf(r2v1, [b for b in _R2_KVS if b"glp.spec_version" not in b]
+          + [_kv_u32("glp.spec_version", 1)], _R2_TENSORS)
+    check("validate: rank-2 under spec_version 1 fails",
+          cv.validate_gguf(r2v1, out=quiet) == 1)
+
+    # a missing direction is a partial subspace -- a different edit entirely
+    r2gap = os.path.join(t, "rank2_gap.gguf")
+    _gguf(r2gap, _R2_KVS, {1: _e0, (1, 1): _e1, 2: _e0})
+    check("validate: layer missing a direction fails",
+          cv.validate_gguf(r2gap, out=quiet) == 1)
+    r2skip = os.path.join(t, "rank2_skip.gguf")
+    _gguf(r2skip, _R2_KVS, {1: _e0, (1, 2): _e1, 2: _e0, (2, 1): _e1})
+    check("validate: non-contiguous direction indices fail",
+          cv.validate_gguf(r2skip, out=quiet) == 1)
+
+    # orthonormal is claimed but false: per-direction alphas would not commute
+    r2non = os.path.join(t, "rank2_nonorth.gguf")
+    _gguf(r2non, _R2_KVS, {1: _e0, (1, 1): _u1, 2: _e0, (2, 1): _e1})
+    check("validate: non-orthonormal basis fails despite the claim",
+          cv.validate_gguf(r2non, out=quiet) == 1)
+
+    # dir_scales must match the rank, or alphas are ambiguous
+    r2ds = os.path.join(t, "rank2_scales.gguf")
+    _gguf(r2ds, [b for b in _R2_KVS if b"glp.dir_scales" not in b]
+          + [_kv_str("glp.dir_scales", "1.0")], _R2_TENSORS)
+    check("validate: dir_scales length mismatch fails",
+          cv.validate_gguf(r2ds, out=quiet) == 1)
+
+    rep2 = cv.inspect_gguf(r2, topk=0)
+    check("inspect: rank reported", rep2["rank"] == 2)
+    r2l1, r2l2 = rep2["layers"]
+    check("inspect: per-layer k and effective alphas",
+          r2l1["k"] == 2 and r2l1["alphas"] == [1.0, 0.5]
+          and r2l2["alphas"] == [2.0, 1.0],
+          f"{r2l1['alphas']} / {r2l2['alphas']}")
+    check("inspect: pairwise cosines between directions",
+          r2l1["cos_dirs"][0][0] == 0 and r2l1["cos_dirs"][0][1] == 1
+          and abs(r2l1["cos_dirs"][0][2]) < 1e-6)
+    check("inspect: direction-0 fields intact on rank-2",
+          abs(r2l1["norm"] - 1.0) < 1e-6
+          and abs(r2l2["cos_prev"] - 1.0) < 1e-6,
+          "both layers ship e0 as direction 0, so cos(prev) is 1")
+    check("inspect: rank-1 file reports k=1, rank=1, no subspace fields",
+          rep["rank"] == 1 and rep["layers"][0]["k"] == 1
+          and "dirs" not in rep["layers"][0])
+    txt2 = cv.format_inspect(rep2)
+    check("inspect: text shows rank, per-direction alpha, cosines",
+          "rank 2" in txt2 and "cos(d0,d1)" in txt2 and "+0.500" in txt2)
+
+    st2 = os.path.join(t, "r2.safetensors")
+    names2 = cv.export_safetensors(r2, st2)
+    check("export: rank-2 exports every direction, sorted by (layer, j)",
+          names2 == ["direction.1", "direction.1.1",
+                     "direction.2", "direction.2.1"])
+    d2 = open(st2, "rb").read()
+    hlen2 = struct.unpack("<Q", d2[:8])[0]
+    hdr2 = json.loads(d2[8:8 + hlen2])
+    buf2 = d2[8 + hlen2:]
+    check("export: rank-2 byte-exact tensor data",
+          buf2 == b"".join(struct.pack("<4f", *v)
+                           for v in (_e0, _e1, _e0, _e1)))
+    check("export: rank-2 alpha metadata travels",
+          hdr2["__metadata__"].get("glp.dir_scales") == "1.0,0.5"
+          and hdr2["__metadata__"].get("glp.rank") == "2")
+
+    # --- the alpha model itself ---------------------------------------------
+    amap, ak = cv.glp_alphas({"glp.rank": 2, "glp.alpha_default": 4.0,
+                              "glp.dir_scales": "1.0,0.25",
+                              "glp.layer_scales": "3:0.5"}, [1, 3])
+    check("alphas: per-direction and per-layer scales compose",
+          amap[1] == [4.0, 1.0] and amap[3] == [2.0, 0.5] and ak == 2)
+    amap1, ak1 = cv.glp_alphas({"glp.alpha_default": 4.0}, [1])
+    check("alphas: rank-1 legacy file reduces to alpha_default",
+          amap1[1] == [4.0] and ak1 == 1)
+    amap2, _ = cv.glp_alphas({"glp.rank": 2, "glp.alpha_default": 4.0,
+                              "glp.dir_scales": "1.0,0.25"}, [1], alpha=2.0)
+    check("alphas: an explicit alpha replaces the base, scales still apply",
+          amap2[1] == [2.0, 0.5])
+    try:
+        cv.glp_alphas({"glp.rank": 2, "glp.dir_scales": "1.0"}, [1])
+        check("alphas: dir_scales length mismatch raises", False, "it did not")
+    except ValueError:
+        check("alphas: dir_scales length mismatch raises", True)
 
     # --- refusal paths: inspect/export must fail clearly, not silently ------
     try:
@@ -268,6 +382,82 @@ except ValueError:
     check("export rejects layer 0", True)
 except ImportError:
     print("  [SKIP] export rejects layer 0 -- gguf not installed")
+
+# --- write_gguf rank-k: orthogonalisation happens at WRITE time ------------
+# The exporter, not the loader, owns Gram-Schmidt: the shipped bytes are the
+# basis every reader applies, so content_sha256 covers the vectors in use and
+# direction.1 stays the dominant direction exactly.
+try:
+    import gguf  # noqa: F401
+except ImportError:
+    gguf = None
+if gguf is None:
+    print("  [SKIP] write_gguf rank-k section -- gguf not installed")
+else:
+    _wmeta = {"model_hint": "test", "name": "w", "author": "test",
+              "base_model": "org/Model", "revision": "a" * 40, "alpha": 1.0,
+              "hook": "post_layer", "structure": "per-layer",
+              "method": "test", "contrast": "a-vs-b", "description": "test"}
+    with tempfile.TemporaryDirectory() as t:
+        wa = cv._unit(torch.randn(D))
+        wb = cv._unit(torch.randn(D))
+        w2 = os.path.join(t, "w2.gguf")
+        cv.write_gguf(w2, {1: torch.stack([wa, wb]), 2: [wa, wb]},
+                      dict(_wmeta, dir_scales=[1.0, 0.5]))
+        check("write: rank-2 file passes validation",
+              cv.validate_gguf(w2, out=quiet) == 0)
+        wrep = cv.inspect_gguf(w2, topk=0)
+        check("write: metadata marks rank 2, spec_version 2",
+              wrep["rank"] == 2
+              and wrep["metadata"].get("glp.rank") == 2
+              and wrep["metadata"].get("glp.spec_version") == 2)
+        meta_w, tensors_w = cv._read_gguf(w2)
+        got = {cv._parse_direction_name(n): cv._tensor_floats(dm, dt, rw)
+               for n, dm, dt, rw in tensors_w}
+        d10 = torch.tensor(got[(1, 0)])
+        d11 = torch.tensor(got[(1, 1)])
+        check("write: direction.1 is the original dominant direction",
+              torch.allclose(d10, wa, atol=1e-6),
+              f"cos {float(d10 @ wa):.6f}")
+        check("write: direction 1 is orthogonalised against direction 0",
+              abs(float(d10 @ d11)) < 1e-5
+              and abs(float(d11 @ wb)) > 0.9,
+              f"cos(d10,d11) {float(d10 @ d11):.2e}, cos(d11,orig) "
+              f"{float(d11 @ wb):.4f}")
+        check("write: dir_scales metadata round-trips",
+              [float(x) for x in meta_w["glp.dir_scales"].split(",")]
+              == [1.0, 0.5])
+        # a rank-1 file written by the same code path stays spec_version 1
+        w1 = os.path.join(t, "w1.gguf")
+        cv.write_gguf(w1, {1: wa}, _wmeta)
+        m1, t1 = cv._read_gguf(w1)
+        check("write: rank-1 output unchanged (spec_version 1, no .j tensors)",
+              m1.get("glp.spec_version") == 1 and m1.get("glp.rank") == 1
+              and "glp.dir_scales" not in m1
+              and [n for n, *_ in t1] == ["direction.1"])
+        # dependent directions cannot be orthogonalised -- fail, don't ship
+        try:
+            cv.write_gguf(os.path.join(t, "bad.gguf"),
+                          {1: torch.stack([wa, wa])}, _wmeta)
+            check("write: linearly dependent directions refuse", False,
+                  "it did not")
+        except ValueError:
+            check("write: linearly dependent directions refuse", True)
+        try:
+            cv.write_gguf(os.path.join(t, "bad2.gguf"),
+                          {1: torch.stack([wa, wb]), 2: wa}, _wmeta)
+            check("write: mixed ranks across layers refuse", False,
+                  "it did not")
+        except ValueError:
+            check("write: mixed ranks across layers refuse", True)
+        try:
+            cv.write_gguf(os.path.join(t, "bad3.gguf"),
+                          {1: torch.stack([wa, wb])},
+                          dict(_wmeta, dir_scales=[1.0]))
+            check("write: dir_scales length mismatch refuses", False,
+                  "it did not")
+        except ValueError:
+            check("write: dir_scales length mismatch refuses", True)
 
 # --- steering hook arithmetic ---------------------------------------------
 # The whole method is one line of algebra; if this is wrong every number the
@@ -605,6 +795,64 @@ else:
             else:
                 os.environ["HF_HUB_CACHE"] = old_cache
 
+        # --- rank-k bake: B stacks the basis, A carries per-direction alpha --
+        # dW = -sum_j alpha_j d_j(d_j^T W) is rank k with no new structure,
+        # which is what makes the generalisation exact rather than approximate.
+        e08 = torch.zeros(Hd); e08[0] = 1.0
+        e18 = torch.zeros(Hd); e18[1] = 1.0
+        gg2 = os.path.join(t, "v2.gguf")
+        _gguf(gg2, _R2_KVS, {1: e08.tolist(), (1, 1): e18.tolist(),
+                             2: e08.tolist(), (2, 1): e18.tolist()})
+        outd4 = os.path.join(t, "adapter-r2")
+        rc9 = cv._bake_cmd([gg2, "--base", base_dir, "--out", outd4])
+        check("bake: rank-2 file bakes", rc9 == 0)
+        ad4 = _st_load(os.path.join(outd4, "adapter_model.safetensors"))
+        B4 = ad4["base_model.model.model.layers.1.mlp.down_proj.lora_B.weight"]
+        A4 = ad4["base_model.model.model.layers.1.mlp.down_proj.lora_A.weight"]
+        check("bake: rank-2 B stacks the basis, A is (2, in)",
+              B4.shape == (Hd, 2) and A4.shape == (2, I)
+              and torch.allclose(B4[:, 0], e08)
+              and torch.allclose(B4[:, 1], e18))
+        Wr = weights["model.layers.1.mlp.down_proj.weight"]
+        check("bake: per-direction alpha baked into A rows (dir_scales)",
+              torch.allclose(A4[0], -1.0 * (e08 @ Wr), atol=1e-6)
+              and torch.allclose(A4[1], -0.5 * (e18 @ Wr), atol=1e-6))
+        Wr2 = weights["model.layers.2.mlp.down_proj.weight"]
+        A4b = ad4["base_model.model.model.layers.2.mlp.down_proj.lora_A.weight"]
+        check("bake: per-layer scale applies on top (layer_scales)",
+              torch.allclose(A4b[0], -2.0 * (e08 @ Wr2), atol=1e-6)
+              and torch.allclose(A4b[1], -1.0 * (e18 @ Wr2), atol=1e-6))
+        cfg4 = json.load(open(os.path.join(outd4, "adapter_config.json")))
+        check("bake: rank-2 adapter_config has r=2, lora_alpha=1",
+              cfg4["r"] == 2 and cfg4["lora_alpha"] == 1)
+        rep4 = json.load(open(os.path.join(outd4, "bake-report.json")))
+        check("bake: report carries rank and resolved per-layer alphas",
+              rep4["rank"] == 2 and rep4["alphas"]["1"] == [1.0, 0.5]
+              and rep4["alphas"]["2"] == [2.0, 1.0])
+        # the algebra itself: B(Ax) == -sum_j alpha_j (d_j.Wx) d_j
+        torch.manual_seed(5)
+        worst2 = 0.0
+        for _ in range(4):
+            x = torch.randn(I)
+            h_ = Wr @ x
+            direct = (h_ - 1.0 * torch.dot(h_, e08) * e08
+                      - 0.5 * torch.dot(h_, e18) * e18)
+            via = h_ + (B4 @ (A4 @ x.unsqueeze(1))).squeeze(1)
+            worst2 = max(worst2, float((direct - via).abs().max()))
+        check("bake: rank-2 B(Ax) == -sum_j alpha_j(d_j.Wx)d_j on probes",
+              worst2 < 1e-6, f"max abs err {worst2:.2e}")
+        # --alpha replaces the base; dir_scales still apply on top
+        outd5 = os.path.join(t, "adapter-r2-half")
+        rc10 = cv._bake_cmd([gg2, "--base", base_dir, "--out", outd5,
+                             "--alpha", "0.5"])
+        A5 = _st_load(os.path.join(
+            outd5, "adapter_model.safetensors"))[
+            "base_model.model.model.layers.1.mlp.down_proj.lora_A.weight"]
+        check("bake: --alpha replaces the base, scales still apply",
+              rc10 == 0
+              and torch.allclose(A5[0], -0.5 * (e08 @ Wr), atol=1e-6)
+              and torch.allclose(A5[1], -0.25 * (e18 @ Wr), atol=1e-6))
+
 # --- apply_transformers: GLP vectors on a real HF decoder model -------------
 # Needs transformers on top of torch; skip cleanly without it. The model is a
 # 4-layer random Llama: small enough for CPU, real enough that layer location
@@ -690,6 +938,63 @@ else:
         check("apply: alpha=2 reflects the component (h'.d == -h.d)",
               torch.allclose(refl[1] @ d1, -(base[1] @ d1), atol=1e-4)
               and not st2.attached)
+
+        # --- rank-2 (subspace) steering --------------------------------------
+        # e0 at alpha 1.0 is removed, e1 at 0.5 is halved; layer 2 carries a
+        # layer_scale of 2.0, doubling both (d0 reflects, d1 is removed).
+        e0 = torch.zeros(H); e0[0] = 1.0
+        e1 = torch.zeros(H); e1[1] = 1.0
+        gg2 = os.path.join(t, "v2.gguf")
+        _gguf(gg2, _R2_KVS, {1: e0.tolist(), (1, 1): e1.tolist(),
+                             2: e0.tolist(), (2, 1): e1.tolist()})
+
+        try:
+            at.load_directions(gg2)
+            check("apply: load_directions refuses rank-k", False, "it did not")
+        except ValueError:
+            check("apply: load_directions refuses rank-k", True)
+
+        _, dirs2, alphas2 = at.load_glp(gg2)
+        check("apply: load_glp stacks the basis and resolves alphas",
+              dirs2[1].shape == (2, H) and alphas2[1] == [1.0, 0.5]
+              and alphas2[2] == [2.0, 1.0])
+
+        with at.glp_steered(model, gg2) as st3:
+            check("apply: rank-2 handle reports rank and alphas",
+                  st3.rank == 2 and st3.alphas[1] == [1.0, 0.5])
+            steered2 = _record(model)
+        check("apply: rank-2 removes d0 and halves d1 at layer 1",
+              float(steered2[1][..., 0].abs().max()) < 1e-4
+              and torch.allclose(steered2[1][..., 1], 0.5 * base[1][..., 1],
+                                 atol=1e-4),
+              f"|h'.e0| {float(steered2[1][..., 0].abs().max()):.2e}")
+        check("apply: per-layer scale doubles alpha at layer 2",
+              float(steered2[2][..., 1].abs().max()) < 1e-4,
+              "d1 alpha = 0.5 x layer_scale 2.0 = 1.0: removed")
+        check("apply: content orthogonal to the subspace passes through",
+              torch.allclose(steered2[1][..., 2:], base[1][..., 2:],
+                             atol=1e-4))
+
+        # a basis claiming orthonormal that is not: refuse, don't misapply
+        nonorth = os.path.join(t, "nonorth.gguf")
+        _gguf(nonorth, _R2_KVS, {1: e0.tolist(), (1, 1): e0.tolist(),
+                                 2: e0.tolist(), (2, 1): e1.tolist()})
+        try:
+            at.attach_glp_steering(model, nonorth)
+            check("apply: non-orthonormal rank-2 refuses", False, "it did not")
+        except ValueError as e:
+            check("apply: non-orthonormal rank-2 refuses",
+                  "orthonormal" in str(e), str(e)[:80])
+
+        # glp.rank and the tensor count disagree: refuse
+        mism = os.path.join(t, "rankmismatch.gguf")
+        _gguf(mism, _R2_KVS, {1: e0.tolist(), 2: e0.tolist()})
+        try:
+            at.attach_glp_steering(model, mism)
+            check("apply: rank/tensor mismatch refuses", False, "it did not")
+        except ValueError as e:
+            check("apply: rank/tensor mismatch refuses",
+                  "glp.rank" in str(e), str(e)[:80])
 
         # --- refusal paths must raise, not silently misapply ----------------
         wide = os.path.join(t, "wide.gguf")

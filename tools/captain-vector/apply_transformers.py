@@ -2,8 +2,10 @@
 """apply_transformers -- project GLP control vectors onto any HF decoder model.
 
 Experiment-time use: hook the residual stream of a transformers model and
-apply  h <- h - alpha*(h.d)d  at exactly the layers a GLP GGUF lists. The
-production serving path stays the patches/ hotfixes; this module exists for
+apply  h <- h - sum_j alpha_j*(h.d_j)d_j  at exactly the layers a GLP GGUF
+lists -- a single direction per layer (rank 1) or an orthonormal subspace
+basis (rank k, directions direction.N plus direction.N.j). The production
+serving path stays the patches/ hotfixes; this module exists for
 measuring what a vector does on a checkpoint you have loaded in transformers
 anyway.
 
@@ -20,7 +22,6 @@ decoder-layer attribute paths works.
 from __future__ import annotations
 
 import os
-import re
 import sys
 
 try:
@@ -35,31 +36,64 @@ import captain_vector as _cv  # the stdlib GGUF reader lives there
 
 
 def _load(gguf_path):
-    """Parse once: (metadata dict, {layer: F32 tensor})."""
+    """Parse once: (metadata dict, {layer: (k, n_embd) F32 tensor}).
+
+    direction.N is direction 0 of layer N; direction.N.j (j >= 1) stacks the
+    rest of a rank-k subspace basis on top. The indices must run 0..k-1 per
+    layer -- a gap is a partial subspace, and applying that steers a
+    different subspace than the file describes.
+    """
     meta, tensors = _cv._read_gguf(gguf_path)
-    dirs = {}
+    grouped = {}
     for name, dims, dtype, raw in tensors:
-        m = re.fullmatch(r"direction\.(\d+)", name)
-        if not m:
+        pj = _cv._parse_direction_name(name)
+        if pj is None:
             continue
         vals = _cv._tensor_floats(dims, dtype, raw)
         if vals is None or dtype != 0 or len(dims) != 1:
             raise ValueError(f"{name}: GLP directions are F32 1-D; got dtype "
                              f"{dtype}, shape {dims} -- refusing to reinterpret")
-        dirs[int(m.group(1))] = torch.tensor(vals, dtype=torch.float32)
-    if not dirs:
+        grouped.setdefault(pj[0], {})[pj[1]] = torch.tensor(
+            vals, dtype=torch.float32)
+    if not grouped:
         raise ValueError("not a GLP control vector: no direction.N tensors")
+    dirs = {}
+    for L, js in grouped.items():
+        if sorted(js) != list(range(len(js))):
+            raise ValueError(f"layer {L}: direction indices {sorted(js)} are "
+                             "not 0..k-1 -- refusing to apply a partial "
+                             "subspace")
+        dirs[L] = torch.stack([js[j] for j in sorted(js)])
     return meta, dirs
 
 
 def load_directions(gguf_path):
-    """Read a GLP GGUF's direction tensors as {layer: torch.Tensor} (F32, 1-D).
+    """Read a rank-1 GLP GGUF's directions as {layer: torch.Tensor} (F32, 1-D).
 
     Layer ids are zero-based, per glp.layer_ids_zero_based. Unit norm is the
     writer's contract and is not re-checked here -- run the `validate` command
     for that; anything not F32 1-D is refused rather than reinterpreted.
+    Rank-k (subspace) files are refused: returning only direction 0 would
+    silently drop the rest of the basis. Use load_glp for those.
     """
-    return _load(gguf_path)[1]
+    meta, dirs = _load(gguf_path)
+    if any(d.shape[0] != 1 for d in dirs.values()):
+        raise ValueError("rank-k (subspace) vector: load_directions returns "
+                         "single directions only -- use load_glp")
+    return {L: d[0] for L, d in dirs.items()}
+
+
+def load_glp(gguf_path):
+    """Read a GLP GGUF fully: (metadata, {layer: (k, n_embd) tensor}, alphas).
+
+    alphas is {layer: [a_0..a_{k-1}]}, the effective per-direction strength
+    at each layer (glp.alpha_default x glp.dir_scales x glp.layer_scales).
+    Rank-1 files come back with k=1 -- the pre-subspace format is the k=1
+    special case, not a separate path.
+    """
+    meta, dirs = _load(gguf_path)
+    alphas, _ = _cv.glp_alphas(meta, sorted(dirs))
+    return meta, dirs, alphas
 
 
 def _find_layers(model):
@@ -97,8 +131,14 @@ def _hidden_size(model):
     return int(getattr(getattr(cfg, "text_config", cfg), "hidden_size"))
 
 
-def _make_hook(d, alpha):
-    """h <- h - alpha*(h.d)d on the layer output, tuple or bare tensor.
+def _make_hook(D, alphas):
+    """h <- h - sum_j alpha_j*(h.d_j)d_j on the layer output.
+
+    D is the layer's (k, n_embd) basis, alphas the k effective strengths.
+    With an orthonormal basis (glp.orthonormal, required for rank > 1) the
+    per-direction terms commute, so the plain sum IS the projection and no
+    apply order exists to get wrong; at k=1 this is the original one-line
+    edit h <- h - alpha*(h.d)d.
 
     Why the layer output IS the residual stream here: a forward hook on a
     decoder *layer* module fires after that layer's forward returns, and
@@ -114,8 +154,9 @@ def _make_hook(d, alpha):
     """
     def hook(mod, args, out):
         t, was_tuple = _cv.Adapter.unwrap(out)
-        dv = d.to(device=t.device, dtype=t.dtype)
-        t = t - alpha * (t @ dv).unsqueeze(-1) * dv
+        Dv = D.to(device=t.device, dtype=t.dtype)
+        av = alphas.to(device=t.device, dtype=t.dtype)
+        t = t - ((t @ Dv.T) * av) @ Dv
         return _cv.Adapter.rewrap(t, out, was_tuple)
     return hook
 
@@ -127,9 +168,12 @@ class GLPSteering:
     handle tracks whether it is attached and detach() is idempotent.
     """
 
-    def __init__(self, model, gguf_path, alpha, dirs, handles):
-        self.model, self.gguf_path, self.alpha = model, gguf_path, alpha
+    def __init__(self, model, source, alpha, dirs, handles, alphas=None):
+        self.model, self.source, self.alpha = model, source, alpha
         self.layers = sorted(dirs)
+        first = dirs[self.layers[0]]
+        self.rank = first.shape[0] if first.dim() > 1 else 1
+        self.alphas = alphas or {}
         self._handles = handles
 
     @property
@@ -149,17 +193,22 @@ class GLPSteering:
         return False
 
 
-def attach_glp_steering(model, gguf_path, alpha=None):
-    """Register projection hooks on the decoder layers a GLP GGUF lists.
+def _attach(model, source, meta, dirs, alpha):
+    """Validate (meta, dirs) against the model and register the hooks.
 
-    alpha defaults to glp.alpha_default. Refuses (ValueError) anything whose
-    mode is not project -- an additive consumer applying a projective vector,
-    or vice versa, is silently wrong, and silent is the failure mode this file
-    exists to avoid. Also refuses a hook_point other than
+    Split from attach_glp_steering so the safetensors lane (glp.py at the
+    repo root) shares exactly one implementation of the checks and the
+    hook registration -- the two loaders can never drift apart. dirs values
+    may be a 1-D direction or a (k, n_embd) stacked basis; 1-D is treated
+    as k=1. Metadata values may be strings (safetensors __metadata__ is a
+    string map), so numbers are coerced. Refuses (ValueError) anything whose
+    mode is not project -- an additive consumer applying a projective
+    vector, or vice versa, is silently wrong, and silent is the failure
+    mode this file exists to avoid. Also refuses a hook_point other than
     residual_stream_post_layer, a direction width that is not the model's
-    hidden size, and layer ids past the model's depth.
+    hidden size, layer ids past the model's depth, and rank > 1 without a
+    verified orthonormal basis (per-direction alphas only commute on one).
     """
-    meta, dirs = _load(gguf_path)
     mode = meta.get("glp.mode")
     if mode != "project":
         raise ValueError(
@@ -171,13 +220,40 @@ def attach_glp_steering(model, gguf_path, alpha=None):
     if hook is not None and hook != "residual_stream_post_layer":
         raise ValueError(f"glp.hook_point is {hook!r}; this helper applies at "
                          "residual_stream_post_layer only -- refusing")
-    if alpha is None:
-        alpha = float(meta.get("glp.alpha_default", 1.0))
+
+    dirs = {L: (d.unsqueeze(0) if d.dim() == 1 else d.float())
+            for L, d in dirs.items()}
+    ks = {d.shape[0] for d in dirs.values()}
+    if len(ks) != 1:
+        raise ValueError(f"direction count differs across layers: "
+                         f"{sorted(ks)} -- refusing")
+    k = ks.pop()
+    declared = int(meta.get("glp.rank") or 1)
+    if declared != k:
+        raise ValueError(f"glp.rank declares {declared} but the tensors "
+                         f"carry {k} direction(s) per layer -- refusing")
+    if k > 1:
+        if meta.get("glp.orthonormal") not in (True, 1, "true", "True", "1"):
+            raise ValueError("rank-k vector without glp.orthonormal=true: "
+                             "per-direction alphas only commute on an "
+                             "orthonormal basis -- refusing")
+        for L, d in sorted(dirs.items()):
+            off = d @ d.T - torch.eye(k)
+            if float(off.abs().max()) > 1e-3:
+                raise ValueError(
+                    f"layer {L}: basis is not orthonormal (max |G-I| "
+                    f"{float(off.abs().max()):.4f}) despite glp.orthonormal "
+                    "-- refusing")
+    # alpha overrides the base (glp.alpha_default); per-direction and
+    # per-layer scales from the metadata still apply on top of it.
+    alphas, _ = _cv.glp_alphas(meta, sorted(dirs), alpha)
+    alpha = float(alpha if alpha is not None
+                  else meta.get("glp.alpha_default", 1.0))
 
     hidden = _hidden_size(model)
     for i, d in sorted(dirs.items()):
-        if d.numel() != hidden:
-            raise ValueError(f"direction.{i} has width {d.numel()}, model "
+        if d.shape[-1] != hidden:
+            raise ValueError(f"direction.{i} has width {d.shape[-1]}, model "
                              f"hidden size is {hidden} -- this vector was not "
                              "derived for this checkpoint; refusing")
     layers = _find_layers(model)
@@ -193,9 +269,21 @@ def attach_glp_steering(model, gguf_path, alpha=None):
     # or torch.compile capture, so none of the vLLM hotfix discipline (dense
     # zero-padded stacks, tensor alpha buffers, unconditional apply inside the
     # traced region) is needed here.
-    handles = [layers[i].register_forward_hook(_make_hook(dirs[i], alpha))
-               for i in sorted(dirs)]
-    return GLPSteering(model, gguf_path, alpha, dirs, handles)
+    handles = [
+        layers[i].register_forward_hook(
+            _make_hook(dirs[i], torch.tensor(alphas[i], dtype=torch.float32)))
+        for i in sorted(dirs)]
+    return GLPSteering(model, source, alpha, dirs, handles, alphas=alphas)
+
+
+def attach_glp_steering(model, gguf_path, alpha=None):
+    """Register projection hooks on the decoder layers a GLP GGUF lists.
+
+    alpha defaults to glp.alpha_default. See _attach for what is refused
+    and why.
+    """
+    meta, dirs = _load(gguf_path)
+    return _attach(model, gguf_path, meta, dirs, alpha)
 
 
 def glp_steered(model, gguf_path, alpha=None):

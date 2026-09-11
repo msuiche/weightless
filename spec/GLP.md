@@ -99,7 +99,7 @@ Standard GGUF v3. Tensor convention is llama.cpp's, unchanged:
 
 | | |
 |---|---|
-| tensor names | `direction.<N>`, `N >= 1` — `direction.0` is invalid |
+| tensor names | `direction.<N>`, `N >= 1` — `direction.0` is invalid. Rank-k files add `direction.<N>.<j>`, j = 1..k−1 (see *Rank-k* below). |
 | dtype | `F32` |
 | shape | 1-D, `n_embd`, identical across all tensors |
 | layer mapping | **`direction.N` applies at layer `N`.** No offset. Layer 0 cannot be expressed. |
@@ -144,7 +144,7 @@ applier decides where a distributed file takes effect, so match the applier.
 | key | type | meaning |
 |---|---|---|
 | `glp.mode` | string | `project` or `add`. **Fatal if unrecognised.** |
-| `glp.spec_version` | uint32 | How to interpret the `glp.*` keys. Currently `1`. |
+| `glp.spec_version` | uint32 | How to interpret the `glp.*` keys. `1`, or `2` when the file carries rank > 1 or alpha-scaling keys. |
 
 `glp.spec_version` is deliberately distinct from `general.version`:
 `general.version` says *which build of this vector*, `spec_version` says *which
@@ -156,8 +156,10 @@ reader needs to tell those apart. Conflating them is how a format rots.
 | key | type | meaning |
 |---|---|---|
 | `glp.alpha_default` | float32 | Ablation strength. `1.0` removes the component exactly; we ship `4.0`. |
-| `glp.rank` | uint32 | Directions per layer. `1` for everything we have measured. |
-| `glp.orthonormal` | bool | Whether the per-layer basis is orthonormal. Required for rank > 1. |
+| `glp.rank` | uint32 | Directions per layer — the subspace rank k. `1` for single-direction files. |
+| `glp.orthonormal` | bool | Whether the per-layer basis is orthonormal. Required for rank > 1; producers orthogonalise at write time (see *Rank-k* below). |
+| `glp.dir_scales` | string | Optional. Comma-separated k floats — per-direction alpha multiplier (default 1.0). Version 2 only. |
+| `glp.layer_scales` | string | Optional. Comma-separated `L:m` pairs — per-layer alpha multiplier (default 1.0). Version 2 only. |
 | `glp.hook_point` | string | Where the projection is applied. See the table below. |
 | `glp.derived_at` | string | Where the direction was *captured*. Absent means "same as `hook_point`". |
 
@@ -166,6 +168,53 @@ quadratic in the direction's norm — scaling `d` by `s` scales the removal by `
 — so a strength baked into the data would not mean what a caller expects. The
 additive path folds strength into the data and is right to; the projective path
 must not.
+
+### Rank-k: a subspace, not a line
+
+One direction per layer assumes the behaviour is a line in activation space.
+It is not — refusal occupies a subspace, and this project already ships a
+second-direction artifact (hedging). A GLP file may therefore carry **k ≥ 1
+directions per layer**, applied as:
+
+```
+h  <-  h - sum_j alpha_j (h . d_j) d_j
+```
+
+Container: direction 0 of layer `N` keeps the name `direction.<N>`; the rest of
+the basis ships as `direction.<N>.<j>` (j = 1..k−1), under the same dtype,
+shape and unit-norm contract. A rank-1 file is the k=1 special case and is
+byte-identical to what earlier writers produced — **every existing
+single-direction artifact loads and applies exactly as before.**
+
+Alphas compose multiplicatively:
+
+```
+alpha_{L,j} = glp.alpha_default * glp.dir_scales[j] * glp.layer_scales[L]
+```
+
+`glp.dir_scales` gives each direction its own strength (a file can carry the
+refusal direction at full alpha and the hedging direction at half);
+`glp.layer_scales` overrides per layer. A file carrying neither key applies
+`alpha_default` everywhere — the pre-subspace semantics, unchanged.
+
+**Orthogonalisation happens at write time, never on load.** The producer
+Gram–Schmidts the basis before shipping and sets `glp.orthonormal=true`. The
+per-direction alphas in the sum above commute — mean something independently
+of apply order — only on an orthonormal basis, and doing the work at write
+time means the shipped bytes *are* the basis every reader applies:
+`glp.content_sha256` covers the exact vectors in use, and no two readers can
+orthogonalise differently. Gram–Schmidt preserves direction 0 up to
+normalisation, so `direction.<N>` remains the dominant direction and a legacy
+rank-1 reader applying only it gets the rank-1 behaviour. A reader must still
+**validate the claim**: rank > 1 with `glp.orthonormal` absent or false, or a
+basis that fails the check, is a refusal, not a fallback — the sum of
+projections along non-orthogonal directions is order-dependent and is not the
+edit the file describes.
+
+Rank > 1, `glp.dir_scales` and `glp.layer_scales` all require
+`glp.spec_version = 2`. A version-1 reader ignores keys it does not know, so
+without the version gate it would apply such a file with the wrong alphas and
+nothing would flag it. `spec_version` exists for exactly this.
 
 `hook_point` matters more than it looks. A vector is calibrated for one site,
 and applying it at another degrades silently rather than failing — there is no
@@ -245,6 +294,16 @@ A conforming reader **must**:
 6. Refuse to merge a `project` file with any other control vector. Elementwise
    summing is meaningful for additive vectors only; two projections do not
    compose into a projection along the sum of their directions.
+7. Read `glp.spec_version` and **fail** on a version it does not implement.
+   Rank > 1 and the alpha-scaling keys are only valid under version 2 — a
+   reader that ignores unknown keys would otherwise apply the file with the
+   wrong alphas, silently.
+8. For rank > 1: require `glp.orthonormal=true`, verify the basis, and apply
+   `h <- h - sum_j alpha_j (h . d_j) d_j` with
+   `alpha_{L,j} = alpha_default * dir_scales[j] * layer_scales[L]`. A reader
+   that implements rank 1 only must **refuse** a rank-k file rather than
+   apply direction 0 alone — the version-2 gate is what makes that refusal
+   happen in readers that predate rank.
 
 (6) is easy to miss because the existing loader sums across `--control-vector`
 arguments unconditionally, and the sum of two unit directions is not a unit
@@ -274,6 +333,11 @@ attention and MoE matmuls. Measured on the 2×GB10 cluster: **no throughput
 change**, 42-44 tok/s steered versus unsteered, and draft acceptance 2.81 versus
 2.72 on an unsteered control (both inside the content-driven spread — acceptance
 on this model ranges 2.4 to 5.6 purely by prompt shape).
+
+Rank-k is the same graph with the basis stacked into one `[k, n_embd]` tensor:
+`coef = mul_mat(D, h)` yields `[k, n_tokens]`, each row is scaled by its
+`alpha_j`, and the transposed matmul projects back. The rank-1 file is the k=1
+case of the same graph; no new ops.
 
 ## Implementations
 
@@ -410,5 +474,12 @@ a re-run of the derivation suites, not as a given.
   contrast, it clears cyber suites completely but only partly transfers to an
   unrelated harmful-content suite. A general-purpose direction needs a general
   contrast set.
-- `rank > 1` is expressible (`glp.rank`, `glp.orthonormal`) but neither
-  reader implements it, and we have no evidence it helps.
+- `rank > 1` is specified (see *Rank-k*) and implemented in the captain-vector
+  tooling — validate, inspect, export, bake — and in the transformers apply
+  lanes (`apply_transformers.py`, and `glp.py` via the weightless-steer
+  container reader, which parses and gates rank-k). The serving lanes remain
+  rank-1 and refuse a rank-k file at load: the hotfix fleet fails the
+  `direction.N.j` tensor-name parse, and weightless-steer's `SteeringCore`
+  refuses explicitly (one scalar alpha buffer per model). Whether k > 1 helps
+  over k=1 is still an open measurement; the hedging second direction is the
+  first test case.

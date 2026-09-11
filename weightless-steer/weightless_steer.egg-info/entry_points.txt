@@ -1,0 +1,2 @@
+[vllm.general_plugins]
+weightless_steer = weightless_steer.plugin:register

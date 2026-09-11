@@ -32,6 +32,47 @@ live in `BENCHMARK.md`; this file tracks what shipped.
   path; writer-vs-stream caveat documented in README, docstrings, CLI help,
   and both published HF model cards (GLP-49, GLP-63).
 
+## 2026-09-11 (evening batch)
+
+### Added
+- `weightless-steer/`: GLP steering as an installable vLLM
+  `vllm.general_plugins` package — shadows `NemotronHForCausalLM` via
+  `ModelRegistry.register_model` when `WEIGHTLESS_STEER_PATH` is set
+  (implements `docs/vllm-plugin-design.md` path 1). Shared GGUF container
+  reader (all spec gates enforced at load), graph-safe steering core,
+  nemotron_h arch adapter, 49 CPU-only tests. Same env vars and
+  fail-closed semantics as the hotfix fleet; unset env = stock registry.
+- `glp.py`: first-class GLP steering API for HF transformers —
+  `apply_glp(model, path_or_hf_repo, alpha=None)` applies a GLP GGUF vector
+  via residual-stream forward hooks (tuple re-wrapping, context manager +
+  idempotent detach). Loads through weightless-steer's `container.py`, the
+  one canonical reader. Alpha precedence: argument > `WEIGHTLESS_STEER_ALPHA`
+  > `glp.alpha_default` > 1.0. Verified against the published GLP-49
+  artifact; projection exact to ~2e-09 on the tiny-model smoke test.
+- GLP format rank-k: subspace projection. `direction.<N>.<j>` tensors,
+  `glp.dir_scales` / `glp.layer_scales` alpha model
+  (`α_{L,j} = alpha_default · dir_scales[j] · layer_scales[L]`),
+  `glp.spec_version 2` gate, Gram–Schmidt at write time (loaders validate,
+  never re-orthogonalize). Rank-1 artifacts byte-compatible — same
+  `content_sha256` (`spec/GLP.md`, *Rank-k* section).
+- captain-vector 0.4.0: rank-k across write/validate/inspect/export;
+  `bake` generalized from rank-1 to rank-k LoRA (B = stacked basis, r=k).
+- `tools/captain-vector/examples/projection_adapter.py`: runnable
+  PEFT-style `ProjectionAdapterLayer` reference implementation with numeric
+  verification (≤3.0e-07 end-to-end vs closed form, `merge_and_unload`
+  bit-exact; incoming-stream pass-through caveat demonstrated numerically).
+
+### Changed
+- `apply_transformers.py` / `glp.py`: hook applies
+  `h − Σⱼ αⱼ(h·d̂ⱼ)d̂ⱼ` (rank-k); GGUF and safetensors lanes share one
+  validation/hook implementation (`_attach`).
+- `weightless-steer` container reader parses and gates rank-k; serving
+  `SteeringCore` refuses rank-k explicitly (serving stays rank-1).
+- `docs/peft-contribution-draft.md` tightened: writer-vs-stream scope
+  section, differentiation from trained LoRA and llama.cpp CVC, exactness
+  claim scoped to dense per-writer, in-repo verification numbers.
+- `docs/vllm-plugin-design.md`: path 1 marked implemented.
+
 ## 2026-09-10
 
 ### Added
