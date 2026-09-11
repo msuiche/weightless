@@ -40,12 +40,22 @@ a deploy step; `harden_steps` in setup.py):
   sitting frozen.
 - **Peer gate** — the surviving node's boot waits for the peer and proceeds
   by itself when it returns.
+- **Crash dumps** — `nvidia-kdump-config enable-vmcore-dump`: real
+  `crashkernel=` reservation (DGX OS ships `1G-:0M`, i.e. zero), USE_KDUMP=1,
+  and a wider panic net (hardlockup, oops, RCU stall, NMI panics) on top of
+  the wedge-heal sysctls. A hang that panics now leaves a vmcore in
+  `/var/crash` instead of just rebooting blind. Active only after the
+  node's first reboot following the hardening run.
 
-Net effect: a wedge becomes a ~2-minute blip instead of a human power-cycle.
+Net effect: a wedge becomes a ~2-minute blip instead of a human power-cycle,
+and a panicking wedge leaves a post-mortem. First live validation: 2026-09-11,
+spark-5bc3 wedged at 06:35 and was reset by the watchdog, back at 06:36:53 —
+112s, no human involvement.
 
 Known gaps: the watchdog has not been fired deliberately (needs a reboot
-window). kdump/pstore for post-mortem evidence is not armed — `crashkernel=`
-is a boot-param change; do it at the next maintenance window. Check NVIDIA
+window). A hard wedge that never panics still leaves no dump — the watchdog
+resets the board without running the crash kernel; `efi_pstore` is the only
+channel there, check `/sys/fs/pstore` after the next event. Check NVIDIA
 for DGX OS updates; the wedge class is theirs to fix.
 
 ## Boot fails after the assets synced

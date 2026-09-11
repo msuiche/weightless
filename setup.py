@@ -772,11 +772,18 @@ def prepare_assets(io, lane_idx, values, ssh_host):
 def harden_steps(host, workers=()):
     """Idempotent node hardening as deploy steps: arm the SBSA hardware
     watchdog (systemd pings it; a full OS freeze hard-resets the board in
-    60s) + panic-on-hang sysctls (softlockup/hung_task -> panic -> reboot).
+    60s) + panic-on-hang sysctls (softlockup/hung_task -> panic -> reboot)
+    + kdump via NVIDIA's nvidia-kdump-config (full vmcore in /var/crash;
+    DGX OS ships with USE_KDUMP=0 and crashkernel=1G-:0M, i.e. off, and its
+    enable also widens the panic net: hardlockup/oops/rcu_stall/NMI).
     Learned from the 2026-09-10 wedge: a silent worker freeze cost a 9h
-    outage and a 2825-restart crash loop. Script travels base64-encoded so
-    nested ssh quoting cannot mangle it; sudo reads its password from the
-    tty (ssh -t), which is why these steps are interactive."""
+    outage and a 2825-restart crash loop; the 2026-09-11 repeat showed the
+    panic net converts hangs but leaves no post-mortem while kdump is off.
+    The crashkernel reservation only activates at boot, so a freshly armed
+    node reports REBOOT-REQUIRED until its next restart. Script travels
+    base64-encoded so nested ssh quoting cannot mangle it; sudo reads its
+    password from the tty (ssh -t), which is why these steps are
+    interactive."""
     script = (
         "set -e; CHG=0\n"
         "mkdir -p /etc/systemd/system.conf.d\n"
@@ -787,13 +794,22 @@ def harden_steps(host, workers=()):
         "{ printf 'kernel.softlockup_panic=1\\nkernel.hung_task_panic=1\\n"
         "kernel.panic=30\\n' > /etc/sysctl.d/99-wedge-heal.conf; CHG=1; }\n"
         "sysctl --system >/dev/null 2>&1 || true\n"
+        "if ! grep -q '^USE_KDUMP=1' /etc/default/kdump-tools 2>/dev/null; then\n"
+        "  if command -v nvidia-kdump-config >/dev/null; then\n"
+        "    nvidia-kdump-config enable-vmcore-dump; CHG=1\n"
+        "  else echo 'nvidia-kdump-config missing; kdump NOT armed' >&2; fi\n"
+        "fi\n"
+        "if grep -q 'crashkernel=1G-:0M' /proc/cmdline || "
+        "! grep -q crashkernel /proc/cmdline; then\n"
+        "  echo crashdump-armed-REBOOT-REQUIRED\n"
+        "else echo crashdump-armed-active; fi\n"
         "[ $CHG = 1 ] && systemctl daemon-reexec || true\n"
         "echo node-hardening-ok\n")
     b64 = base64.b64encode(script.encode()).decode()
-    steps = [("harden head: hardware watchdog + panic sysctls (sudo may prompt)",
+    steps = [("harden head: watchdog + panic sysctls + kdump (sudo may prompt)",
               ["ssh", "-t", host, f"echo {b64} | base64 -d | sudo bash"])]
     for w in workers:
-        steps.append((f"harden {w}: hardware watchdog + panic sysctls (sudo may prompt)",
+        steps.append((f"harden {w}: watchdog + panic sysctls + kdump (sudo may prompt)",
                       ["ssh", "-t", host,
                        f"echo {b64} | base64 -d > /tmp/.weightless-harden.sh && "
                        f"ssh -t {w} 'sudo bash /tmp/.weightless-harden.sh'"]))
