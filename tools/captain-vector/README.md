@@ -38,6 +38,10 @@ artifact*, regenerable from the GGUF plus the base checkpoint at any time:
 python3 ../../weightless.py bake some.gguf --base Qwen/Qwen3.8-27B --out adapter/
 ```
 
+For llama.cpp specifically — why `--control-vector` is the wrong door and the
+bake → `convert_lora_to_gguf.py` → `--lora` chain is the right one — see
+[`../../docs/llama-cpp-compat.md`](../../docs/llama-cpp-compat.md).
+
 It folds the vector into a rank-1 PEFT/LoRA adapter (`adapter_model.safetensors`
 fp32 + `adapter_config.json` + `bake-report.json`), for serving stacks that
 take adapters rather than control vectors. The math: `h ← h − α(h·d̂)d̂` at a
