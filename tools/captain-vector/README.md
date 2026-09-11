@@ -1,4 +1,8 @@
-# tools/captain-vector
+<p align="center">
+  <img src="logo.webp" alt="Captain Vector — the captain who steers your vectors" width="320">
+</p>
+
+# Captain Vector
 
 Derives a projective control vector from a model plus a pair of prompt sets
 (difference-of-means and friends, with a held-out-vs-null validation gate) and
