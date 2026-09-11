@@ -24,7 +24,7 @@ COMMANDS = {
              "live metrics for a serving lane (prefill/decode, queue, KV, spec decode)"),
     "test": (["sh", os.path.join(HERE, "tests", "smoke", "run.sh")],
              "endpoint smoke suite against the configured base URL"),
-    "validate": ([PY, os.path.join(HERE, "tools", "captain_vector.py"), "--validate"],
+    "validate": ([PY, os.path.join(HERE, "tools", "captain-vector", "captain_vector.py"), "--validate"],
                  "GLP spec check on a control-vector GGUF (exit 1 on FAIL)"),
 }
 

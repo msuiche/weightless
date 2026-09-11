@@ -1,4 +1,4 @@
-"""Runs the captain-vector self-test script (tools/test_captain_vector.py).
+"""Runs the captain-vector self-test script (tools/captain-vector/test_captain_vector.py).
 
 The real test is a standalone script, not a unittest module, so it stays
 runnable on its own and from refusal-research's shim; this wrapper folds it
@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "tools" / "test_captain_vector.py"
+SCRIPT = ROOT / "tools" / "captain-vector" / "test_captain_vector.py"
 
 
 class CaptainVectorTests(unittest.TestCase):

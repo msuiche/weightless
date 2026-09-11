@@ -1,27 +1,19 @@
-# tools/captain-vector
+# tools/
 
-Derives a projective control vector from a model plus a pair of prompt sets
-(difference-of-means and friends, with a held-out-vs-null validation gate) and
-writes it as a GGUF.
+Shipped product components — each one is a capability a weightless user can
+reach for, with an API or byte-format contract other code depends on, its own
+tests, and its own README. A tool is versioned and expected to grow.
 
-This is the **canonical producer** of the `glp.*` GGUF files that the serving
-hotfixes in `weightless/patches/` consume. They gate on the `glp.*` metadata
-keys, so the writer format here must not drift. `validate_gguf` is stdlib-only
-on purpose — it runs where the file is served, no torch, no gguf package:
+Contrast with `scripts/`: those are operational automation for our own rig
+and repo workflows (dashboard, router, watchdog, probes). A script does a job
+for the operator; a tool is part of the product surface.
 
-```sh
-python3 ../weightless.py validate some.gguf    # exit 1 on FAIL
-```
+One folder per tool:
 
-Derivation itself needs `torch`, `transformers`, `safetensors`, `gguf`. The
-full parameter reference and design rationale live in
-`refusal-research/derivation/captain-vector/README.md`.
+- `captain-vector/` — derives projective control vectors
+  (difference-of-means with null-calibrated gates) and writes the `glp.*`
+  GGUF files the serving hotfixes in `patches/` consume. Also backs the
+  `weightless.py validate` verb.
 
-The derivation methodology gates — null calibration, prompt-driven capture,
-ship gates — are specified in `refusal-research/METHODOLOGY.md` (§18 and the
-sections it builds on) and are required practice, not suggestions.
-
-- `captain_vector.py` — the library and its CLI (single file on purpose)
-- `calibrate_null.py` — measures what held/null ratio pure noise reaches
-- `test_captain_vector.py` — self-test script; also runs in `../tests/`
-- `examples/` — a form-matched, benign prompt-pair template
+If it has a contract someone else builds against, it belongs here. If it
+automates our own chores, it belongs in `scripts/`.
