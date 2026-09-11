@@ -77,6 +77,18 @@ direction: toward refusal, the exact inverse of the intent), and with a
 negative scale it subtracts a constant that has no relationship to how much
 d̂-component any given token actually has.
 
+This gap is why GLP exists. llama.cpp control vectors and the steering-LoRA
+adapters that circulated before it are addition-only, and addition cannot
+express "remove the d̂-component of whatever passes through here" — the
+operation refusal responds to in our measurements. Note that the dense/MoE
+split is a *different* axis from add-vs-project: runtime steering of either
+kind is architecture-blind (additive works on MoE too, just as crudely as on
+dense). What MoE breaks is *baking*: projection bakes exactly on dense
+(§4) but explodes into per-expert rank-1s on MoE, while additive steering
+cannot be baked exactly anywhere — a constant shift is a bias, not a weight
+delta, and the additive LoRAs that exist park d̂ on near-constant
+"massive-activation" channels and call it close enough.
+
 Our vectors were derived **and validated** in projective mode — α scans,
 coverage sweeps, and the refusal suites all measured `h − α(h·d̂)d̂`. Additive
 application of the same tensors is an unvalidated semantic. Nobody has run
