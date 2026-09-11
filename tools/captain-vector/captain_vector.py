@@ -17,6 +17,8 @@ is a default rather than a caveat.
 
 Usage:
   captain_vector.py --model <path> --harmful h.json --harmless b.json --out v.gguf
+  captain_vector.py inspect v.gguf [--json] [--topk N]   (stdlib only)
+  captain_vector.py export v.gguf --out v.safetensors    (stdlib only)
 
 See README.md for the full parameter reference and the design rationale.
 """
@@ -36,18 +38,19 @@ import unicodedata
 
 try:
     import torch
-except ImportError:  # --validate is stdlib-only by design (runs where served)
+except ImportError:  # validate/inspect/export are stdlib-only (run where served)
     torch = None
 
 # Module-level decorators must survive torch=None; the functions they wrap are
-# never called on the --validate path.
+# never called on the validate/inspect/export paths.
 _no_grad = torch.no_grad if torch is not None else lambda: (lambda f: f)
 
-# validate_gguf() below is stdlib-only on purpose: it must run on machines
-# that serve (no torch, no gguf package), because that is where a bad file
-# hurts. The torch import above stays mandatory for derivation itself.
+# validate_gguf(), inspect_gguf() and export_safetensors() below are
+# stdlib-only on purpose: they must run on machines that serve (no torch, no
+# gguf package), because that is where a bad file hurts. The torch import
+# above stays mandatory for derivation itself.
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"
 
 # Internal --hook names to the GLP.md hook-point strings. An unknown hook must
 # fail loud here rather than ship a file whose hook_point lies about where the
@@ -791,6 +794,167 @@ def validate_gguf(path, out=print):
 
 
 # ---------------------------------------------------------------------------
+# inspect / export -- derived views of a shipped file (stdlib only)
+# ---------------------------------------------------------------------------
+# The GGUF stays canonical: inspect and export produce VIEWS of it, never a
+# second source of truth. Like validate, both run where files are served, so
+# they share _read_gguf and pull in nothing beyond the stdlib.
+
+
+def _tensor_floats(dims, dtype, raw):
+    """Tensor payload as Python floats, or None if the dtype is not readable."""
+    import struct
+    n = 1
+    for x in dims:
+        n *= x
+    if dtype == 0 and len(raw) == 4 * n:
+        return list(struct.unpack(f"<{n}f", raw))
+    if dtype == 1 and len(raw) == 2 * n:
+        return list(struct.unpack(f"<{n}e", raw))
+    return None
+
+
+def inspect_gguf(path, topk=5):
+    """Read a control-vector GGUF into a report dict (see format_inspect).
+
+    Raises ValueError on a non-GGUF file or one with no direction.N tensors.
+    A file with the tensors but no glp.* metadata is still reported -- that is
+    exactly the legacy additive llama.cpp case validate warns about -- with
+    the gap flagged in the report rather than hidden.
+    """
+    meta, tensors = _read_gguf(path)
+    layers = []
+    for name, dims, dtype, raw in tensors:
+        m = re.fullmatch(r"direction\.(\d+)", name)
+        if not m:
+            continue
+        vals = _tensor_floats(dims, dtype, raw)
+        if vals is None:
+            raise ValueError(f"{name}: unreadable tensor payload "
+                             f"(dtype {dtype}, {len(raw)} bytes)")
+        entry = {"layer": int(m.group(1)), "norm": sum(x * x for x in vals) ** 0.5,
+                 "cos_prev": None, "_vals": vals}
+        if topk > 0:
+            order = sorted(range(len(vals)), key=lambda i: -abs(vals[i]))
+            entry["top_dims"] = [[i, vals[i]] for i in order[:topk]]
+        layers.append(entry)
+    if not layers:
+        raise ValueError("not a GLP control vector: no direction.N tensors "
+                         "(run --validate for a full diagnosis)")
+    layers.sort(key=lambda e: e["layer"])
+    for prev, cur in zip(layers, layers[1:]):
+        cur["cos_prev"] = (sum(x * y for x, y in zip(prev["_vals"], cur["_vals"]))
+                           / (prev["norm"] * cur["norm"] + 1e-12))
+    widths = sorted({len(e["_vals"]) for e in layers})
+    for e in layers:
+        del e["_vals"]
+    return {
+        "file": os.path.basename(path),
+        "glp": "glp.mode" in meta,
+        "metadata": {k: meta[k] for k in sorted(meta)
+                     if k.startswith("glp.") or k.startswith("general.base_model.")},
+        "n_embd": widths[0] if len(widths) == 1 else widths,
+        "layers": layers,
+    }
+
+
+def format_inspect(rep):
+    """Render an inspect_gguf report as text."""
+    out = [f"  {rep['file']}"]
+    if not rep["glp"]:
+        out.append("  note: no glp.* metadata -- legacy llama.cpp control "
+                   "vector; reporting tensors only")
+    if rep["metadata"]:
+        out.append("  metadata:")
+        for k, v in rep["metadata"].items():
+            out.append(f"    {k:36s} {v}")
+    layers = rep["layers"]
+    out.append(f"  {len(layers)} direction tensors, layers "
+               f"{layers[0]['layer']}..{layers[-1]['layer']}, "
+               f"n_embd {rep['n_embd']}")
+    hdr = f"  {'layer':>5} {'norm':>8} {'cos(prev)':>10}"
+    if "top_dims" in layers[0]:
+        hdr += "   top dims by |value|"
+    out.append(hdr)
+    for e in layers:
+        cos = f"{e['cos_prev']:+.4f}" if e["cos_prev"] is not None else "-"
+        line = f"  {e['layer']:>5} {e['norm']:>8.4f} {cos:>10}"
+        if "top_dims" in e:
+            line += "   " + " ".join(f"{i}:{v:+.3f}" for i, v in e["top_dims"])
+        out.append(line)
+    return "\n".join(out)
+
+
+def export_safetensors(gguf_path, out_path):
+    """Write the direction tensors of a GLP GGUF as a .safetensors file.
+
+    safetensors is an 8-byte little-endian u64 header length, a JSON header
+    (per-tensor dtype/shape/data_offsets, plus an optional __metadata__ string
+    map), then the raw little-endian tensor buffer. GGUF F32 payload bytes are
+    already little-endian, so the buffer is a byte copy -- no conversion, no
+    precision loss. glp.*/general.* metadata is copied into __metadata__ so
+    provenance travels with the export.
+
+    F32 1-D direction tensors only: anything else is not a captain-vector
+    export and converting it here would silently change dtype semantics, so
+    refuse. Returns the exported tensor names, sorted by layer.
+    """
+    import struct
+    meta, tensors = _read_gguf(gguf_path)
+    entries = []
+    for name, dims, dtype, raw in tensors:
+        if not re.fullmatch(r"direction\.\d+", name):
+            continue
+        if dtype != 0:
+            raise ValueError(f"{name}: dtype is not F32 -- refusing to convert")
+        if len(dims) != 1:
+            raise ValueError(f"{name}: shape {dims} is not 1-D -- refusing")
+        entries.append((int(name.split(".")[1]), name, dims[0], raw))
+    if not entries:
+        raise ValueError("no direction.N tensors in this file")
+    entries.sort()
+
+    header, buf = {}, b""
+    for _, name, n, raw in entries:
+        header[name] = {"dtype": "F32", "shape": [n],
+                        "data_offsets": [len(buf), len(buf) + len(raw)]}
+        buf += raw
+    header["__metadata__"] = {
+        k: str(v) for k, v in sorted(meta.items())
+        if k.startswith("glp.") or k.startswith("general.")}
+    hj = json.dumps(header).encode()
+    with open(out_path, "wb") as f:
+        f.write(struct.pack("<Q", len(hj)) + hj + buf)
+    return [name for _, name, _, _ in entries]
+
+
+def _file_cmd(cmd, argv):
+    """Dispatch the stdlib-only file subcommands (inspect, export)."""
+    p = argparse.ArgumentParser(prog=f"captain-vector {cmd}")
+    p.add_argument("file", help="control-vector GGUF")
+    if cmd == "inspect":
+        p.add_argument("--json", action="store_true",
+                       help="machine-readable report instead of text")
+        p.add_argument("--topk", type=int, default=5, metavar="N",
+                       help="top-N magnitude dimensions per layer (0 skips)")
+    else:
+        p.add_argument("--out", required=True, metavar="PATH.safetensors")
+    a = p.parse_args(argv)
+    try:
+        if cmd == "inspect":
+            rep = inspect_gguf(a.file, topk=a.topk)
+            print(json.dumps(rep, indent=2) if a.json else format_inspect(rep))
+        else:
+            names = export_safetensors(a.file, a.out)
+            print(f"  wrote {a.out}: {len(names)} direction tensors "
+                  f"({names[0]}..{names[-1]})")
+    except (ValueError, OSError) as e:
+        print(f"  error: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
+# ---------------------------------------------------------------------------
 def load_prompts(path):
     """Accept a bare list of strings, or an object with results/items records."""
     d = json.load(open(path))
@@ -838,6 +1002,10 @@ def parse_span(s, n):
 
 
 def main():
+    # The file-serving subcommands are stdlib-only and take a GGUF path rather
+    # than the derivation flags below; dispatch before argparse sees them.
+    if len(sys.argv) > 1 and sys.argv[1] in ("inspect", "export"):
+        sys.exit(_file_cmd(sys.argv[1], sys.argv[2:]))
     p = argparse.ArgumentParser(
         prog="captain-vector",
         description="Derive a projective control vector and export it as GGUF.")

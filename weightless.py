@@ -6,6 +6,9 @@
     python3 weightless.py dash [url]      live lane metrics (scripts/dash.py)
     python3 weightless.py test            endpoint smoke suite (tests/smoke/run.sh)
     python3 weightless.py validate f.gguf GLP spec check on a control-vector GGUF
+    python3 weightless.py inspect f.gguf  metadata + per-layer stats of a GLP GGUF
+    python3 weightless.py export f.gguf --out v.safetensors
+                                          direction tensors as .safetensors
 
 Stdlib only. Each subcommand execs the real script with the remaining
 arguments, so the scripts keep working standalone and there is exactly one
@@ -26,6 +29,10 @@ COMMANDS = {
              "endpoint smoke suite against the configured base URL"),
     "validate": ([PY, os.path.join(HERE, "tools", "captain-vector", "captain_vector.py"), "--validate"],
                  "GLP spec check on a control-vector GGUF (exit 1 on FAIL)"),
+    "inspect": ([PY, os.path.join(HERE, "tools", "captain-vector", "captain_vector.py"), "inspect"],
+                "metadata and per-layer stats of a control-vector GGUF [--json] [--topk N]"),
+    "export": ([PY, os.path.join(HERE, "tools", "captain-vector", "captain_vector.py"), "export"],
+               "export direction tensors as .safetensors (--out required)"),
 }
 
 

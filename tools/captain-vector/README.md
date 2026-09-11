@@ -17,6 +17,19 @@ on purpose — it runs where the file is served, no torch, no gguf package:
 python3 ../../weightless.py validate some.gguf    # exit 1 on FAIL
 ```
 
+Two more stdlib-only commands produce derived views of a shipped file — the
+GGUF stays canonical; `inspect` and `export` never create a second source of
+truth:
+
+```sh
+python3 ../../weightless.py inspect some.gguf              # metadata, per-layer
+                                                           # norm, adjacent cosine,
+                                                           # top dims [--json] [--topk N]
+python3 ../../weightless.py export some.gguf --out v.safetensors
+                                        # direction tensors as .safetensors,
+                                        # glp.*/general.* provenance in __metadata__
+```
+
 Derivation itself needs `torch`, `transformers`, `safetensors`, `gguf`. The
 full parameter reference and design rationale live in
 `refusal-research/derivation/captain-vector/README.md`.

@@ -2,10 +2,10 @@
 
 The real test is a standalone script, not a unittest module, so it stays
 runnable on its own and from refusal-research's shim; this wrapper folds it
-into the unittest suite. It needs torch — without it the test skips rather
-than fails, matching the script's own treatment of optional deps.
+into the unittest suite. The script is torch-optional: the stdlib-only
+sections (GGUF validate/inspect/export) always run, and the torch-dependent
+sections skip gracefully when torch is absent.
 """
-import importlib.util
 import subprocess
 import sys
 import unittest
@@ -17,8 +17,6 @@ SCRIPT = ROOT / "tools" / "captain-vector" / "test_captain_vector.py"
 
 class CaptainVectorTests(unittest.TestCase):
     def test_self_test_script_passes(self):
-        if importlib.util.find_spec("torch") is None:
-            self.skipTest("torch not installed; the captain-vector self-test needs it")
         r = subprocess.run([sys.executable, str(SCRIPT)],
                            capture_output=True, text=True)
         sys.stdout.write(r.stdout)

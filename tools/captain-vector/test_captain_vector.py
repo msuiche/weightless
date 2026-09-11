@@ -5,7 +5,7 @@ Each targets a failure that produces a plausible number rather than an error --
 the only kind worth a test here.
 """
 import sys, json, tempfile, os
-import torch
+import hashlib, struct
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import captain_vector as cv
 
@@ -13,6 +13,177 @@ fails = []
 def check(name, cond, detail=""):
     print(f"  [{'PASS' if cond else 'FAIL'}] {name}{'  -- ' + detail if detail else ''}")
     if not cond: fails.append(name)
+
+# --- stdlib-only: GGUF fixtures, --validate, inspect, export -----------------
+# These sections run on every machine, torch or not: the GGUF validate,
+# inspect and export paths are stdlib-only by design, and the fixtures are
+# hand-built so they do not depend on the writer they are testing against.
+
+def _kv_str(k, v):
+    b = struct.pack("<Q", len(k)) + k.encode()
+    b += struct.pack("<I", 8) + struct.pack("<Q", len(v)) + v.encode()
+    return b
+
+def _kv_u32(k, v):
+    return struct.pack("<Q", len(k)) + k.encode() + struct.pack("<I", 4) + struct.pack("<I", v)
+
+def _gguf(path, kvs, tensors, dtype=0):
+    """kvs: list of bytes blobs; tensors: {layer: [floats]}."""
+    blob = b"GGUF" + struct.pack("<IQQ", 3, len(tensors), len(kvs)) + b"".join(kvs)
+    infos, data = b"", b""
+    off = 0
+    fmt, sz = ("f", 4) if dtype == 0 else ("e", 2)
+    for L in sorted(tensors):
+        vals = tensors[L]
+        name = f"direction.{L}"
+        infos += struct.pack("<Q", len(name)) + name.encode()
+        infos += struct.pack("<I", 1) + struct.pack("<Q", len(vals))
+        infos += struct.pack("<I", dtype) + struct.pack("<Q", off)
+        data += struct.pack(f"<{len(vals)}{fmt}", *vals)
+        off += sz * len(vals)
+    blob += infos
+    pad = (32 - len(blob) % 32) % 32
+    blob += b"\0" * pad + data
+    open(path, "wb").write(blob)
+
+_GOOD_KVS = [
+    _kv_str("general.architecture", "controlvector"),
+    _kv_str("glp.mode", "project"), _kv_u32("glp.spec_version", 1),
+    _kv_str("glp.hook_point", "residual_stream_post_layer"),
+    _kv_str("glp.derived_at", "residual_stream_post_layer"),
+    struct.pack("<Q", len("glp.alpha_default")) + b"glp.alpha_default" + struct.pack("<If", 6, 1.0),
+    _kv_u32("glp.rank", 1),
+    struct.pack("<Q", len("glp.orthonormal")) + b"glp.orthonormal" + struct.pack("<IB", 7, 1),
+    _kv_str("general.base_model.0.name", "Model"),
+    _kv_str("general.base_model.0.organization", "org"),
+    _kv_str("general.base_model.0.version", "a" * 40),
+    _kv_str("general.base_model.0.repo_url", "https://huggingface.co/org/Model"),
+    _kv_str("glp.method", "dom"), _kv_str("glp.contrast", "a-vs-b"),
+    _kv_str("glp.created", "2026-09-04"),
+    _kv_str("glp.layer_ids_zero_based", "1,2"),
+]
+_u1, _u2 = [0.5, 0.5, 0.5, 0.5], [1.0, 0.0, 0.0, 0.0]
+_sha = hashlib.sha256()
+for _v in (_u1, _u2):
+    _sha.update(struct.pack("<4f", *_v))
+
+with tempfile.TemporaryDirectory() as t:
+    quiet = lambda *a: None
+    good = os.path.join(t, "good.gguf")
+    _gguf(good, _GOOD_KVS + [_kv_str("glp.content_sha256", _sha.hexdigest())],
+          {1: _u1, 2: _u2})
+    check("validate: conformant file passes", cv.validate_gguf(good, out=quiet) == 0)
+
+    bad_sha = os.path.join(t, "bad_sha.gguf")
+    _gguf(bad_sha, _GOOD_KVS + [_kv_str("glp.content_sha256", "0" * 64)],
+          {1: _u1, 2: _u2})
+    check("validate: wrong content_sha256 fails",
+          cv.validate_gguf(bad_sha, out=quiet) == 1)
+
+    l0 = os.path.join(t, "layer0.gguf")
+    _gguf(l0, _GOOD_KVS, {0: _u1, 1: _u2})
+    check("validate: direction.0 fails", cv.validate_gguf(l0, out=quiet) == 1)
+
+    no_pin = os.path.join(t, "no_pin.gguf")
+    kvs_no_pin = [b for b in _GOOD_KVS if b"base_model.0.version" not in b]
+    _gguf(no_pin, kvs_no_pin, {1: _u1, 2: _u2})
+    check("validate: missing commit pin fails", cv.validate_gguf(no_pin, out=quiet) == 1)
+
+    not_gguf = os.path.join(t, "nope.gguf")
+    open(not_gguf, "wb").write(b"not a gguf")
+    check("validate: non-GGUF fails", cv.validate_gguf(not_gguf, out=quiet) == 1)
+
+    # --- inspect ------------------------------------------------------------
+    rep = cv.inspect_gguf(good, topk=2)
+    check("inspect: layer list", [e["layer"] for e in rep["layers"]] == [1, 2])
+    check("inspect: unit norms",
+          all(abs(e["norm"] - 1.0) < 1e-6 for e in rep["layers"]))
+    check("inspect: adjacent-layer cosine",
+          rep["layers"][0]["cos_prev"] is None
+          and abs(rep["layers"][1]["cos_prev"] - 0.5) < 1e-6,
+          f"{rep['layers'][1]['cos_prev']:+.4f}")
+    check("inspect: top-k dims by magnitude",
+          rep["layers"][1]["top_dims"] == [[0, 1.0], [1, 0.0]],
+          f"{rep['layers'][1]['top_dims']}")
+    check("inspect: topk=0 omits top dims",
+          "top_dims" not in cv.inspect_gguf(good, topk=0)["layers"][0])
+    check("inspect: report is JSON-serializable",
+          json.loads(json.dumps(rep))["layers"][1]["layer"] == 2)
+    check("inspect: metadata filtered to glp.*/general.base_model.*",
+          "general.architecture" not in rep["metadata"]
+          and rep["metadata"].get("glp.mode") == "project")
+
+    # --- export: round-trip through a stdlib safetensors reader -------------
+    st = os.path.join(t, "v.safetensors")
+    names = cv.export_safetensors(good, st)
+    check("export: tensor names sorted by layer", names == ["direction.1", "direction.2"])
+
+    d = open(st, "rb").read()
+    hlen = struct.unpack("<Q", d[:8])[0]
+    hdr = json.loads(d[8:8 + hlen])
+    buf = d[8 + hlen:]
+    check("export: safetensors header keys",
+          sorted(k for k in hdr if k != "__metadata__") == ["direction.1", "direction.2"])
+    t1, t2 = hdr["direction.1"], hdr["direction.2"]
+    check("export: dtype and shape",
+          t1["dtype"] == "F32" and t1["shape"] == [4] and t2["shape"] == [4])
+    check("export: data_offsets tile the buffer",
+          t1["data_offsets"] == [0, 16] and t2["data_offsets"] == [16, 32]
+          and len(buf) == 32)
+    check("export: byte-exact tensor data",
+          buf[0:16] == struct.pack("<4f", *_u1)
+          and buf[16:32] == struct.pack("<4f", *_u2))
+    md = hdr["__metadata__"]
+    check("export: provenance metadata travels",
+          md.get("glp.mode") == "project"
+          and md.get("glp.hook_point") == "residual_stream_post_layer"
+          and md.get("glp.content_sha256") == _sha.hexdigest())
+
+    # --- refusal paths: inspect/export must fail clearly, not silently ------
+    try:
+        cv.inspect_gguf(not_gguf)
+        check("inspect: non-GGUF errors", False, "it did not")
+    except ValueError:
+        check("inspect: non-GGUF errors", True)
+
+    empty = os.path.join(t, "empty.gguf")
+    _gguf(empty, _GOOD_KVS, {})
+    try:
+        cv.inspect_gguf(empty)
+        check("inspect: no direction tensors errors", False, "it did not")
+    except ValueError:
+        check("inspect: no direction tensors errors", True)
+
+    f16 = os.path.join(t, "f16.gguf")
+    _gguf(f16, _GOOD_KVS, {1: _u1}, dtype=1)
+    check("inspect: F16 directions still readable",
+          abs(cv.inspect_gguf(f16)["layers"][0]["norm"] - 1.0) < 1e-3)
+
+    try:
+        cv.export_safetensors(not_gguf, os.path.join(t, "x.safetensors"))
+        check("export: non-GGUF errors", False, "it did not")
+    except ValueError:
+        check("export: non-GGUF errors", True)
+    try:
+        cv.export_safetensors(empty, os.path.join(t, "x.safetensors"))
+        check("export: no direction tensors errors", False, "it did not")
+    except ValueError:
+        check("export: no direction tensors errors", True)
+    try:
+        cv.export_safetensors(f16, os.path.join(t, "x.safetensors"))
+        check("export: refuses non-F32 directions", False, "it did not")
+    except ValueError:
+        check("export: refuses non-F32 directions", True)
+
+# --- everything below needs torch -------------------------------------------
+try:
+    import torch
+except ImportError:
+    torch = None
+if torch is None:
+    print("  [SKIP] torch-dependent sections: torch not installed")
+    print(f"\n  {len(fails)} failure(s)" + (": " + ", ".join(fails) if fails else ""))
+    sys.exit(1 if fails else 0)
 
 torch.manual_seed(0)
 D, N = 256, 48
@@ -290,84 +461,6 @@ check("draft stack: mtp.layers detected", nm == "mtp.layers" and len(st) == 1,
       f"found {nm!r}")
 nm2, st2 = cv.find_draft_stack(_NoMTP())
 check("draft stack: absent when there is none", nm2 is None and st2 is None)
-
-# --- --validate: spec conformance gate on shipped files ---------------------
-# Hand-built minimal GGUFs (stdlib): the validator must not need torch/gguf,
-# and these fixtures must not depend on the writer they are testing against.
-import hashlib, struct
-
-def _kv_str(k, v):
-    b = struct.pack("<Q", len(k)) + k.encode()
-    b += struct.pack("<I", 8) + struct.pack("<Q", len(v)) + v.encode()
-    return b
-
-def _kv_u32(k, v):
-    return struct.pack("<Q", len(k)) + k.encode() + struct.pack("<I", 4) + struct.pack("<I", v)
-
-def _gguf(path, kvs, tensors):
-    """kvs: list of bytes blobs; tensors: {layer: [floats]}."""
-    blob = b"GGUF" + struct.pack("<IQQ", 3, len(tensors), len(kvs)) + b"".join(kvs)
-    infos, data = b"", b""
-    off = 0
-    for L in sorted(tensors):
-        vals = tensors[L]
-        name = f"direction.{L}"
-        infos += struct.pack("<Q", len(name)) + name.encode()
-        infos += struct.pack("<I", 1) + struct.pack("<Q", len(vals))
-        infos += struct.pack("<I", 0) + struct.pack("<Q", off)
-        data += struct.pack(f"<{len(vals)}f", *vals)
-        off += 4 * len(vals)
-    blob += infos
-    pad = (32 - len(blob) % 32) % 32
-    blob += b"\0" * pad + data
-    open(path, "wb").write(blob)
-
-_GOOD_KVS = [
-    _kv_str("general.architecture", "controlvector"),
-    _kv_str("glp.mode", "project"), _kv_u32("glp.spec_version", 1),
-    _kv_str("glp.hook_point", "residual_stream_post_layer"),
-    _kv_str("glp.derived_at", "residual_stream_post_layer"),
-    struct.pack("<Q", len("glp.alpha_default")) + b"glp.alpha_default" + struct.pack("<If", 6, 1.0),
-    _kv_u32("glp.rank", 1),
-    struct.pack("<Q", len("glp.orthonormal")) + b"glp.orthonormal" + struct.pack("<IB", 7, 1),
-    _kv_str("general.base_model.0.name", "Model"),
-    _kv_str("general.base_model.0.organization", "org"),
-    _kv_str("general.base_model.0.version", "a" * 40),
-    _kv_str("general.base_model.0.repo_url", "https://huggingface.co/org/Model"),
-    _kv_str("glp.method", "dom"), _kv_str("glp.contrast", "a-vs-b"),
-    _kv_str("glp.created", "2026-09-04"),
-    _kv_str("glp.layer_ids_zero_based", "1,2"),
-]
-_u1, _u2 = [0.5, 0.5, 0.5, 0.5], [1.0, 0.0, 0.0, 0.0]
-_sha = hashlib.sha256()
-for _v in (_u1, _u2):
-    _sha.update(struct.pack("<4f", *_v))
-
-with tempfile.TemporaryDirectory() as t:
-    quiet = lambda *a: None
-    good = os.path.join(t, "good.gguf")
-    _gguf(good, _GOOD_KVS + [_kv_str("glp.content_sha256", _sha.hexdigest())],
-          {1: _u1, 2: _u2})
-    check("validate: conformant file passes", cv.validate_gguf(good, out=quiet) == 0)
-
-    bad_sha = os.path.join(t, "bad_sha.gguf")
-    _gguf(bad_sha, _GOOD_KVS + [_kv_str("glp.content_sha256", "0" * 64)],
-          {1: _u1, 2: _u2})
-    check("validate: wrong content_sha256 fails",
-          cv.validate_gguf(bad_sha, out=quiet) == 1)
-
-    l0 = os.path.join(t, "layer0.gguf")
-    _gguf(l0, _GOOD_KVS, {0: _u1, 1: _u2})
-    check("validate: direction.0 fails", cv.validate_gguf(l0, out=quiet) == 1)
-
-    no_pin = os.path.join(t, "no_pin.gguf")
-    kvs_no_pin = [b for b in _GOOD_KVS if b"base_model.0.version" not in b]
-    _gguf(no_pin, kvs_no_pin, {1: _u1, 2: _u2})
-    check("validate: missing commit pin fails", cv.validate_gguf(no_pin, out=quiet) == 1)
-
-    not_gguf = os.path.join(t, "nope.gguf")
-    open(not_gguf, "wb").write(b"not a gguf")
-    check("validate: non-GGUF fails", cv.validate_gguf(not_gguf, out=quiet) == 1)
 
 print(f"\n  {len(fails)} failure(s)" + (": " + ", ".join(fails) if fails else ""))
 sys.exit(1 if fails else 0)
