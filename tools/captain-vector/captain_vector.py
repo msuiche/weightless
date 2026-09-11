@@ -19,6 +19,7 @@ Usage:
   captain_vector.py --model <path> --harmful h.json --harmless b.json --out v.gguf
   captain_vector.py inspect v.gguf [--json] [--topk N]   (stdlib only)
   captain_vector.py export v.gguf --out v.safetensors    (stdlib only)
+  captain_vector.py bake v.gguf --base <model> --out <dir>   (needs torch)
 
 See README.md for the full parameter reference and the design rationale.
 """
@@ -50,7 +51,7 @@ _no_grad = torch.no_grad if torch is not None else lambda: (lambda f: f)
 # gguf package), because that is where a bad file hurts. The torch import
 # above stays mandatory for derivation itself.
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # Internal --hook names to the GLP.md hook-point strings. An unknown hook must
 # fail loud here rather than ship a file whose hook_point lies about where the
@@ -928,6 +929,299 @@ def export_safetensors(gguf_path, out_path):
     return [name for _, name, _, _ in entries]
 
 
+# ---------------------------------------------------------------------------
+# bake -- fold a shipped vector into a rank-1 PEFT/LoRA adapter (needs torch)
+# ---------------------------------------------------------------------------
+# inspect/export stay stdlib-only because they run where files are served;
+# bake runs where the BASE WEIGHTS live, so torch + safetensors are required
+# here -- and imported inside this section, so a torch-less serving machine
+# never pays for them.
+#
+# The math: applying h <- h - alpha*(h.d)d at a residual writer h = Wx is a
+# weight edit dW = -alpha * d (d^T W), exactly a rank-1 LoRA with
+#   lora_B = d                 (out, 1)   unit norm
+#   lora_A = -alpha * d^T W    (1, in)    alpha baked in
+#   r = 1, lora_alpha = 1      (peft scaling 1.0 -- do not scale the adapter)
+# so B(Ax) = -alpha * (d.Wx) d. lora_A CARRIES W, which makes the adapter
+# checkpoint-bound: baked against the wrong base revision it is garbage, and
+# nothing downstream will flag it. Hence the pin check below fails closed.
+
+# Residual-writing suffixes bake auto-detects, per layer, from the base
+# model's own weight index. Longer names first so a hybrid model's
+# self_attn.o_proj / linear_attn.out_proj win over the bare suffixes.
+BAKE_SUFFIXES = ("self_attn.o_proj", "linear_attn.out_proj", "mlp.down_proj",
+                 "o_proj", "out_proj", "down_proj")
+
+
+def _hf_hub_cache():
+    if os.environ.get("HF_HUB_CACHE"):
+        return os.environ["HF_HUB_CACHE"]
+    if os.environ.get("HF_HOME"):
+        return os.path.join(os.environ["HF_HOME"], "hub")
+    return os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
+
+
+def _bake_resolve_base(base, pin, revision=None, out=print):
+    """Resolve --base to a snapshot directory of safetensors shards.
+
+    Returns (snapshot_dir, resolved_revision). Fails closed (ValueError) when
+    the base cannot be shown to BE the revision the GGUF pins: lora_A bakes W,
+    so the wrong W is a garbage adapter, not an error anyone raises later.
+    `revision` is the explicit escape hatch; using it is loud.
+    """
+    if revision:
+        out(f"  WARNING: --revision overrides the GGUF's pinned base revision.")
+        out(f"    pinned:     {pin}")
+        out(f"    overriding: {revision}")
+        out(f"    lora_A bakes W of whatever you point at; if this is not the "
+            f"pinned checkpoint the adapter is garbage and nothing flags it.")
+        pin = revision
+
+    if os.path.isdir(base):
+        # A hub cache repo dir (has refs/ + snapshots/): resolve through its ref.
+        if os.path.isdir(os.path.join(base, "snapshots")) and \
+                os.path.isdir(os.path.join(base, "refs")):
+            ref = os.path.join(base, "refs", "main")
+            if not os.path.exists(ref):
+                raise ValueError(f"{base}: hub repo dir without refs/main; pass "
+                                 f"the snapshots/<sha> directory directly")
+            sha = open(ref).read().strip()
+            snap = os.path.join(base, "snapshots", sha)
+            if not os.path.isdir(snap):
+                raise ValueError(f"{base}: refs/main points at {sha[:12]}… but "
+                                 f"that snapshot is not downloaded")
+            base = snap
+        name = os.path.basename(os.path.normpath(base))
+        if re.fullmatch(r"[0-9a-f]{40}", name):
+            if name != pin:
+                raise ValueError(
+                    f"base snapshot is at revision {name[:12]}… but the GGUF "
+                    f"pins {pin[:12]}… . lora_A bakes these weights; refusing "
+                    f"to bake against the wrong checkpoint. (--revision "
+                    f"overrides, at your own risk.)")
+            out(f"  base revision verified against pin: {name[:12]}…")
+        elif name == "snapshots":
+            kids = [k for k in os.listdir(base)
+                    if os.path.isdir(os.path.join(base, k))]
+            if len(kids) != 1:
+                raise ValueError(f"{base}: pass the snapshot directory itself "
+                                 f"(snapshots/<sha>), not its parent")
+            return _bake_resolve_base(os.path.join(base, kids[0]), pin,
+                                      out=out)
+        else:
+            out(f"  WARNING: {base} is a plain directory -- cannot verify it "
+                f"is revision {pin[:12]}… . Baking anyway; check the provenance "
+                f"yourself, the adapter inherits whatever these weights are.")
+        return base, pin
+
+    # HF repo id: require the pinned snapshot in the LOCAL cache. No network:
+    # downloading whatever origin currently serves is the opposite of a pin.
+    cache = _hf_hub_cache()
+    repo_dir = os.path.join(cache, "models--" + base.replace("/", "--"))
+    snap = os.path.join(repo_dir, "snapshots", pin)
+    if not os.path.isdir(snap):
+        raise ValueError(
+            f"{base}: pinned snapshot {pin[:12]}… not found in the local HF "
+            f"cache ({repo_dir}). Fetch exactly that revision first, e.g. "
+            f"hf download {base} --revision {pin}")
+    out(f"  base revision verified against pin: {pin[:12]}… (local HF cache)")
+    return snap, pin
+
+
+def _bake_weight_index(snap):
+    """tensor name -> shard file, for a sharded or single-file checkpoint."""
+    idx_p = os.path.join(snap, "model.safetensors.index.json")
+    if os.path.exists(idx_p):
+        return json.load(open(idx_p))["weight_map"]
+    single = os.path.join(snap, "model.safetensors")
+    if os.path.exists(single):
+        import struct
+        with open(single, "rb") as f:
+            hlen = struct.unpack("<Q", f.read(8))[0]
+            hdr = json.loads(f.read(hlen))
+        return {k: "model.safetensors" for k in hdr if k != "__metadata__"}
+    raise ValueError(f"{snap}: no model.safetensors[.index.json] found")
+
+
+def bake_lora(gguf_path, base, out_dir, alpha=None, modules=None,
+              revision=None, out=print):
+    """Bake a GLP GGUF's directions into a rank-1 PEFT/LoRA adapter.
+
+    Writes adapter_model.safetensors (fp32), adapter_config.json (r=1,
+    lora_alpha=1 -- alpha is baked into lora_A, so peft must not scale) and
+    bake-report.json into out_dir. Returns 0.
+    """
+    from safetensors import safe_open
+    from safetensors.torch import save_file
+
+    meta, tensors = _read_gguf(gguf_path)
+    pin = meta.get("general.base_model.0.version", "")
+    if not re.fullmatch(r"[0-9a-f]{40}", pin or ""):
+        raise ValueError(
+            f"{gguf_path}: general.base_model.0.version is {pin!r}, not a full "
+            f"commit sha. bake is checkpoint-bound and refuses an unpinned vector.")
+    if alpha is None:
+        alpha = float(meta.get("glp.alpha_default", 1.0))
+    if meta.get("glp.mode", "project") != "project":
+        raise ValueError("bake implements the projective edit h -= alpha*(h.d)d; "
+                         f"this GGUF declares mode={meta.get('glp.mode')!r}")
+
+    dirs = {}
+    for name, dims, dtype, raw in tensors:
+        m = re.fullmatch(r"direction\.(\d+)", name)
+        if not m:
+            continue
+        vals = _tensor_floats(dims, dtype, raw)
+        if vals is None:
+            raise ValueError(f"{name}: unreadable payload (dtype {dtype})")
+        d = torch.tensor(vals, dtype=torch.float32)
+        dirs[int(m.group(1))] = d / d.norm()
+    if not dirs:
+        raise ValueError("no direction.N tensors in this file")
+
+    snap, resolved_rev = _bake_resolve_base(base, pin, revision, out=out)
+    wmap = _bake_weight_index(snap)
+    suffixes = tuple(modules) if modules else BAKE_SUFFIXES
+
+    # Per direction layer, the residual writers that exist in THIS checkpoint.
+    wanted = {}
+    for L in sorted(dirs):
+        hits = sorted(k for k in wmap if f".layers.{L}." in k
+                      and any(k.endswith(s + ".weight") for s in suffixes))
+        if not hits:
+            raise ValueError(
+                f"layer {L}: no weight ending in {suffixes} found in the base "
+                f"-- wrong model, or pass --modules explicitly")
+        wanted[L] = hits
+    used_suffixes = sorted({s for L in wanted for k in wanted[L]
+                            for s in suffixes if k.endswith(s + ".weight")})
+    by_shard = {}
+    for L, keys in wanted.items():
+        for k in keys:
+            by_shard.setdefault(wmap[k], []).append((L, k))
+
+    org = meta.get("general.base_model.0.organization", "")
+    mname = meta.get("general.base_model.0.name", "")
+    base_name = f"{org}/{mname}" if org and mname else (mname or base)
+
+    adapter, report_layers, roundtrip = {}, {}, {}
+    probes = sorted(((L, k) for L in wanted for k in wanted[L]))
+    probes = {probes[0], probes[-1]}          # first and last baked matrix
+    for shard in sorted(by_shard):
+        with safe_open(os.path.join(snap, shard), framework="pt") as f:
+            for L, k in sorted(by_shard[shard]):
+                W = f.get_tensor(k).to(torch.float32)      # (out, in)
+                d = dirs[L]
+                if W.shape[0] != d.numel():
+                    raise ValueError(f"{k}: out dim {W.shape[0]} != direction "
+                                     f"dim {d.numel()} -- wrong base model")
+                A = (-alpha * (d @ W)).unsqueeze(0).clone()   # (1, in)
+                B = d.unsqueeze(1).clone()                    # (out, 1)
+                stem = k[:-len(".weight")]
+                mod = stem.split(f".layers.{L}.", 1)[-1]
+                adapter[f"base_model.model.{stem}.lora_A.weight"] = A
+                adapter[f"base_model.model.{stem}.lora_B.weight"] = B
+                rel = float((B @ A).norm() / W.norm().clamp_min(1e-12))
+                report_layers[f"{L}:{mod}"] = {"rel_fro": rel,
+                                               "norm_A": float(A.norm())}
+                out(f"  layer {L:>3}  {mod:<24} |dW|/|W| {rel:.4f}")
+                if (L, k) in probes:
+                    g = torch.Generator().manual_seed(L)
+                    x = torch.randn(W.shape[1], generator=g)
+                    h = W @ x
+                    direct = h - alpha * torch.dot(h, d) * d
+                    via = h + (B @ (A @ x.unsqueeze(1))).squeeze(1)
+                    roundtrip[f"{L}:{mod}"] = float(
+                        (direct - via).abs().max() / (h.norm() + 1e-9))
+
+    os.makedirs(out_dir, exist_ok=True)
+    st_path = os.path.join(out_dir, "adapter_model.safetensors")
+    save_file(adapter, st_path, metadata={
+        "format": "pt", "peft_type": "LORA", "task_type": "CAUSAL_LM",
+        "r": "1", "lora_alpha": "1",
+        "alpha_baked": repr(alpha),
+        "target_modules": ",".join(used_suffixes),
+        "base_model": base_name, "revision": resolved_rev,
+        "source_gguf": os.path.basename(gguf_path),
+        "glp_content_sha256": str(meta.get("glp.content_sha256", "")),
+        "derivation": "rank-1 abliteration, dW = -alpha*d(d^T W)",
+        "generator": f"captain-vector {__version__} bake",
+        "warning": "lora_alpha/r = 1.0, alpha is baked into lora_A -- do not "
+                   "scale the adapter. Checkpoint-bound: lora_A carries W of "
+                   "the pinned revision.",
+    })
+    config = {
+        "peft_type": "LORA", "task_type": "CAUSAL_LM",
+        "base_model_name_or_path": base_name, "revision": resolved_rev,
+        "inference_mode": True, "r": 1, "lora_alpha": 1, "lora_dropout": 0.0,
+        "bias": "none", "fan_in_fan_out": False, "use_rslora": False,
+        "init_lora_weights": True,
+        "target_modules": sorted({s.rsplit(".", 1)[-1] for s in used_suffixes}),
+        "modules_to_save": None, "layers_to_transform": None,
+        "layers_pattern": None,
+    }
+    with open(os.path.join(out_dir, "adapter_config.json"), "w") as f:
+        json.dump(config, f, indent=2)
+    rels = [v["rel_fro"] for v in report_layers.values()]
+    report = {
+        "source_gguf": os.path.basename(gguf_path),
+        "base_model": base_name, "base_revision": resolved_rev,
+        "revision_overridden": bool(revision),
+        "alpha": alpha,
+        "modules": sorted({k.split(":", 1)[1] for k in report_layers}),
+        "layers": report_layers, "roundtrip": roundtrip,
+        "n_tensors": len(adapter), "n_layers": len(wanted),
+        "rel_fro": {"min": min(rels), "max": max(rels),
+                    "mean": sum(rels) / len(rels)},
+        "bytes": os.path.getsize(st_path),
+    }
+    with open(os.path.join(out_dir, "bake-report.json"), "w") as f:
+        json.dump(report, f, indent=1)
+
+    out(f"\n  wrote {st_path} ({report['bytes'] / 1e6:.1f} MB, "
+        f"{len(adapter)} tensors, {len(wanted)} layers)")
+    out(f"  rel_fro min {min(rels):.4f} max {max(rels):.4f} "
+        f"mean {sum(rels) / len(rels):.4f}")
+    rt = {k: f"{v:.2e}" for k, v in roundtrip.items()}
+    out(f"  roundtrip max rel err: {rt}")
+    return 0
+
+
+def _bake_cmd(argv):
+    p = argparse.ArgumentParser(
+        prog="captain-vector bake",
+        description="Bake a GLP control-vector GGUF into a rank-1 PEFT/LoRA "
+                    "adapter against the pinned base checkpoint. Requires "
+                    "torch + safetensors.")
+    p.add_argument("file", help="control-vector GGUF")
+    p.add_argument("--base", required=True,
+                   help="local snapshot dir or HF repo id; must resolve to the "
+                        "GGUF's pinned revision")
+    p.add_argument("--out", required=True, metavar="DIR",
+                   help="output directory for the adapter")
+    p.add_argument("--alpha", type=float, default=None,
+                   help="bake strength; default is the GGUF's glp.alpha_default")
+    p.add_argument("--modules", default="", metavar="SUF1,SUF2",
+                   help="comma-separated module suffixes; default auto-detects "
+                        "residual writers (o_proj/out_proj/down_proj) per layer")
+    p.add_argument("--revision", default="", metavar="SHA",
+                   help="ESCAPE HATCH: bake against this revision instead of "
+                        "the GGUF pin (loud warning; wrong W = garbage adapter)")
+    a = p.parse_args(argv)
+    if torch is None:
+        print("  error: bake requires torch and safetensors "
+              "(inspect/export/--validate remain stdlib-only)", file=sys.stderr)
+        return 1
+    try:
+        return bake_lora(a.file, a.base, a.out, alpha=a.alpha,
+                         modules=[s.strip() for s in a.modules.split(",")
+                                  if s.strip()] or None,
+                         revision=a.revision or None)
+    except (ValueError, OSError) as e:
+        print(f"  error: {e}", file=sys.stderr)
+        return 1
+
+
 def _file_cmd(cmd, argv):
     """Dispatch the stdlib-only file subcommands (inspect, export)."""
     p = argparse.ArgumentParser(prog=f"captain-vector {cmd}")
@@ -1004,8 +1298,12 @@ def parse_span(s, n):
 def main():
     # The file-serving subcommands are stdlib-only and take a GGUF path rather
     # than the derivation flags below; dispatch before argparse sees them.
+    # bake joins them here (it also takes a GGUF, not derivation flags) but is
+    # NOT stdlib-only -- it needs torch and safetensors for the base weights.
     if len(sys.argv) > 1 and sys.argv[1] in ("inspect", "export"):
         sys.exit(_file_cmd(sys.argv[1], sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "bake":
+        sys.exit(_bake_cmd(sys.argv[2:]))
     p = argparse.ArgumentParser(
         prog="captain-vector",
         description="Derive a projective control vector and export it as GGUF.")

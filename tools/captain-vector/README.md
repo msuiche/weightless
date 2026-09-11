@@ -30,6 +30,38 @@ python3 ../../weightless.py export some.gguf --out v.safetensors
                                         # glp.*/general.* provenance in __metadata__
 ```
 
+`bake` is the one command that produces something other than a view of the
+GGUF — and even then the GGUF stays canonical: the adapter is a *derived
+artifact*, regenerable from the GGUF plus the base checkpoint at any time:
+
+```sh
+python3 ../../weightless.py bake some.gguf --base Qwen/Qwen3.8-27B --out adapter/
+```
+
+It folds the vector into a rank-1 PEFT/LoRA adapter (`adapter_model.safetensors`
+fp32 + `adapter_config.json` + `bake-report.json`), for serving stacks that
+take adapters rather than control vectors. The math: `h ← h − α(h·d̂)d̂` at a
+residual writer `h = Wx` is a weight edit `ΔW = −α·d̂(d̂ᵀW)`, which is exactly
+LoRA with `lora_B = d̂`, `lora_A = −α·d̂ᵀW`, `r = lora_alpha = 1` (peft scaling
+1.0 — α lives in `lora_A`, so **do not scale the adapter**). α defaults to the
+GGUF's `glp.alpha_default`; `--alpha` overrides. Modules auto-detect per layer
+from the base's shard index (the residual-writing set: `self_attn.o_proj` /
+`linear_attn.out_proj` / `mlp.down_proj`); `--modules suf1,suf2` overrides.
+
+Two hard requirements, both consequences of `lora_A` carrying `W`:
+
+- **The base must BE the pinned revision.** The GGUF pins
+  `general.base_model.0.version`; bake resolves `--base` to that exact
+  revision — an HF repo id must have the pinned snapshot in the local HF
+  cache (fetch it first with `hf download <repo> --revision <sha>`), a local
+  `snapshots/<sha>` directory is checked by name, a plain directory only warns
+  (unverifiable). Baked against the wrong checkpoint the adapter is garbage
+  and nothing downstream flags it, so a mismatch exits 1. `--revision <sha>`
+  is the escape hatch, with a loud warning.
+- **It needs `torch` + `safetensors`** (unlike `validate`/`inspect`/`export`,
+  which stay stdlib-only for serving machines). Shards are streamed lazily via
+  `safetensors.safe_open`; a 27B-scale bake runs on CPU.
+
 Derivation itself needs `torch`, `transformers`, `safetensors`, `gguf`. The
 full parameter reference and design rationale live in
 `refusal-research/derivation/captain-vector/README.md`.

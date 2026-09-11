@@ -462,5 +462,148 @@ check("draft stack: mtp.layers detected", nm == "mtp.layers" and len(st) == 1,
 nm2, st2 = cv.find_draft_stack(_NoMTP())
 check("draft stack: absent when there is none", nm2 is None and st2 is None)
 
+# --- bake: GGUF + base weights -> rank-1 PEFT LoRA --------------------------
+# Needs safetensors on top of torch; skip cleanly without it.
+try:
+    from safetensors.torch import save_file as _st_save, load_file as _st_load
+except ImportError:
+    print("  [SKIP] bake section: safetensors not installed")
+else:
+    with tempfile.TemporaryDirectory() as t:
+        Hd, I = 8, 16                    # tiny hidden / intermediate dims
+        torch.manual_seed(1)
+        d1, d2 = cv._unit(torch.randn(Hd)), cv._unit(torch.randn(Hd))
+        weights = {
+            "model.layers.1.self_attn.o_proj.weight": torch.randn(Hd, Hd),
+            "model.layers.1.mlp.down_proj.weight": torch.randn(Hd, I),
+            "model.layers.2.self_attn.o_proj.weight": torch.randn(Hd, Hd),
+            "model.layers.2.mlp.down_proj.weight": torch.randn(Hd, I),
+            # a NON-residual writer: must be left alone by auto-detect
+            "model.layers.1.self_attn.q_proj.weight": torch.randn(Hd, Hd),
+            # a layer the vector does not cover: must be left alone too
+            "model.layers.3.mlp.down_proj.weight": torch.randn(Hd, I),
+        }
+        base_dir = os.path.join(t, "base")     # plain dir: unverifiable -> warn
+        os.makedirs(base_dir)
+        _st_save(weights, os.path.join(base_dir, "model.safetensors"))
+        gg = os.path.join(t, "v.gguf")         # pinned to "a"*40, alpha_default 1.0
+        _gguf(gg, _GOOD_KVS, {1: d1.tolist(), 2: d2.tolist()})
+
+        outd = os.path.join(t, "adapter")
+        rc = cv._bake_cmd([gg, "--base", base_dir, "--out", outd])
+        check("bake: exits 0 (unverifiable local base warns, not fails)", rc == 0)
+
+        ad = _st_load(os.path.join(outd, "adapter_model.safetensors"))
+        want_keys = {f"base_model.model.model.layers.{L}.{mod}.lora_{ab}.weight"
+                     for L in (1, 2)
+                     for mod in ("self_attn.o_proj", "mlp.down_proj")
+                     for ab in ("A", "B")}
+        check("bake: adapter keys follow PEFT naming, auto-detect picked "
+              "exactly the residual writers",
+              set(ad) == want_keys,
+              f"missing {sorted(want_keys - set(ad))[:2]}, "
+              f"extra {sorted(set(ad) - want_keys)[:2]}")
+        check("bake: lora_B equals the unit direction",
+              all(torch.allclose(ad[f"base_model.model.model.layers.{L}"
+                                  f".self_attn.o_proj.lora_B.weight"][:, 0],
+                                 d, atol=1e-6)
+                  for L, d in ((1, d1), (2, d2))))
+        check("bake: tensors are fp32",
+              all(t.dtype == torch.float32 for t in ad.values()))
+
+        # the algebra itself, on random probes: B(Ax) == -alpha*(d.Wx)d
+        torch.manual_seed(2)
+        worst = 0.0
+        for L, d in ((1, d1), (2, d2)):
+            for mod in ("self_attn.o_proj", "mlp.down_proj"):
+                W = weights[f"model.layers.{L}.{mod}.weight"]
+                A = ad[f"base_model.model.model.layers.{L}.{mod}.lora_A.weight"]
+                B = ad[f"base_model.model.model.layers.{L}.{mod}.lora_B.weight"]
+                for _ in range(4):
+                    x = torch.randn(W.shape[1])
+                    direct = W @ x - 1.0 * torch.dot(W @ x, d) * d
+                    via = W @ x + (B @ (A @ x.unsqueeze(1))).squeeze(1)
+                    worst = max(worst, float((direct - via).abs().max()))
+        check("bake: B(Ax) == -alpha*(d.Wx)d on random probes", worst < 1e-6,
+              f"max abs err {worst:.2e}")
+
+        # alpha: default comes from the GGUF; --alpha overrides into lora_A
+        W = weights["model.layers.1.mlp.down_proj.weight"]
+        A_def = ad["base_model.model.model.layers.1.mlp.down_proj.lora_A.weight"]
+        check("bake: alpha defaults to glp.alpha_default (1.0)",
+              torch.allclose(A_def, (-1.0 * (d1 @ W)).unsqueeze(0), atol=1e-6))
+        outd2 = os.path.join(t, "adapter-half")
+        rc2 = cv._bake_cmd([gg, "--base", base_dir, "--out", outd2,
+                            "--alpha", "0.5"])
+        ad2 = _st_load(os.path.join(outd2, "adapter_model.safetensors"))
+        A_half = ad2["base_model.model.model.layers.1.mlp.down_proj.lora_A.weight"]
+        check("bake: --alpha 0.5 scales lora_A exactly",
+              rc2 == 0 and torch.allclose(A_half, 0.5 * A_def, atol=1e-6))
+
+        cfg = json.load(open(os.path.join(outd, "adapter_config.json")))
+        check("bake: adapter_config has r=1, lora_alpha=1, the pin as revision",
+              cfg["r"] == 1 and cfg["lora_alpha"] == 1
+              and cfg["revision"] == "a" * 40
+              and cfg["base_model_name_or_path"] == "org/Model"
+              and cfg["peft_type"] == "LORA")
+        check("bake: target_modules are the short suffixes",
+              cfg["target_modules"] == ["down_proj", "o_proj"],
+              str(cfg["target_modules"]))
+        rep = json.load(open(os.path.join(outd, "bake-report.json")))
+        check("bake: report carries alpha, pin, per-layer rel norms",
+              rep["alpha"] == 1.0 and rep["base_revision"] == "a" * 40
+              and len(rep["layers"]) == 4
+              and all(v["rel_fro"] > 0 for v in rep["layers"].values()))
+        check("bake: round-trip errors are recorded and tiny",
+              all(v < 1e-6 for v in rep["roundtrip"].values()),
+              str(rep["roundtrip"]))
+
+        # --modules override: only the named suffix is baked
+        outd3 = os.path.join(t, "adapter-mlp-only")
+        rc3 = cv._bake_cmd([gg, "--base", base_dir, "--out", outd3,
+                            "--modules", "mlp.down_proj"])
+        ad3 = _st_load(os.path.join(outd3, "adapter_model.safetensors"))
+        check("bake: --modules overrides auto-detect",
+              rc3 == 0 and len(ad3) == 4
+              and all("mlp.down_proj" in k for k in ad3))
+
+        # --- the revision pin fails closed ----------------------------------
+        wrong = os.path.join(t, "snapshots", "b" * 40)
+        os.makedirs(wrong)
+        _st_save(weights, os.path.join(wrong, "model.safetensors"))
+        rc4 = cv._bake_cmd([gg, "--base", wrong, "--out", os.path.join(t, "n")])
+        check("bake: base at the WRONG revision exits 1", rc4 == 1)
+        rc5 = cv._bake_cmd([gg, "--base", wrong, "--out", os.path.join(t, "n2"),
+                            "--revision", "b" * 40])
+        check("bake: --revision escape hatch overrides the pin", rc5 == 0)
+
+        no_pin = os.path.join(t, "no_pin.gguf")
+        kvs_no_pin = [b for b in _GOOD_KVS if b"base_model.0.version" not in b]
+        _gguf(no_pin, kvs_no_pin, {1: d1.tolist()})
+        rc6 = cv._bake_cmd([no_pin, "--base", base_dir,
+                            "--out", os.path.join(t, "n3")])
+        check("bake: GGUF with a MISSING pin exits 1", rc6 == 1)
+
+        # HF repo id: pinned snapshot must exist in the local cache
+        old_cache = os.environ.get("HF_HUB_CACHE")
+        os.environ["HF_HUB_CACHE"] = os.path.join(t, "empty-cache")
+        try:
+            rc7 = cv._bake_cmd([gg, "--base", "org/Model",
+                                "--out", os.path.join(t, "n4")])
+            check("bake: HF repo id without the pinned snapshot exits 1",
+                  rc7 == 1)
+            snap = os.path.join(t, "empty-cache", "models--org--Model",
+                                "snapshots", "a" * 40)
+            os.makedirs(snap)
+            _st_save(weights, os.path.join(snap, "model.safetensors"))
+            rc8 = cv._bake_cmd([gg, "--base", "org/Model",
+                                "--out", os.path.join(t, "ok-hf")])
+            check("bake: HF repo id WITH the pinned snapshot bakes", rc8 == 0)
+        finally:
+            if old_cache is None:
+                del os.environ["HF_HUB_CACHE"]
+            else:
+                os.environ["HF_HUB_CACHE"] = old_cache
+
 print(f"\n  {len(fails)} failure(s)" + (": " + ", ".join(fails) if fails else ""))
 sys.exit(1 if fails else 0)
