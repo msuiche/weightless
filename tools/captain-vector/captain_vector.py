@@ -1051,15 +1051,17 @@ def bake_lora(gguf_path, base, out_dir, alpha=None, modules=None,
     lora_alpha=1 -- alpha is baked into lora_A, so peft must not scale) and
     bake-report.json into out_dir. Returns 0.
 
-    Scope: the adapter form is for EXTERNAL workflows -- static weight
-    merges, adapter-serving stacks. It is NOT the weightless serving path:
-    the patches/ hotfixes steer the GGUF directions at runtime, which keeps
-    alpha tunable/stackable and is architecture-blind. The bake is exact for
-    dense checkpoints whose residual writers are the detected
-    o_proj/out_proj/down_proj set. On MoE models the residual writers are
-    per-expert (hundreds of matrices per layer, each with a different W), so
-    the adapter explodes in size and bake time -- runtime steering of the
-    GGUF is the only practical form there.
+    Scope: the adapter form is DENSE-MODELS-ONLY, for EXTERNAL workflows --
+    static weight merges, adapter-serving stacks. It is NOT the weightless
+    serving path: the patches/ hotfixes steer the GGUF directions at runtime,
+    which keeps alpha tunable/stackable and is architecture-blind. On MoE
+    models the residual writers are per-expert (hundreds of matrices per
+    layer, each with a different W), so the adapter explodes in size and bake
+    time -- runtime steering of the GGUF is the only practical form there.
+    The two formats are complements: LoRA covers dense checkpoints and the
+    merge ecosystem, the GLP GGUF covers what LoRA cannot practically reach
+    (MoE, quantized bases, runtime/multi-vector steering) and is designed to
+    extend (rank-k, per-expert) if a baked form is ever needed for those.
     """
     from safetensors import safe_open
     from safetensors.torch import save_file

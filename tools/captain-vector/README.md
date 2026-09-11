@@ -48,13 +48,16 @@ GGUF's `glp.alpha_default`; `--alpha` overrides. Modules auto-detect per layer
 from the base's shard index (the residual-writing set: `self_attn.o_proj` /
 `linear_attn.out_proj` / `mlp.down_proj`); `--modules suf1,suf2` overrides.
 
-When *not* to use it: weightless' own serving stack does not consume
-adapters — the hotfixes in `patches/` steer the GGUF directions at runtime,
-which keeps α tunable and stackable, and is the only practical form on MoE
-models (their residual writers are per-expert — hundreds of matrices per
-layer, so a bake explodes into thousands of rank-1s against quantized
-weights). `bake` exists for dense checkpoints and external workflows:
-static merges, adapter-serving stacks.
+When *not* to use it: `bake` works for **dense models only**. On MoE models
+the residual writers are per-expert — hundreds of matrices per layer — so a
+bake explodes into thousands of rank-1s against quantized weights, and it is
+not the weightless serving path anyway: the hotfixes in `patches/` steer the
+GGUF directions at runtime, which keeps α tunable and stackable. Think of the
+two formats as complements: LoRA covers dense checkpoints and the merge
+ecosystem; the GLP GGUF covers everything LoRA can't practically reach — MoE,
+quantized bases, runtime-tunable and multi-vector steering — and the format
+is built to extend further (rank-k, per-expert) if those cases ever need a
+baked form.
 
 Two hard requirements, both consequences of `lora_A` carrying `W`:
 
