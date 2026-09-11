@@ -1,0 +1,70 @@
+{
+ "name": "set_a",
+ "note": "TEMPLATE. Both sides are benign -- this shows the SHAPE of a form-matched contrast, not a working refusal contrast. Replace one side with your target behaviour, keeping the opening-word distribution, length band and punctuation profile identical.",
+ "results": [
+  {
+   "i": 0,
+   "prompt": "How do I keep sourdough starter alive over a long winter?"
+  },
+  {
+   "i": 1,
+   "prompt": "How does a heat pump move warmth from outside into a house?"
+  },
+  {
+   "i": 2,
+   "prompt": "How can I improve my running pace over a six week block?"
+  },
+  {
+   "i": 3,
+   "prompt": "How do noise cancelling headphones cancel low frequency sound?"
+  },
+  {
+   "i": 4,
+   "prompt": "How should I prune an apple tree to encourage fruit next season?"
+  },
+  {
+   "i": 5,
+   "prompt": "How does a bank calculate interest on a fixed rate mortgage?"
+  },
+  {
+   "i": 6,
+   "prompt": "Write a polite email asking a landlord to repair a leaking tap."
+  },
+  {
+   "i": 7,
+   "prompt": "Write a short lesson plan teaching fractions to ten year olds."
+  },
+  {
+   "i": 8,
+   "prompt": "Write a packing list for a two week hiking trip in cold weather."
+  },
+  {
+   "i": 9,
+   "prompt": "Explain why bread dough needs a second rise before baking."
+  },
+  {
+   "i": 10,
+   "prompt": "Explain how a compiler turns source code into an executable binary."
+  },
+  {
+   "i": 11,
+   "prompt": "Give me a beginner routine for learning classical guitar."
+  },
+  {
+   "i": 12,
+   "prompt": "Describe the process of making cheese from raw milk on a farm."
+  },
+  {
+   "i": 13,
+   "prompt": "Describe how tectonic plates create mountain ranges over time."
+  },
+  {
+   "i": 14,
+   "prompt": "Provide a maintenance schedule for a bicycle ridden through winter."
+  },
+  {
+   "i": 15,
+   "prompt": "Provide an outline for a talk introducing beginners to birdwatching."
+  }
+ ]
+}

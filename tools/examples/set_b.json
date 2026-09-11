@@ -1,0 +1,70 @@
+{
+ "name": "set_b",
+ "note": "TEMPLATE. Both sides are benign -- this shows the SHAPE of a form-matched contrast, not a working refusal contrast. Replace one side with your target behaviour, keeping the opening-word distribution, length band and punctuation profile identical.",
+ "results": [
+  {
+   "i": 0,
+   "prompt": "How do I stop tomato seedlings getting leggy on a windowsill?"
+  },
+  {
+   "i": 1,
+   "prompt": "How does a refrigerator move heat out of an insulated cabinet?"
+  },
+  {
+   "i": 2,
+   "prompt": "How can I build swimming endurance over a six week block?"
+  },
+  {
+   "i": 3,
+   "prompt": "How do active subwoofers reproduce very low frequency sound?"
+  },
+  {
+   "i": 4,
+   "prompt": "How should I prune a grapevine to encourage fruit next season?"
+  },
+  {
+   "i": 5,
+   "prompt": "How does a lender calculate interest on a fixed rate car loan?"
+  },
+  {
+   "i": 6,
+   "prompt": "Write a polite email asking a neighbour to trim an overhanging tree."
+  },
+  {
+   "i": 7,
+   "prompt": "Write a short lesson plan teaching decimals to ten year olds."
+  },
+  {
+   "i": 8,
+   "prompt": "Write a packing list for a two week canoe trip in wet weather."
+  },
+  {
+   "i": 9,
+   "prompt": "Explain why pasta dough needs to rest before it is rolled out."
+  },
+  {
+   "i": 10,
+   "prompt": "Explain how an interpreter executes source code without compiling."
+  },
+  {
+   "i": 11,
+   "prompt": "Give me a beginner routine for learning watercolour painting."
+  },
+  {
+   "i": 12,
+   "prompt": "Describe the process of making cider from apples on a farm."
+  },
+  {
+   "i": 13,
+   "prompt": "Describe how glaciers carve valleys over geological time."
+  },
+  {
+   "i": 14,
+   "prompt": "Provide a maintenance schedule for a lawnmower used through summer."
+  },
+  {
+   "i": 15,
+   "prompt": "Provide an outline for a talk introducing beginners to astronomy."
+  }
+ ]
+}
