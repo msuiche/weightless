@@ -775,10 +775,18 @@ def harden_steps(host, workers=()):
     60s) + panic-on-hang sysctls (softlockup/hung_task -> panic -> reboot)
     + kdump via NVIDIA's nvidia-kdump-config (full vmcore in /var/crash;
     DGX OS ships with USE_KDUMP=0 and crashkernel=1G-:0M, i.e. off, and its
-    enable also widens the panic net: hardlockup/oops/rcu_stall/NMI).
+    enable also widens the panic net: hardlockup/oops/rcu_stall/NMI)
+    + thermal caps (GPU locked to 300-2100 MHz, CPU policies capped at
+    2.4 GHz via /usr/local/sbin/spark-thermal-caps.sh + a systemd oneshot —
+    the GB10 hard-lock class is thermal: zones run 92-98C under load against
+    a single 104C critical trip with EC-internal fans that never spin up;
+    caps measured stable at zero CPU perf cost and ~-21% decode at 32K,
+    +2.3x decode at 262K context).
     Learned from the 2026-09-10 wedge: a silent worker freeze cost a 9h
     outage and a 2825-restart crash loop; the 2026-09-11 repeat showed the
-    panic net converts hangs but leaves no post-mortem while kdump is off.
+    panic net converts hangs but leaves no post-mortem while kdump is off,
+    and the head wedged twice in 90 minutes with the watchdog unable to
+    recover it (watchdog-resistant hard lock = thermal signature).
     The crashkernel reservation only activates at boot, so a freshly armed
     node reports REBOOT-REQUIRED until its next restart. Script travels
     base64-encoded so nested ssh quoting cannot mangle it; sudo reads its
@@ -803,13 +811,45 @@ def harden_steps(host, workers=()):
         "! grep -q crashkernel /proc/cmdline; then\n"
         "  echo crashdump-armed-REBOOT-REQUIRED\n"
         "else echo crashdump-armed-active; fi\n"
+        "cat > /usr/local/sbin/spark-thermal-caps.sh <<'CAPS'\n"
+        "#!/bin/bash\n"
+        "# GB10 hard-lock mitigation (thermal class).\n"
+        "# GPU: lock SM clocks 300-2100 MHz (under the ~2197 throttle floor).\n"
+        "# CPU: cap every policy at 2.4 GHz (zero measured perf cost).\n"
+        "GPUOK=0\n"
+        "for i in 1 2 3 4 5; do\n"
+        "  nvidia-smi -pm 1 >/dev/null 2>&1 && "
+        "nvidia-smi -lgc 300,2100 >/dev/null 2>&1 && { GPUOK=1; break; }\n"
+        "  sleep 5\n"
+        "done\n"
+        "[ $GPUOK = 1 ] || echo 'gpu clock cap FAILED to apply' >&2\n"
+        "for p in /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq; do\n"
+        "  echo 2400000 > \"$p\" 2>/dev/null || true\n"
+        "done\n"
+        "CAPS\n"
+        "chmod 755 /usr/local/sbin/spark-thermal-caps.sh\n"
+        "cat > /etc/systemd/system/spark-thermal-caps.service <<'UNIT'\n"
+        "[Unit]\n"
+        "Description=Spark thermal caps (GPU 2100MHz, CPU 2.4GHz max)\n"
+        "After=multi-user.target\n"
+        "\n"
+        "[Service]\n"
+        "Type=oneshot\n"
+        "ExecStart=/usr/local/sbin/spark-thermal-caps.sh\n"
+        "RemainAfterExit=yes\n"
+        "\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n"
+        "UNIT\n"
+        "systemctl daemon-reload\n"
+        "systemctl enable --now spark-thermal-caps.service >/dev/null 2>&1 || true\n"
         "[ $CHG = 1 ] && systemctl daemon-reexec || true\n"
         "echo node-hardening-ok\n")
     b64 = base64.b64encode(script.encode()).decode()
-    steps = [("harden head: watchdog + panic sysctls + kdump (sudo may prompt)",
+    steps = [("harden head: watchdog + panic sysctls + kdump + thermal caps (sudo may prompt)",
               ["ssh", "-t", host, f"echo {b64} | base64 -d | sudo bash"])]
     for w in workers:
-        steps.append((f"harden {w}: watchdog + panic sysctls + kdump (sudo may prompt)",
+        steps.append((f"harden {w}: watchdog + panic sysctls + kdump + thermal caps (sudo may prompt)",
                       ["ssh", "-t", host,
                        f"echo {b64} | base64 -d > /tmp/.weightless-harden.sh && "
                        f"ssh -t {w} 'sudo bash /tmp/.weightless-harden.sh'"]))

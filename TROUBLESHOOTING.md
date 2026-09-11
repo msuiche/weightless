@@ -46,17 +46,36 @@ a deploy step; `harden_steps` in setup.py):
   the wedge-heal sysctls. A hang that panics now leaves a vmcore in
   `/var/crash` instead of just rebooting blind. Active only after the
   node's first reboot following the hardening run.
+- **Thermal caps** — `spark-thermal-caps.service` (oneshot, runs at boot and
+  at deploy): GPU SM clocks locked to 300–2100 MHz (under the ~2197 MHz
+  throttle floor) and every CPU policy capped at 2.4 GHz via
+  `scaling_max_freq`. The GB10 hard-lock class is thermal: under sustained
+  long-context prefill the ACPI zones run 92–98 °C against a single 104 °C
+  critical trip while the EC-internal fans stay inaudible. Measured cost:
+  zero for the CPU cap; GPU cap is ~-21% decode at 32K but +2.3x decode at
+  262K context (a stable clock beats an oscillating one).
 
-Net effect: a wedge becomes a ~2-minute blip instead of a human power-cycle,
-and a panicking wedge leaves a post-mortem. First live validation: 2026-09-11,
-spark-5bc3 wedged at 06:35 and was reset by the watchdog, back at 06:36:53 —
-112s, no human involvement.
+Net effect: a soft wedge becomes a ~2-minute blip instead of a human
+power-cycle, and a panicking wedge leaves a post-mortem. First live
+validation: 2026-09-11, spark-5bc3 wedged at 06:35 and was reset by the
+watchdog, back at 06:36:53 — 112s, no human involvement.
 
-Known gaps: the watchdog has not been fired deliberately (needs a reboot
-window). A hard wedge that never panics still leaves no dump — the watchdog
-resets the board without running the crash kernel; `efi_pstore` is the only
-channel there, check `/sys/fs/pstore` after the next event. Check NVIDIA
-for DGX OS updates; the wedge class is theirs to fix.
+2026-09-11, second lesson: the watchdog does **not** recover every wedge.
+spark-4687 wedged at 05:25, rebooted only at 06:36 (71 min late), wedged
+again 13 minutes later, and stayed frozen until a physical power cycle.
+Watchdog-resistant silent hard-locks under sustained inference are the
+thermal failure class — NVIDIA's own Field Diagnostic (PowerStress FAIL
+`020000600139`) is the RMA qualification tool; a matching public case with
+identical OS/driver/workload had both FE units RMA'd in 48h. If a node
+wedges twice in a day and the watchdog can't save it, run fieldiag and cap
+the clocks; don't keep power-cycling.
+
+Known gaps: a hard wedge that never panics still leaves no dump — the
+watchdog resets the board without running the crash kernel; `efi_pstore`
+is the only channel there, check `/sys/fs/pstore` after the next event.
+The thermal caps are a mitigation, not a fix — the underlying hardware
+question (dust, fan curve, unit degradation) belongs to fieldiag and,
+if it fails, an RMA. Check NVIDIA for DGX OS updates as they land.
 
 ## Boot fails after the assets synced
 
