@@ -15,7 +15,7 @@ Design: `../docs/vllm-plugin-design.md`, path (1).
 Into the same environment that runs vLLM:
 
 ```bash
-pip install /path/to/weightless/weightless-steer
+pip install /path/to/weightless/vllm-plugin
 ```
 
 ## Serve
@@ -60,5 +60,5 @@ Supported archs today: `NemotronHForCausalLM` (nemotron_h / Nemotron-H
 No GPU, no vllm install needed (torch + numpy only):
 
 ```bash
-cd weightless-steer && python -m unittest discover -s tests
+cd vllm-plugin && python -m unittest discover -s tests
 ```

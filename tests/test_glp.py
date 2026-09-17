@@ -1,7 +1,7 @@
 """Tests for glp.py -- the GLP (GGUF) steering API for transformers models.
 
 Offline tests write tiny GGUF v3 fixtures with weightless-steer's shared
-test writer (weightless-steer/tests/glpfiles.py -- the same bytes the
+test writer (vllm-plugin/tests/glpfiles.py -- the same bytes the
 container reader's own gate tests use) and steer a fake HF-style decoder
 stack. The network smoke test downloads a tiny random model and verifies
 the projection end to end; it skips when the hub is unreachable.
@@ -28,7 +28,7 @@ if torch is not None:
     import glp
 
     _spec = importlib.util.spec_from_file_location(
-        "glpfiles", ROOT / "weightless-steer" / "tests" / "glpfiles.py")
+        "glpfiles", ROOT / "vllm-plugin" / "tests" / "glpfiles.py")
     glpfiles = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(glpfiles)
 

@@ -70,7 +70,7 @@ _at = _load_module("apply_transformers",
 # container.py imports numpy and torch only -- no vLLM dependency comes
 # along for the ride.
 _container = _load_module("weightless_steer_container",
-                          "weightless-steer", "weightless_steer", "container.py")
+                          "vllm-plugin", "weightless_steer", "container.py")
 
 
 def _resolve(source):

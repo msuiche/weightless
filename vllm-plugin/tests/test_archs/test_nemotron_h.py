@@ -29,8 +29,8 @@ import torch
 from torch import nn
 
 _HERE = Path(__file__).resolve()
-sys.path.insert(0, str(_HERE.parents[2]))          # weightless-steer/
-sys.path.insert(0, str(_HERE.parents[1]))          # weightless-steer/tests/
+sys.path.insert(0, str(_HERE.parents[2]))          # vllm-plugin/
+sys.path.insert(0, str(_HERE.parents[1]))          # vllm-plugin/tests/
 
 from glpfiles import good_meta, good_tensors, write_gguf  # noqa: E402
 

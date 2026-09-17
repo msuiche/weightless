@@ -1,7 +1,7 @@
 # Upstreaming GLP steering into vLLM: extension-point survey and recommended path
 
 Status: design doc; the recommended path (1) is implemented in
-`weightless-steer/` (plugin package + nemotron_h adapter + offline tests),
+`vllm-plugin/` (plugin package + nemotron_h adapter + offline tests),
 2026-09-11. No upstream PR has been opened or is proposed here as a first
 step.
 
@@ -223,7 +223,7 @@ Skeleton (as implemented, with the nemotron_h adapter as the first lane;
 glm5_next and qwen3_next adapters remain follow-up lanes):
 
 ```
-weightless-steer/
+vllm-plugin/
 ├── pyproject.toml                     # entry_points: [vllm.general_plugins]
 │                                      #   weightless_steer = weightless_steer.plugin:register
 ├── weightless_steer/

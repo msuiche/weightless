@@ -21,3 +21,7 @@ __pycache__/
 
 # pip build metadata
 *.egg-info/
+
+# pip build output
+build/
+dist/
