@@ -38,12 +38,23 @@ Per-request controls (off unless opted into):
 
 | var | meaning |
 |---|---|
-| `WEIGHTLESS_ENABLE_MILESTONE_2` | **the gate.** Unset: no per-request buffers are registered, the apply is the scalar one, and a request carrying control xargs is refused. Set: the model registers per-token alpha rows and a per-request layer gate |
+| `WEIGHTLESS_ENABLE_MILESTONE_2` | **the gate — not honoured by this plugin's serving path yet.** Unset (the only supported setting): no per-request buffers are registered, the apply is the scalar one, and a request carrying control xargs is refused. Set: model construction raises, because nothing here parses a request's controls or installs its rows — see below |
 | `WEIGHTLESS_CONTROL_MIN_ALPHA` / `WEIGHTLESS_CONTROL_MAX_ALPHA` | the window a client-supplied alpha must fall in; default `[0.0, 4.0]`. Bounds **overrides only** — the server's own `WEIGHTLESS_STEER_ALPHA` is never checked against it |
 | `WEIGHTLESS_CONTROL_MAX_LAYERS` / `_MAX_LAYER_ID` | cap on a request's layer mask (default 128 / 1023) |
 | `WEIGHTLESS_CONTROL_MAX_SEGMENTS` / `_MAX_POSITION` | cap on a request's alpha schedule (default 8 / 1048576) |
 
 ## Per-request controls
+
+**Status: the primitives ship, the serving path does not.** The buffers,
+the apply, the row installer and the request policy are all here and
+tested, but no code in this plugin reads a request's controls or calls
+`set_weightless_control_rows` during serving — binding that to an engine's
+batch metadata is the piece that stays engine-shaped, and it is unwritten.
+So `WEIGHTLESS_ENABLE_MILESTONE_2` **raises at model construction** rather
+than booting a server that advertises per-request steering and then serves
+every request at the server default. The rest of this section describes
+what the primitives do, and what enabling the gate will mean once a runner
+binding exists.
 
 With the gate set, a request may narrow what steering does to it — a
 different alpha, a different alpha for prefill than for decode, a token
@@ -84,7 +95,12 @@ the top-level `weightless_runtime/` package, which imports neither vLLM nor
 torch and is shared with the hotfix fleet. It ships inside this wheel.
 
 Supported archs today: `NemotronHForCausalLM` (nemotron_h / Nemotron-H
-3.5). Each additional lane is one module under `weightless_steer/archs/`.
+3.5) and `Glm5NextForCausalLM` (glm5next / GLM-5.3-Flash — mHC widened
+stream; the site is the materialized post-layer `hc_post` stream flattened
+to `mhc_num_residual_streams × hidden`, and the adapter defers the last
+layer's in-decoder contract so the final layer is steered too — see the
+adapter docstring). Each additional lane is one module under
+`weightless_steer/archs/`.
 
 ## Behaviour contract
 
@@ -102,7 +118,21 @@ Supported archs today: `NemotronHForCausalLM` (nemotron_h / Nemotron-H
   decoding (same caveat as the nemotron hotfix).
 - torch.compile / CUDA graphs: the apply lives inside the overridden
   forward, so it is traced and captured exactly as the hotfix-patched
-  version was.
+  version was. Upstream's `@support_torch_compile` constructor captures
+  its *bound* forward before the adapter swaps `model.__class__`, so the
+  adapter re-runs `TorchCompileWithNoGuardsWrapper.__init__` after the
+  swap; without that the compiled callable would run the stock forward and
+  compiled serving would be silently unsteered.
+- **Alpha multipliers are refused, not ignored.** A spec-version-2 vector
+  carrying `glp.dir_scales` or `glp.layer_scales` fails the load: this
+  lane applies one scalar alpha to every steered layer, so serving such a
+  file would apply it at the wrong strength with nothing in the output to
+  say so.
+- **Nonfinite or zero values are refused.** A NaN/inf alpha (from the file
+  or `WEIGHTLESS_STEER_ALPHA`), an alpha that is finite in f32 but
+  overflows the model dtype, and a direction that is nonfinite or
+  all-zero are all rejected before any buffer is registered — a zero
+  direction steers nothing, a NaN one NaNs the whole stream.
 
 ## Tests
 
