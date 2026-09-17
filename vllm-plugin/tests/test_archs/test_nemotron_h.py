@@ -138,12 +138,19 @@ def _import_adapter():
     return importlib.import_module("weightless_steer.archs.nemotron_h")
 
 
-def manual_forward(embed, dirs, alpha, layers=range(NUM_LAYERS)):
-    """Hand-computed steered forward: fold, deposit, project per layer."""
+def manual_forward(embed, dirs, alpha, layers=range(NUM_LAYERS),
+                   steer_layers=None):
+    """Hand-computed steered forward: fold, deposit, project per layer.
+
+    `layers` selects which decoder layers RUN (and so deposit their write);
+    `steer_layers`, when given, further restricts which of them steer. The
+    two are different questions -- a per-request layer mask narrows the
+    second without touching the first.
+    """
     h = embed.clone()
     for i in layers:
         h = h + torch.from_numpy(WRITES[i])
-        if i in dirs:
+        if i in dirs and (steer_layers is None or i in steer_layers):
             d = dirs[i] / dirs[i].norm()
             h = h - alpha * (h @ d).unsqueeze(-1) * d
     return h
@@ -199,6 +206,88 @@ class SteeredForwardTests(unittest.TestCase):
         want = manual_forward(embed, self.file_dirs(layers), alpha=2.0)
         self.assertTrue(torch.allclose(out, want, atol=1e-4),
                         f"max err {(out - want).abs().max()}")
+
+    def test_per_request_forward_end_to_end(self):
+        """Two requests, two alphas, through the real adapter forward.
+
+        Covers the whole chain the bare-core tests skip: the gate env, the
+        adapter passing batch geometry, _wire_steering registering the
+        rows, the control plane building them, and the steered forward
+        loop reading them at every layer.
+        """
+        from weightless_runtime.controls import WeightlessResolvedXArgs
+        from weightless_steer.control_plane import (
+            ScheduledRequest, WeightlessControlPlane,
+        )
+
+        layers = (1, 3)
+        self.write_vector(layers, alpha="2.0")
+        model = self.build(WEIGHTLESS_STEER_PATH=self.path,
+                           WEIGHTLESS_ENABLE_MILESTONE_2="1")
+        inner = model.model
+        self.assertTrue(inner.weightless_per_request)
+        self.assertEqual(inner.weightless_steer_layer_ids, layers)
+
+        plane = WeightlessControlPlane(
+            max_num_tokens=MAX_NUM_TOKENS, max_num_reqs=MAX_NUM_REQS,
+            num_layers=NUM_LAYERS, default_alpha=2.0, loaded_layers=layers,
+        )
+        plane.build([
+            ScheduledRequest("a", WeightlessResolvedXArgs(alpha_override=0.0),
+                             token_count=2, start_ordinal=0, prompt_length=2),
+            ScheduledRequest("b", WeightlessResolvedXArgs(alpha_override=1.0),
+                             token_count=3, start_ordinal=0, prompt_length=3),
+        ])
+        plane.install(inner)
+
+        embed = torch.randn(5, HIDDEN)
+        with torch.no_grad():
+            out = model(None, None, inputs_embeds=embed)
+        dirs = self.file_dirs(layers)
+        # Request "a" is unsteered, request "b" runs at alpha 1.
+        want_a = manual_forward(embed[:2], dirs, alpha=0.0)
+        want_b = manual_forward(embed[2:], dirs, alpha=1.0)
+        self.assertTrue(torch.allclose(out[:2], want_a, atol=1e-4),
+                        f"req a max err {(out[:2] - want_a).abs().max()}")
+        self.assertTrue(torch.allclose(out[2:], want_b, atol=1e-4),
+                        f"req b max err {(out[2:] - want_b).abs().max()}")
+        # And the two really did differ.
+        self.assertFalse(torch.allclose(out[:2], embed[:2] * 0 + out[2:3]))
+
+    def test_per_request_layer_mask_through_the_forward(self):
+        layers = (1, 3)
+        self.write_vector(layers, alpha="2.0")
+        model = self.build(WEIGHTLESS_STEER_PATH=self.path,
+                           WEIGHTLESS_ENABLE_MILESTONE_2="1")
+        from weightless_runtime.controls import WeightlessResolvedXArgs
+        from weightless_steer.control_plane import (
+            ScheduledRequest, WeightlessControlPlane,
+        )
+        plane = WeightlessControlPlane(
+            max_num_tokens=MAX_NUM_TOKENS, max_num_reqs=MAX_NUM_REQS,
+            num_layers=NUM_LAYERS, default_alpha=2.0, loaded_layers=layers,
+        )
+        plane.build([ScheduledRequest(
+            "a", WeightlessResolvedXArgs(layers_override=(3,)),
+            token_count=3, start_ordinal=0, prompt_length=3)])
+        plane.install(model.model)
+        embed = torch.randn(3, HIDDEN)
+        with torch.no_grad():
+            out = model(None, None, inputs_embeds=embed)
+        # Only layer 3 steers, even though layer 1 carries a direction.
+        want = manual_forward(embed, self.file_dirs(layers), alpha=2.0,
+                              steer_layers=(3,))
+        self.assertTrue(torch.allclose(out, want, atol=1e-4),
+                        f"max err {(out - want).abs().max()}")
+
+    def test_gate_off_registers_no_per_request_buffers(self):
+        """The default deployment is untouched by any of this."""
+        self.write_vector((1,), alpha="2.0")
+        model = self.build(WEIGHTLESS_STEER_PATH=self.path)
+        self.assertFalse(model.model.weightless_per_request)
+        for name in ("_steer_alpha_rows", "_steer_slot_rows",
+                     "_steer_layer_bank"):
+            self.assertNotIn(name, dict(model.model.named_buffers()))
 
     def test_alpha_env_overrides_file_default(self):
         layers = (2,)
