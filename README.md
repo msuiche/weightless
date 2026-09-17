@@ -94,10 +94,15 @@ The model weights are never redistributed — what this repo ships is the
   directions, derived by us and published under
   [`msuiche/`](https://huggingface.co/msuiche) (see
   [Steering artifacts](#steering-artifacts-ours)). No model weights inside.
-- **The patch.** A fail-closed boot hotfix per lane
-  (`patches/hotfix-*.py`) that loads the GLP file and installs the
-  projective hook — no image build, no forked runtime. Structural guard
-  tests in `scripts/`, hardware-validated numbers in each lane's README.
+- **The patch.** Two delivery mechanisms install the same hook. Today's
+  lanes run a fail-closed boot hotfix per lane (`patches/hotfix-*.py`)
+  that loads the GLP file and installs the projective hook inside stock
+  vLLM at container start — no image build, no forked runtime. New
+  architectures land as adapters in the installable plugin instead
+  (`vllm-plugin/weightless_steer/archs/`, one adapter per arch): the
+  plugin shadows the model class in vLLM's `ModelRegistry`, so no
+  container files get rewritten at all. Structural guard tests in
+  `tests/structure/`, hardware-validated numbers in each lane's README.
 - **Quant-friendly.** The hook steers activations at runtime (the
   calibrated site per lane: post-layer residual where the runtime
   materialises it, the pre-fold FFN write on the DSV4 lane, 2026-09-04
@@ -278,7 +283,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `patches/hotfix-glm53-steering-projective.py` | the same steering for the GLM-5.3 lane: patches `vllm/models/glm5next/nvidia/model.py`, steers the materialized mHC stream (16384 = 4×4096); the last layer's in-decoder contract is deferred so L44 is covered |
 | `patches/hotfix-glm53xl-steering-projective.py` | the same steering for the GLM-5.3 743B lane: patches the overlay's `deepseek_v2.py` copy at staging (the mount is read-only), steers `hidden_states + residual` (decomposed convention, no HC widening) |
 | `patches/hotfix-glm53-exl3-steering-projective.py` | the GLM-5.3-Flash steering for brandonmusic's EXL3/B12X fork image (SM120): the fork's DFlash branch splits the decoder loop in two — the variant patches both (aux loop steers after the aux capture, pre-steer features) |
-| `vllm-plugin/` | the same steering as an installable vLLM plugin (dist `weightless-steer`, `vllm.general_plugins` entry point): shadows the model class in `ModelRegistry` instead of rewriting files in the container — the successor to the hotfix fleet above, `NemotronHForCausalLM` today. Design: `docs/vllm-plugin-design.md`, offline tests need neither GPU nor vLLM |
+| `vllm-plugin/` | the same steering as an installable vLLM plugin (dist `weightless-steer`, `vllm.general_plugins` entry point): one adapter per architecture in `weightless_steer/archs/` shadows the model class in `ModelRegistry` instead of rewriting files in the container — the successor to the hotfix fleet above, `nemotron_h.py` today. Design: `docs/vllm-plugin-design.md`, offline tests need neither GPU nor vLLM |
 | `patches/vendor/sparse_attn_indexer_kpool_sm121.py` | vendored SM121 indexer top-k fix (tonyd2wild's DFlash2 repo, provenance header inside): bind-mounted over the in-image file on every glm53 node — without it both published images hard-kill on decode past ~24K context |
 | `patches/reference/glm5next_b12x_exl3.py` | the EXL3 structure test's reference — the model file extracted from the published `verdictai/glm53-flash-exl3-k4` image (OCI layer sha256:7f03081e…) |
 | `patches/reference/deepseek_v2_glm53xl.py` | the 743B structure test's reference — tonyd2wild's kernel-overlay `deepseek_v2.py` (the file his stack actually serves); same anchors as vLLM v0.28.0 |

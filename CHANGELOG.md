@@ -16,6 +16,16 @@ live in `BENCHMARK.md`; this file tracks what shipped.
   Saved env values only; the wizard owns env edits. Harden steps stay
   wizard-only (sudo needs a tty). Flags: `--skip-assets`, `--skip-wait`.
 
+### Fixed
+- DSV4 peer gate: probe the peer's sshd over bash `/dev/tcp` instead of
+  `ping` — the gx10 image ships no iputils, so the gate read "peer
+  unreachable" forever and vLLM never started (`docker-compose.dsv4.yml`).
+
+### Changed
+- README: the delivery split is now explicit — `patches/hotfix-*.py` is the
+  current production mechanism; `vllm-plugin/weightless_steer/archs/` (one
+  adapter per architecture, registry shadowing) is where new archs land.
+
 ## 2026-09-11
 
 ### Added
