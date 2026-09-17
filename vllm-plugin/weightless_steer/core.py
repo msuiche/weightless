@@ -44,17 +44,33 @@ class SteeringCore:
         num_layers / hidden_size: model geometry the buffers are sized to.
     """
 
-    def __init__(self, dirs, alpha, hook, num_layers, hidden_size, path=None):
+    def __init__(self, dirs, alpha, hook, num_layers, hidden_size, path=None,
+                 max_num_tokens=None, max_num_reqs=None):
         self.dirs = dirs
         self.alpha = float(alpha)
         self.hook = hook
         self.num_layers = num_layers
         self.hidden_size = hidden_size
         self.path = path
+        # Per-request geometry. None on both = the scalar lane: one alpha
+        # for the whole batch, the original apply, byte-identical graph.
+        self.max_num_tokens = max_num_tokens
+        self.max_num_reqs = max_num_reqs
         self._owner = None
 
+    @property
+    def per_request(self) -> bool:
+        """True when this core carries per-token alpha / per-request masks.
+
+        Decided once at construction, never from tensor data, so the branch
+        in apply() is resolved at trace time and the captured graph is the
+        same on every step.
+        """
+        return self.max_num_tokens is not None
+
     @classmethod
-    def from_env(cls, *, hook, num_layers, hidden_size):
+    def from_env(cls, *, hook, num_layers, hidden_size,
+                 max_num_tokens=None, max_num_reqs=None):
         """Build a core from WEIGHTLESS_STEER_*, or None if steering is off.
 
         Fail-closed: WEIGHTLESS_STEER_PATH set but the file missing,
@@ -143,16 +159,19 @@ class SteeringCore:
             "layers=%d..%d (%d) width=%d",
             hook, alpha, min(dirs), max(dirs), len(dirs), hidden_size,
         )
-        return cls(dirs, alpha, hook, num_layers, hidden_size, path=path)
+        return cls(dirs, alpha, hook, num_layers, hidden_size, path=path,
+                   max_num_tokens=max_num_tokens, max_num_reqs=max_num_reqs)
 
     @classmethod
-    def disabled(cls, *, hook, num_layers, hidden_size):
+    def disabled(cls, *, hook, num_layers, hidden_size,
+                 max_num_tokens=None, max_num_reqs=None):
         """A core that steers nothing: empty stack rows, alpha 0.
 
         register_buffers still runs, so the traced graph is identical
         whether steering is on or off — the apply below is unconditional.
         """
-        return cls({}, 0.0, hook, num_layers, hidden_size)
+        return cls({}, 0.0, hook, num_layers, hidden_size,
+                   max_num_tokens=max_num_tokens, max_num_reqs=max_num_reqs)
 
     def register_buffers(self, module, dtype):
         """Register (and fill) _steer_stack / _steer_alpha on `module`.
@@ -178,7 +197,89 @@ class SteeringCore:
         for layer_id, vec in self.dirs.items():
             module._steer_stack[layer_id, 0] = vec.to(dtype)
         module._steer_alpha.fill_(self.alpha)
+
+        if self.per_request:
+            # Per-token alpha, per-token request slot, per-request layer
+            # gate. All three are PRE-FILLED with the values that reproduce
+            # the scalar lane exactly: alpha rows hold the server alpha and
+            # the gate is all-ones. A step where nothing writes them (no
+            # control plumbing attached, a warmup/profile forward, padded
+            # rows past the batch) therefore steers exactly as this core
+            # would without per-request support -- the failure direction is
+            # "steered as configured", never "silently unsteered".
+            #
+            # Slot 0 is the no-request slot and its gate row is all-ones for
+            # the same reason.
+            module.register_buffer(
+                "_steer_alpha_rows",
+                torch.full((self.max_num_tokens,), self.alpha, dtype=dtype),
+                persistent=False,
+            )
+            module.register_buffer(
+                "_steer_slot_rows",
+                torch.zeros(self.max_num_tokens, dtype=torch.int32),
+                persistent=False,
+            )
+            module.register_buffer(
+                "_steer_layer_bank",
+                torch.ones(self.max_num_reqs + 1, self.num_layers,
+                           dtype=dtype),
+                persistent=False,
+            )
         self._owner = module
+
+    def set_control_rows(self, alpha_rows=None, slot_rows=None,
+                         layer_bank=None):
+        """Install one step's per-request control plan.
+
+        Copies IN PLACE (`copy_`) rather than rebinding: a CUDA graph
+        captures buffer addresses, so replacing the tensor objects would
+        leave the captured graph reading the old memory. Short rows are
+        written at the front and the tail keeps its pre-filled default, so
+        a partial write still steers the untouched rows as configured.
+
+        Raises on a core that was not built for per-request control -- the
+        caller asked for something this lane cannot honour, and silently
+        ignoring it would serve an unsteered-or-miscalibrated request while
+        reporting success.
+        """
+        if not self.per_request:
+            raise RuntimeError(
+                "this SteeringCore was built without per-request control "
+                "geometry (max_num_tokens/max_num_reqs); refusing to accept "
+                "a control plan it cannot apply"
+            )
+        owner = self._owner
+        if owner is None:
+            raise RuntimeError("set_control_rows before register_buffers")
+        for name, value in (("_steer_alpha_rows", alpha_rows),
+                            ("_steer_slot_rows", slot_rows),
+                            ("_steer_layer_bank", layer_bank)):
+            if value is None:
+                continue
+            target = getattr(owner, name)
+            if value.shape == target.shape:
+                target.copy_(value)
+                continue
+            if value.dim() != target.dim():
+                raise ValueError(
+                    f"{name}: plan has {value.dim()} dims, buffer has "
+                    f"{target.dim()}"
+                )
+            if any(v > t for v, t in zip(value.shape, target.shape)):
+                raise ValueError(
+                    f"{name}: plan {tuple(value.shape)} exceeds buffer "
+                    f"{tuple(target.shape)}"
+                )
+            target[tuple(slice(0, v) for v in value.shape)].copy_(value)
+
+    def reset_control_rows(self):
+        """Return every control buffer to its scalar-lane default."""
+        if not self.per_request or self._owner is None:
+            return
+        self._owner._steer_alpha_rows.fill_(self.alpha)
+        self._owner._steer_slot_rows.zero_()
+        self._owner._steer_layer_bank.fill_(1.0)
 
     def apply(self, layer_idx: int, h: torch.Tensor) -> torch.Tensor:
         """h <- h - alpha * (h . d) d at GLOBAL layer id `layer_idx`.
@@ -187,7 +288,24 @@ class SteeringCore:
         stack row, making this a numeric no-op there while the traced graph
         stays identical for every layer set.
         """
-        dirs = self._owner._steer_stack[layer_idx]
+        owner = self._owner
+        dirs = owner._steer_stack[layer_idx]
         coef = torch.einsum("...h,kh->...k", h, dirs)
-        return h - self._owner._steer_alpha * torch.einsum(
-            "...k,kh->...h", coef, dirs)
+        proj = torch.einsum("...k,kh->...h", coef, dirs)
+        if not self.per_request:
+            return h - owner._steer_alpha * proj
+        # Per-request lane. `self.per_request` is a Python constant fixed at
+        # construction, so this branch is resolved when the region is traced
+        # and the captured graph still contains exactly one apply.
+        #
+        # h is the flattened [num_tokens, hidden] batch, so row i is token i
+        # of the concatenated requests: alpha comes from the per-token row
+        # and the layer gate from this token's request slot. Both index the
+        # front of a fixed-size buffer, which keeps every shape in the graph
+        # a function of the captured token count alone.
+        n = h.shape[0]
+        alpha = owner._steer_alpha_rows[:n].unsqueeze(-1)
+        gate = owner._steer_layer_bank[
+            owner._steer_slot_rows[:n].long(), layer_idx
+        ].unsqueeze(-1)
+        return h - alpha * gate * proj

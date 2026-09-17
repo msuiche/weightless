@@ -99,13 +99,24 @@ class _PPGroup:
     is_last_rank = True
 
 
+MAX_NUM_TOKENS = 16
+MAX_NUM_REQS = 4
+
+
 def _vllm_config():
     return types.SimpleNamespace(
         model_config=types.SimpleNamespace(
             hf_config=types.SimpleNamespace(hidden_size=HIDDEN,
                                             num_hidden_layers=NUM_LAYERS),
             dtype=torch.float32,
-        )
+        ),
+        # The adapter reads the batch shape from here to size the
+        # per-request control buffers; it is unused on the scalar lane but
+        # the real VllmConfig always carries it, so the stub does too.
+        scheduler_config=types.SimpleNamespace(
+            max_num_batched_tokens=MAX_NUM_TOKENS,
+            max_num_seqs=MAX_NUM_REQS,
+        ),
     )
 
 
@@ -146,7 +157,8 @@ class SteeredForwardTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.path = os.path.join(self.tmp.name, "vec.gguf")
         for k in ("WEIGHTLESS_STEER_PATH", "WEIGHTLESS_STEER_ALPHA",
-                  "WEIGHTLESS_STEER_LAYERS", "WEIGHTLESS_STEER_HOOK"):
+                  "WEIGHTLESS_STEER_LAYERS", "WEIGHTLESS_STEER_HOOK",
+                  "WEIGHTLESS_ENABLE_MILESTONE_2"):
             os.environ.pop(k, None)
 
     def _unimport(self):
