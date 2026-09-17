@@ -356,5 +356,76 @@ class GateAgreesWithTheRequestParser(unittest.TestCase):
                                      _enabled(_PER_REQUEST_ENV))
 
 
+class VectorisedFillMatchesTheScalarReference(unittest.TestCase):
+    """The two alpha implementations must not drift apart.
+
+    weightless_alpha_at() is the readable per-token reference;
+    _fill_weightless_alpha_slice() is the vectorised fill build() actually
+    uses on the hot path. A disagreement would give a request the wrong
+    alpha schedule in production, and no example-based test would
+    necessarily catch it -- so compare them over randomised schedules,
+    fixed seed for reproducibility.
+    """
+
+    def test_agree_over_random_schedules(self):
+        import random
+
+        from weightless_runtime.controls import (
+            WeightlessEffectiveControl,
+            _fill_weightless_alpha_slice,
+            weightless_alpha_at,
+        )
+
+        rng = random.Random(20260917)
+        worst = 0.0
+        compared = 0
+        for _ in range(500):
+            prompt_length = rng.randint(1, 12)
+            segments, cursor = [], 0
+            for _ in range(rng.randint(0, 3)):
+                start = cursor + rng.randint(0, 3)
+                end = start + rng.randint(1, 5)
+                if rng.random() < 0.5:
+                    alpha = round(rng.uniform(0, 4), 3)
+                    segment = WeightlessScheduleSegment(start, end, alpha,
+                                                        alpha)
+                else:
+                    if end - start == 1:      # a ramp needs two tokens
+                        end += 1
+                    segment = WeightlessScheduleSegment(
+                        start, end, round(rng.uniform(0, 4), 3),
+                        round(rng.uniform(0, 4), 3))
+                segments.append(segment)
+                cursor = end
+            control = WeightlessEffectiveControl(
+                base_alpha=round(rng.uniform(0, 4), 3),
+                prefill_alpha=round(rng.uniform(0, 4), 3),
+                decode_alpha=round(rng.uniform(0, 4), 3),
+                layers=None,
+                schedule=tuple(segments),
+            )
+            start_ordinal = rng.randint(0, 20)
+            count = rng.randint(1, 16)
+
+            filled = torch.zeros(count, dtype=torch.float32)
+            _fill_weightless_alpha_slice(
+                filled, control=control, start_ordinal=start_ordinal,
+                prompt_length=prompt_length,
+            )
+            for offset in range(count):
+                reference = weightless_alpha_at(
+                    control,
+                    token_ordinal=start_ordinal + offset,
+                    prompt_length=prompt_length,
+                )
+                worst = max(worst, abs(reference - filled[offset].item()))
+                compared += 1
+
+        self.assertGreater(compared, 2000, "the sweep did not cover much")
+        self.assertLess(worst, 1e-5,
+                        f"vectorised fill drifted from the reference by "
+                        f"{worst:g} over {compared} token positions")
+
+
 if __name__ == "__main__":
     unittest.main()
