@@ -2157,11 +2157,25 @@ def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
         io.err(str(exc))
         return 1
     parks = []
+    port = str(env.get("VLLM_PORT") or lane.get("port") or "")
+    base = f"http://{ssh_host}:{port}/v1"
+    want = env.get("SERVED_MODEL_NAME", "").strip("\"'")
     for w in nodes:
         for idx, name in current_lanes("\n".join(names_by_node[w])):
             if idx == lane_idx:
-                io.err(f"lane {lane_idx} is already serving ({name}) — nothing to do")
-                return 0
+                ids, _ = probe_models(base)
+                if ids and (not want or want in ids):
+                    io.ok(f"lane {lane_idx} is already serving {want or ids[0]} "
+                          f"on {base} — nothing to do")
+                    return 0
+                # A crash-looping container still appears in docker ps; a
+                # name match without a live endpoint is not "serving".
+                io.warn(f"{name} exists but {base} does not answer — "
+                        "removing the stale container and rebooting")
+                parks.append((f"remove stale {name} on {w or ssh_host}",
+                              node_command(values, ssh_host,
+                                           shlex.join(["docker", "rm", "-f", name]), w)))
+                continue
             parks.append((f"park {name} on {w or ssh_host}",
                           node_command(values, ssh_host,
                                        shlex.join(["docker", "rm", "-f", name]), w)))
@@ -2181,7 +2195,6 @@ def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
         if subprocess.call(node_command(values, ssh_host, stack["stop"])) != 0:
             io.err(f"failed to stop {stack['name']} — switch aborted")
             return 1
-    port = str(env.get("VLLM_PORT") or lane.get("port") or "")
     if port:
         r = subprocess.run(
             node_command(values, ssh_host,
@@ -2222,8 +2235,6 @@ def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
         io.ok("boot started")
         return 0
 
-    base = f"http://{ssh_host}:{port}/v1"
-    want = env.get("SERVED_MODEL_NAME", "").strip("\"'")
     io.info(f"waiting for {want or 'the endpoint'} on {base} ...")
     deadline = time.time() + 45 * 60
     while time.time() < deadline:
