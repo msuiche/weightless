@@ -16,4 +16,5 @@ dependencies = []
 weightless_steer = "weightless_steer.plugin:register"
 
 [tool.setuptools.packages.find]
-include = ["weightless_steer*"]
+where = [".", ".."]
+include = ["weightless_steer*", "weightless_runtime*"]

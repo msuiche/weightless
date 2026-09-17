@@ -104,4 +104,9 @@ class SteeredNemotronHForCausalLM(NemotronHForCausalLM):
         # Weight loading happens after __init__, so the swapped class is in
         # place before any checkpoint tensors arrive.
         self.model.__class__ = SteeredNemotronHModel
-        self.model._wire_steering(dtype=vllm_config.model_config.dtype)
+        scheduler_config = vllm_config.scheduler_config
+        self.model._wire_steering(
+            dtype=vllm_config.model_config.dtype,
+            max_num_tokens=scheduler_config.max_num_batched_tokens,
+            max_num_reqs=scheduler_config.max_num_seqs,
+        )
