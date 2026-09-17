@@ -2095,6 +2095,10 @@ def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
                 or values.get("lan-ip") or values.get("head-ip"))
     matches = [i for i, lane in enumerate(LANES)
                if lane_arg == str(i) or lane_arg.lower() in lane["name"].lower()]
+    if len(matches) > 1 and lane_arg.isdigit():
+        # A bare index that also substring-matches other lanes ("0" in
+        # "day-0 image") means the index, not the substring.
+        matches = [i for i in matches if lane_arg == str(i)]
     if not matches:
         stacks = [s for s in EXTERNAL_STACKS
                   if "boot" in s
