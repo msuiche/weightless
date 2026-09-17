@@ -198,6 +198,9 @@ services:
     # YAML `>` folds same-indent lines onto one line, and a `#` then
     # comments out the rest of that line (swallowed the peer gate itself
     # plus an `if` opener on 2026-09-17 — crash loop).
+    # The gate probes sshd over bash /dev/tcp, not ping: the gx10 image
+    # has no iputils (`ping: not found`, rc=127), which reads as
+    # "peer unreachable" and loops forever.
     command:
       - bash
       - -lc
@@ -209,7 +212,7 @@ services:
         export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$${LD_LIBRARY_PATH:-}";
         WAIT_PEERS="$${DSPARK_WAIT_FOR:-}";
         if [ -z "$$WAIT_PEERS" ]; then if [ "$${NODE_RANK:-0}" = "0" ]; then WAIT_PEERS="$${WORKER_VLLM_HOST_IP:-}"; else WAIT_PEERS="$${MASTER_ADDR:-}"; fi; fi;
-        for PEER in $$WAIT_PEERS; do until ping -c1 -W2 "$$PEER" >/dev/null 2>&1; do echo "[peer-gate] $$PEER unreachable - waiting 30s (a dead peer must not restart-loop vLLM)"; sleep 30; done; done;
+        for PEER in $$WAIT_PEERS; do until (exec 3<>/dev/tcp/"$$PEER"/22) 2>/dev/null; do echo "[peer-gate] $$PEER unreachable - waiting 30s (a dead peer must not restart-loop vLLM)"; sleep 30; done; done;
         if [ -z "$${NCCL_IB_MERGE_NICS:-}" ]; then unset NCCL_IB_MERGE_NICS; fi;
         if [ -z "$${NCCL_NET_GDR_LEVEL:-}" ]; then unset NCCL_NET_GDR_LEVEL; fi;
         if [ -z "$${NCCL_NET_GDR_READ:-}" ]; then unset NCCL_NET_GDR_READ; fi;
