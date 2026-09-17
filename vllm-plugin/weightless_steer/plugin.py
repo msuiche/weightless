@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 SHADOWED_ARCHS = {
     "NemotronHForCausalLM":
         "weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM",
+    "Glm5NextForCausalLM":
+        "weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM",
 }
 
 

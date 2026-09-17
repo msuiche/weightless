@@ -46,6 +46,7 @@ class SteeredModelMixin:
         dtype: torch.dtype,
         max_num_tokens: int | None = None,
         max_num_reqs: int | None = None,
+        stream_width: int | None = None,
     ) -> None:
         """Load the vector named by WEIGHTLESS_STEER_PATH (if any) and
         register the steering buffers on this module.
@@ -53,8 +54,15 @@ class SteeredModelMixin:
         A disabled core (env unset) still registers zeroed buffers: the
         apply is unconditional in the forward loop, and the traced graph
         must be identical whether steering is on or off.
+
+        stream_width defaults to config.hidden_size, the plain
+        single-stream residual. A widened-stream arch (glm5next's mHC:
+        hidden_size * mhc_num_residual_streams) passes its derivation-space
+        width, which is what the GLP vector's directions are sized to.
         """
         config = self.config
+        if stream_width is None:
+            stream_width = config.hidden_size
         # Per-request control geometry is registered only when the server
         # opted in AND the adapter passed the batch shape. Either missing
         # leaves the scalar lane exactly as it was: same buffers, same
@@ -75,14 +83,14 @@ class SteeredModelMixin:
         core = SteeringCore.from_env(
             hook=self.STEER_HOOK,
             num_layers=len(self.layers),
-            hidden_size=config.hidden_size,
+            hidden_size=stream_width,
             **geometry,
         )
         if core is None:
             core = SteeringCore.disabled(
                 hook=self.STEER_HOOK,
                 num_layers=len(self.layers),
-                hidden_size=config.hidden_size,
+                hidden_size=stream_width,
                 **geometry,
             )
         core.register_buffers(self, dtype)
