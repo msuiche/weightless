@@ -25,11 +25,13 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import re
 import sys
 import time
 import urllib.request
+import urllib.parse
 from collections import deque
 
 SPARK = "▁▂▃▄▅▆▇█"
@@ -152,43 +154,79 @@ def render(target: str, m: dict, prev: dict | None, dt: float,
     return "\n".join(L)
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Live terminal view of a vLLM lane.")
-    ap.add_argument("url", nargs="?", default="http://spark-4687.local:8888",
+def positive_seconds(value):
+    try:
+        seconds = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a positive, finite number of seconds")
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise argparse.ArgumentTypeError("must be a positive, finite number of seconds")
+    return seconds
+
+
+def metrics_base(value):
+    try:
+        url = urllib.parse.urlsplit(value)
+        if url.scheme not in ("http", "https") or not url.hostname or url.query or url.fragment:
+            raise ValueError
+        url.port  # Validate ports before making a request.
+    except ValueError:
+        raise argparse.ArgumentTypeError("use an http:// or https:// base URL without a query or fragment")
+    path = url.path.rstrip("/")
+    for suffix in ("/metrics", "/v1"):
+        if path.endswith(suffix):
+            path = path[:-len(suffix)]
+            break
+    return urllib.parse.urlunsplit((url.scheme, url.netloc, path, "", ""))
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="Live terminal view of a vLLM lane.", allow_abbrev=False)
+    ap.add_argument("url", nargs="?", type=metrics_base, default="http://spark-4687.local:8888",
                     help="lane base URL (default: %(default)s — DSV4 on the rig)")
     ap.add_argument("--once", action="store_true", help="print one snapshot and exit")
-    ap.add_argument("--interval", type=float, default=2.0, help="refresh seconds (default: %(default)s)")
+    ap.add_argument("--interval", type=positive_seconds, default=2.0, help="refresh seconds (default: %(default)s)")
+    ap.add_argument("--timeout", type=positive_seconds, default=5.0, help="request timeout seconds (default: %(default)s)")
     ap.add_argument("--no-color", action="store_true",
                     help="plain output (auto when piped or NO_COLOR is set)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
-    color = sys.stdout.isatty() and not os.environ.get("NO_COLOR") and not args.no_color
+    terminal = sys.stdout.isatty()
+    color = terminal and "NO_COLOR" not in os.environ and not args.no_color
     c = palette(color)
 
     hist_pre, hist_dec = deque(maxlen=HIST), deque(maxlen=HIST)
-    prev, prev_t, t0 = None, 0.0, time.time()
+    prev, prev_t, t0 = None, 0.0, time.monotonic()
     while True:
         try:
-            m = parse_metrics(fetch(args.url))
+            m = parse_metrics(fetch(args.url, timeout=args.timeout))
+            if not any(key.startswith("vllm:") for key in m):
+                raise ValueError("endpoint returned no vLLM metrics")
         except Exception as e:
-            print(f"\r\033[K{c['red']}cannot reach {args.url}/metrics: {e}{c['r']}", file=sys.stderr)
+            print(f"{c['red']}cannot read {args.url}/metrics: {e}{c['r']}", file=sys.stderr)
+            prev = None
             if args.once:
                 return 1
             time.sleep(args.interval)
             continue
-        now = time.time()
+        now = time.monotonic()
         out = render(args.url, m, prev, now - prev_t, hist_pre, hist_dec, now - t0, c)
         if args.once:
             print(out)
             return 0
-        print("\033[H\033[J" + out, end="", flush=True)
+        print(("\033[H\033[J" if terminal else "") + out,
+              end="" if terminal else "\n\n", flush=True)
         prev, prev_t = m, now
-        try:
-            time.sleep(args.interval)
-        except KeyboardInterrupt:
-            print()
-            return 0
+        time.sleep(args.interval)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print(file=sys.stderr)
+        sys.exit(130)
+    except BrokenPipeError:
+        # Prevent a second flush error during interpreter shutdown.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        sys.exit(0)

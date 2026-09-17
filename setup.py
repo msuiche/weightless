@@ -11,6 +11,7 @@ ANSI-colored prompts otherwise. Non-interactive alternative:
 `sh tests/smoke/install.sh && sh tests/smoke/run.sh` with DSPARK_* env overrides.
 """
 import base64
+import argparse
 import json
 import os
 import re
@@ -1519,7 +1520,7 @@ class CliIO:
          "warn": "\033[33m", "dim": "\033[2m", "reset": "\033[0m"}
 
     def __init__(self):
-        self.color = sys.stdout.isatty()
+        self.color = sys.stdout.isatty() and "NO_COLOR" not in os.environ
 
     def _c(self, kind, msg):
         if self.color:
@@ -1566,11 +1567,16 @@ class CliIO:
     def confirm(self, prompt, default=True):
         hint = "Y/n" if default else "y/N"
         enter = "Enter = yes" if default else "Enter = no"
-        try:
-            s = input(f"{prompt} [{hint} — {enter}]: ").strip().lower()
-        except EOFError:
-            self._eof()
-        return s.startswith("y") if s else default
+        while True:
+            try:
+                s = input(f"{prompt} [{hint} — {enter}]: ").strip().lower()
+            except EOFError:
+                self._eof()
+            if not s:
+                return default
+            if s in ("y", "yes", "n", "no"):
+                return s in ("y", "yes")
+            print("  enter yes or no")
 
     def menu(self, title, items, idle=None, preselect=0):  # idle is TUI-only
         print(self._c("head", title))
@@ -2105,6 +2111,11 @@ def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
                   and (lane_arg.lower() in s["name"].lower()
                        or lane_arg.lower() in s["match"])]
         if stacks:
+            if len(stacks) > 1:
+                for stack in stacks:
+                    io.info(f"  {stack['name']}")
+                io.err(f"{lane_arg!r} is ambiguous")
+                return 2
             if not ssh_host:
                 io.err("no ssh host for the head node — run the wizard once first")
                 return 1
@@ -2658,19 +2669,35 @@ def _tui_main(stdscr):
     return rc
 
 
-def main():
-    argv = sys.argv[1:]
-    if argv and argv[0] == "serve":
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Interactive weightless setup and lane deployment.",
+                                     allow_abbrev=False)
+    parser.add_argument("--plain", action="store_true", help="use text prompts instead of the TUI")
+    commands = parser.add_subparsers(dest="command")
+    serve = commands.add_parser("serve", help="switch to a saved lane", allow_abbrev=False)
+    serve.add_argument("lane", nargs="*", help="lane index or name substring; omit to list lanes")
+    serve.add_argument("--skip-assets", action="store_true", help="skip downloading deployment assets")
+    serve.add_argument("--skip-wait", action="store_true", help="return without waiting for readiness")
+    args = parser.parse_args(argv)
+    if args.command == "serve":
         io = CliIO()
         io.header("== weightless serve ==")
-        return quick_serve(io, " ".join(a for a in argv[1:]
-                                        if not a.startswith("--")).strip(),
-                           skip_assets="--skip-assets" in argv,
-                           skip_wait="--skip-wait" in argv)
-    if sys.stdout.isatty() and sys.stdin.isatty() and curses is not None:
+        return quick_serve(io, " ".join(args.lane).strip(),
+                           skip_assets=args.skip_assets, skip_wait=args.skip_wait)
+    if not sys.stdin.isatty():
+        parser.error("setup needs an interactive terminal; use 'serve <lane>' for unattended deployment")
+    if not args.plain and sys.stdout.isatty() and curses is not None:
+        started = False
+        def start(stdscr):
+            nonlocal started
+            started = True
+            return _tui_main(stdscr)
         try:
-            return curses.wrapper(_tui_main)
-        except Exception as e:
+            return curses.wrapper(start)
+        except curses.error as e:
+            if started:
+                print(f"TUI failed: {e}. Retry with --plain.", file=sys.stderr)
+                return 1
             print(f"(TUI failed: {e} — falling back to prompts)", file=sys.stderr)
     io = CliIO()
     io.header("== weightless setup ==")
@@ -2684,4 +2711,8 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\nCancelled.", file=sys.stderr)
+        sys.exit(130)

@@ -42,6 +42,19 @@ python3 weightless.py --help   # all commands
 which also work standalone: `setup.py` (TUI wizard with a prompt fallback),
 `scripts/dash.py`, `tests/smoke/run.sh`.
 
+Use `python3 weightless.py help <command>` for command-specific options.
+`python3 weightless.py setup --plain` uses text prompts; setup requires an
+interactive terminal. With redirected stdin, invoking `weightless.py` without
+arguments prints help. `serve` rejects unknown flags before deployment;
+omit its lane argument to list available lanes.
+
+For scripts, `python3 weightless.py dash <url> --once --timeout 5` prints a
+snapshot and exits nonzero if the endpoint fails or returns no vLLM metrics.
+Dashboard URLs may include `/v1` or `/metrics`. Refresh intervals and request
+timeouts must be positive and finite. Redirected dashboard output contains no
+terminal control sequences; `NO_COLOR` disables colors in both prompts and the
+dashboard.
+
 **Swapping lanes is the wizard, not ssh.** Pick `Serve <model>` for the lane
 you want: the wizard regenerates the env, re-validates it (multi-node fabric
 addresses must be literal IPs — containers cannot resolve `.local`; the

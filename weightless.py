@@ -19,6 +19,8 @@ implementation of each feature.
 """
 import os
 import sys
+import difflib
+import argparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PY = sys.executable
@@ -30,7 +32,7 @@ COMMANDS = {
               "switch the rig to a lane, non-interactive: serve <name|#> [--skip-assets] [--skip-wait]"),
     "dash": ([PY, os.path.join(HERE, "scripts", "dash.py")],
              "live metrics for a serving lane (prefill/decode, queue, KV, spec decode)"),
-    "test": (["sh", os.path.join(HERE, "tests", "smoke", "run.sh")],
+    "test": (["bash", os.path.join(HERE, "tests", "smoke", "run.sh")],
              "endpoint smoke suite against the configured base URL"),
     "validate": ([PY, os.path.join(HERE, "tools", "captain-vector", "captain_vector.py"), "--validate"],
                  "GLP spec check on a control-vector GGUF (exit 1 on FAIL)"),
@@ -43,20 +45,39 @@ COMMANDS = {
 }
 
 
-def main() -> int:
-    argv = sys.argv[1:]
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
-        os.execvp(PY, COMMANDS["setup"][0])
+        argv = ["setup"] if sys.stdin.isatty() else ["--help"]
     cmd, rest = argv[0], argv[1:]
+    if cmd == "help" and rest:
+        cmd, rest = rest[0], rest[1:] + ["--help"]
     if cmd in ("-h", "--help", "help"):
         print(__doc__.strip() + "\n\ncommands:")
         for name, (_, desc) in COMMANDS.items():
             print(f"  {name:6s} {desc}")
         return 0
     if cmd in COMMANDS:
+        if cmd == "validate" and any(arg in ("-h", "--help") for arg in rest):
+            parser = argparse.ArgumentParser(prog="weightless validate",
+                                             description=COMMANDS[cmd][1])
+            parser.add_argument("file", metavar="FILE.gguf", help="control-vector GGUF to validate")
+            parser.print_help()
+            return 0
+        if cmd == "test":
+            parser = argparse.ArgumentParser(
+                prog="weightless test", description="Run endpoint smoke tests.",
+                epilog="Configure the endpoint with WEIGHTLESS_BASE_URL and WEIGHTLESS_MODEL.")
+            parser.parse_args(rest)
         target = COMMANDS[cmd][0]
-        os.execvp(target[0], target + rest)
-    print(f"unknown command: {cmd} (try --help)", file=sys.stderr)
+        try:
+            os.execvp(target[0], target + rest)
+        except OSError as exc:
+            print(f"weightless: cannot start {cmd}: {exc}", file=sys.stderr)
+            return 127 if isinstance(exc, FileNotFoundError) else 126
+    suggestion = difflib.get_close_matches(cmd, COMMANDS, n=1)
+    hint = f" Did you mean '{suggestion[0]}'?" if suggestion else ""
+    print(f"weightless: unknown command {cmd!r}.{hint} Try --help.", file=sys.stderr)
     return 2
 
 
