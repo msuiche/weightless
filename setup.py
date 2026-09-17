@@ -2008,6 +2008,230 @@ def lane_chain(io, lane_idx):
     return tests_chain(io, ssh_host or values.get("head-ip"), lane_idx)
 
 
+# Serving stacks the wizard does not own but must park before a lane boot —
+# matched against `docker ps` names on every node, stopped with their own
+# tooling (their stop scripts cover their own workers). `boot`/`port`/`model`
+# make the stack a `serve` target too, so switching back is symmetric.
+EXTERNAL_STACKS = [
+    dict(match="dsv41-exl3", name="DSV4.1-Flash EXL3 (MiaAI stack)",
+         stop="cd ~/miaai-v41-exl3 && PATH=$HOME/.local/bin:$PATH ./start.sh stop",
+         boot="cd ~/miaai-v41-exl3 && PATH=$HOME/.local/bin:$PATH ./start.sh",
+         port="8888", model="DeepSeek-v4.1-Flash-EXL3"),
+]
+
+
+def quick_serve_external(io, stack, values, ssh_host, skip_wait=False):
+    """`serve <external stack>` — park every wizard lane, boot the stack."""
+    import time
+    io.header(stack["name"])
+    try:
+        names = _node_container_names(values, ssh_host)
+    except RuntimeError as exc:
+        io.err(str(exc))
+        return 1
+    if any(stack["match"] in n for n in names):
+        io.ok(f"{stack['name']} is already running — nothing to do")
+        return 0
+    for idx, name in current_lanes("\n".join(names)):
+        io.info(f"park: {name}")
+        if subprocess.call(node_command(values, ssh_host,
+                                        shlex.join(["docker", "rm", "-f", name]))) != 0:
+            io.err(f"parking FAILED: {name} — switch aborted")
+            return 1
+    io.info("boot: " + stack["boot"])
+    if DEMO:
+        io.info("demo: boot skipped")
+        return 0
+    if subprocess.call(node_command(values, ssh_host, stack["boot"])) != 0:
+        io.err("boot FAILED — switch aborted")
+        return 1
+    if skip_wait or DEMO:
+        io.ok("boot started")
+        return 0
+    base = f"http://{ssh_host}:{stack['port']}/v1"
+    io.info(f"waiting for {stack['model']} on {base} ...")
+    deadline = time.time() + 45 * 60
+    while time.time() < deadline:
+        ids, _ = probe_models(base)
+        if ids and stack["model"] in ids:
+            io.ok(f"serving {stack['model']} on {base}")
+            return 0
+        time.sleep(20)
+    io.err("endpoint did not come up within 45 min")
+    return 1
+
+
+def _node_container_names(values, ssh_host, worker=None):
+    if DEMO:
+        return []
+    argv = node_command(values, ssh_host, "docker ps --format '{{.Names}}'", worker)
+    r = subprocess.run(argv, capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError(
+            f"cannot list containers on {worker or ssh_host} (exit {r.returncode})")
+    return [n.strip() for n in r.stdout.splitlines() if n.strip()]
+
+
+def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
+    """`setup.py serve <lane>` — non-interactive lane switch for the rig.
+
+    The lane's saved env is used as-is (the wizard owns env edits). Parks
+    whatever is serving — wizard lanes via CONTAINER_GREP plus known external
+    stacks, which CONTAINER_GREP cannot see (a MiaAI dsv41-exl3 container
+    holds :8888 invisibly to park_other_lanes) — syncs the recipe, boots, and
+    waits for the endpoint. Harden steps stay wizard-only: they need a tty
+    for sudo and were applied fleet-wide 2026-09-11."""
+    import time
+    if not lane_arg:
+        for i, lane in enumerate(LANES):
+            io.info(f"  {i}: {lane['name']}")
+        for stack in EXTERNAL_STACKS:
+            if "boot" in stack:
+                io.info(f"  ext: {stack['name']}")
+        io.err("usage: setup.py serve <lane index or name substring>")
+        return 2
+    values = read_lane_env()
+    ssh_host = (urllib.parse.urlparse(default_base()).hostname
+                or values.get("lan-ip") or values.get("head-ip"))
+    matches = [i for i, lane in enumerate(LANES)
+               if lane_arg == str(i) or lane_arg.lower() in lane["name"].lower()]
+    if not matches:
+        stacks = [s for s in EXTERNAL_STACKS
+                  if "boot" in s
+                  and (lane_arg.lower() in s["name"].lower()
+                       or lane_arg.lower() in s["match"])]
+        if stacks:
+            if not ssh_host:
+                io.err("no ssh host for the head node — run the wizard once first")
+                return 1
+            return quick_serve_external(io, stacks[0], values, ssh_host, skip_wait)
+        io.err(f"no lane matches {lane_arg!r} — run without arguments to list")
+        return 2
+    if len(matches) > 1:
+        for i in matches:
+            io.info(f"  {i}: {LANES[i]['name']}")
+        io.err(f"{lane_arg!r} is ambiguous")
+        return 2
+    lane_idx = matches[0]
+    lane = LANES[lane_idx]
+    if lane.get("blocked"):
+        io.err("NOT DEPLOYABLE — " + lane["blocked"])
+        return 1
+    if lane.get("cloud"):
+        io.err("cloud lanes deploy through the wizard (Modal), not serve")
+        return 1
+    if not os.path.exists(os.path.join(HERE, lane["target"])):
+        io.err(f"no saved env at {lane['target']} — run the wizard once first")
+        return 1
+    io.header(lane["name"])
+
+    env = lane_env(lane_idx, values)
+    if not ssh_host:
+        io.err("no ssh host for the head node — run the wizard once first")
+        return 1
+
+    steering = (lane.get("steering_supported", True)
+                and bool(env.get(lane["steer_key"], "")))
+    if steering and lane.get("structure_test"):
+        io.info("validating the steering patch:")
+        r = subprocess.run([sys.executable, os.path.join(HERE, lane["structure_test"])],
+                           capture_output=True, text=True)
+        for line in (r.stdout + r.stderr).splitlines():
+            if "[FAIL]" in line:
+                io.err(line.strip())
+        if r.returncode not in (0, 2):
+            io.err("steering validation failed — not switching")
+            return 1
+        io.ok("steering patch structure green")
+
+    # Park before anything is touched: other wizard lanes on every node,
+    # then external stacks (their stop tooling covers their own workers).
+    nodes = [None] + lane_workers(lane_idx, env)
+    try:
+        names_by_node = {w: _node_container_names(values, ssh_host, w) for w in nodes}
+    except RuntimeError as exc:
+        io.err(str(exc))
+        return 1
+    parks = []
+    for w in nodes:
+        for idx, name in current_lanes("\n".join(names_by_node[w])):
+            if idx == lane_idx:
+                io.err(f"lane {lane_idx} is already serving ({name}) — nothing to do")
+                return 0
+            parks.append((f"park {name} on {w or ssh_host}",
+                          node_command(values, ssh_host,
+                                       shlex.join(["docker", "rm", "-f", name]), w)))
+    external = []
+    for stack in EXTERNAL_STACKS:
+        hits = [w for w in nodes
+                if any(stack["match"] in n for n in names_by_node[w])]
+        if hits:
+            external.append(stack)
+    for desc, argv in parks:
+        io.info("park: " + desc)
+        if subprocess.call(argv) != 0:
+            io.err(f"parking FAILED: {desc} — switch aborted")
+            return 1
+    for stack in external:
+        io.info(f"park: {stack['name']} (external stack)")
+        if subprocess.call(node_command(values, ssh_host, stack["stop"])) != 0:
+            io.err(f"failed to stop {stack['name']} — switch aborted")
+            return 1
+    port = str(env.get("VLLM_PORT") or lane.get("port") or "")
+    if port:
+        r = subprocess.run(
+            node_command(values, ssh_host,
+                         f"ss -tln | grep -q ':{port} ' && echo BUSY || true"),
+            capture_output=True, text=True)
+        if "BUSY" in r.stdout:
+            io.err(f"port {port} is still bound on {ssh_host} by something this "
+                   "tool does not know — free it and retry")
+            return 1
+
+    if not skip_assets:
+        token = hf_token()
+        try:
+            cmds = asset_commands(lane_idx, values, ssh_host)
+        except ValueError as exc:
+            io.err(str(exc))
+            return 1
+        for desc, argv in cmds:
+            io.info("assets: " + desc)
+            rc = subprocess.run(
+                argv, text=True,
+                input=(token + "\n") if desc.startswith("download ") else None
+            ).returncode
+            if rc != 0:
+                io.err(f"FAILED ({rc}): {desc} — switch aborted")
+                return rc
+    else:
+        io.info("assets: skipped (--skip-assets)")
+
+    cmds = [c for c in deploy_commands(lane_idx, values, ssh_host)
+            if not c[0].startswith("harden ")]
+    for desc, argv in cmds:
+        io.info("deploy: " + desc)
+        if subprocess.call(argv) != 0:
+            io.err(f"FAILED: {desc} — fix and re-run")
+            return 1
+    if skip_wait:
+        io.ok("boot started")
+        return 0
+
+    base = f"http://{ssh_host}:{port}/v1"
+    want = env.get("SERVED_MODEL_NAME", "").strip("\"'")
+    io.info(f"waiting for {want or 'the endpoint'} on {base} ...")
+    deadline = time.time() + 45 * 60
+    while time.time() < deadline:
+        ids, _ = probe_models(base)
+        if ids and (not want or want in ids):
+            io.ok(f"serving {want or ids[0]} on {base}")
+            return 0
+        time.sleep(20)
+    io.err(f"endpoint did not come up within 45 min — diagnose: setup.py (Endpoint)")
+    return 1
+
+
 def diagnose_chain(io, base=None):
     """Layered failure isolation for an endpoint that won't answer, with an
     optional remote check/boot over ssh."""
@@ -2420,6 +2644,14 @@ def _tui_main(stdscr):
 
 
 def main():
+    argv = sys.argv[1:]
+    if argv and argv[0] == "serve":
+        io = CliIO()
+        io.header("== weightless serve ==")
+        return quick_serve(io, " ".join(a for a in argv[1:]
+                                        if not a.startswith("--")).strip(),
+                           skip_assets="--skip-assets" in argv,
+                           skip_wait="--skip-wait" in argv)
     if sys.stdout.isatty() and sys.stdin.isatty() and curses is not None:
         try:
             return curses.wrapper(_tui_main)

@@ -4,6 +4,18 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-09-17
+
+### Added
+- `weightless.py serve <lane>`: non-interactive lane switching. Resolves a
+  lane by index or name substring, parks whatever is serving — wizard lanes
+  plus known external stacks (`EXTERNAL_STACKS`: the MiaAI DSV4.1-Flash EXL3
+  stack, which the wizard's container greps cannot see and which is itself a
+  `serve` target, so DSV4 ↔ DSV4.1 switches are symmetric) — checks the
+  lane's port is free, syncs the recipe, boots, and waits for the endpoint.
+  Saved env values only; the wizard owns env edits. Harden steps stay
+  wizard-only (sudo needs a tty). Flags: `--skip-assets`, `--skip-wait`.
+
 ## 2026-09-11
 
 ### Added

@@ -32,6 +32,7 @@ retired v027 stack's patch is kept for reference and as the fallback path.
 
 ```sh
 python3 weightless.py          # the one front door — interactive setup wizard
+python3 weightless.py serve 0  # switch the rig to a lane, no prompts (serve <name|#>)
 python3 weightless.py dash     # live metrics for the serving lane
 python3 weightless.py test     # endpoint smoke suite
 python3 weightless.py --help   # all commands

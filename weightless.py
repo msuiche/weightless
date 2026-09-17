@@ -3,6 +3,7 @@
 
     python3 weightless.py                 interactive setup wizard (default)
     python3 weightless.py setup           same wizard: lane → env → deploy → clients
+    python3 weightless.py serve <lane>    switch the rig to a lane, non-interactive
     python3 weightless.py dash [url]      live lane metrics (scripts/dash.py)
     python3 weightless.py test            endpoint smoke suite (tests/smoke/run.sh)
     python3 weightless.py validate f.gguf GLP spec check on a control-vector GGUF
@@ -25,6 +26,8 @@ PY = sys.executable
 COMMANDS = {
     "setup": ([PY, os.path.join(HERE, "setup.py")],
               "interactive setup wizard: lane pick → env → deploy → omp/hermes + tests"),
+    "serve": ([PY, os.path.join(HERE, "setup.py"), "serve"],
+              "switch the rig to a lane, non-interactive: serve <name|#> [--skip-assets] [--skip-wait]"),
     "dash": ([PY, os.path.join(HERE, "scripts", "dash.py")],
              "live metrics for a serving lane (prefill/decode, queue, KV, spec decode)"),
     "test": (["sh", os.path.join(HERE, "tests", "smoke", "run.sh")],
