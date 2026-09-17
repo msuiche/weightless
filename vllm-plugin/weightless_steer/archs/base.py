@@ -8,23 +8,26 @@ loop, the return convention); the mixin owns everything GLP-shaped.
 """
 from __future__ import annotations
 
-import os
-
 import torch
+
+from weightless_runtime.controls import _enabled
 
 from ..core import SteeringCore
 
+#: Per-request controls are opt-in, server-side, exactly once.
+_PER_REQUEST_ENV = "WEIGHTLESS_ENABLE_MILESTONE_2"
+
 
 def _per_request_enabled() -> bool:
-    """Per-request controls are opt-in, server-side, exactly once.
+    """Whether this server registers per-request control buffers.
 
-    The same gate the request parser uses
-    (weightless_runtime.controls.resolve_weightless_vllm_xargs), so a
-    server cannot end up accepting control xargs it has no buffers to
-    apply, or registering buffers no request can reach.
+    Reuses the request parser's own truthiness test
+    (weightless_runtime.controls) rather than restating it: two copies
+    that disagree on, say, "on" would leave the server accepting control
+    xargs it has no buffers to apply, or registering buffers no request
+    can reach.
     """
-    return (os.environ.get("WEIGHTLESS_ENABLE_MILESTONE_2") or "").strip(
-    ).lower() in {"1", "true", "yes", "on"}
+    return _enabled(_PER_REQUEST_ENV)
 
 
 class SteeredModelMixin:

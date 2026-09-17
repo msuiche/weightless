@@ -7,7 +7,7 @@ each, where each sits in its own sequence -- this builds the three tensors
 
 ``alpha_rows``   [max_num_tokens]                per-token alpha
 ``slot_rows``    [max_num_tokens] int32          per-token request slot
-``layer_bank``   [max_num_reqs + 1, num_layers]  per-slot layer gate
+``layer_bank``   [num_layers, max_num_reqs + 1]  per-slot layer gate
 
 Policy (what a request is allowed to ask for) lives in
 ``weightless_runtime.controls``; this module only maps decisions onto rows.
@@ -29,8 +29,8 @@ import torch
 from weightless_runtime.controls import (
     WeightlessEffectiveControl,
     WeightlessResolvedXArgs,
+    _fill_weightless_alpha_slice,
     effective_weightless_control,
-    weightless_alpha_at,
 )
 
 
@@ -74,9 +74,10 @@ class WeightlessControlPlane:
         pin = torch.cuda.is_available()
         self.alpha_rows = torch.empty(max_num_tokens, dtype=dtype,
                                       pin_memory=pin)
-        self.slot_rows = torch.empty(max_num_tokens, dtype=torch.int32,
+        self.slot_rows = torch.empty(max_num_tokens, dtype=torch.long,
                                      pin_memory=pin)
-        self.layer_bank = torch.empty(max_num_reqs + 1, num_layers,
+        # Layer-major, matching the model buffer: see SteeringCore.
+        self.layer_bank = torch.empty(num_layers, max_num_reqs + 1,
                                       dtype=dtype, pin_memory=pin)
         self.reset()
 
@@ -144,12 +145,16 @@ class WeightlessControlPlane:
                     f"{self.max_num_tokens}"
                 )
             control = self._effective(request)
-            for offset in range(count):
-                self.alpha_rows[cursor + offset] = weightless_alpha_at(
-                    control,
-                    token_ordinal=request.start_ordinal + offset,
-                    prompt_length=request.prompt_length,
-                )
+            # Vectorised: fill_/copy_ over the slice rather than a Python
+            # loop writing one tensor element per token. This runs on the
+            # scheduler's hot path for every step, and max_num_tokens is
+            # thousands on a real lane.
+            _fill_weightless_alpha_slice(
+                self.alpha_rows[cursor:cursor + count],
+                control=control,
+                start_ordinal=request.start_ordinal,
+                prompt_length=request.prompt_length,
+            )
             self.slot_rows[cursor:cursor + count].fill_(slot)
             # Narrow the gate only when the REQUEST asked for a mask.
             # Falling back to the loaded-layer set here would look
@@ -158,9 +163,9 @@ class WeightlessControlPlane:
             # gate of every ordinary request, so a default request would no
             # longer be bit-identical to the scalar lane.
             if request.resolved.layers_override is not None:
-                self.layer_bank[slot].zero_()
+                self.layer_bank[:, slot].zero_()
                 if control.layers:
-                    self.layer_bank[slot, list(control.layers)] = 1.0
+                    self.layer_bank[list(control.layers), slot] = 1.0
             cursor += count
         return cursor
 

@@ -240,18 +240,18 @@ class SlotHygiene(unittest.TestCase):
         p = plane()
         p.build([req("a", WeightlessResolvedXArgs(layers_override=(1,)),
                      token_count=1, prompt_length=1)])
-        self.assertEqual(p.layer_bank[1].tolist(),
+        self.assertEqual(p.layer_bank[:, 1].tolist(),
                          [0.0, 1.0, 0.0, 0.0, 0.0, 0.0])
         # Next step: the request is gone, slot 1 belongs to a plain request.
         p.build([req("b", token_count=1, prompt_length=1)])
-        self.assertEqual(p.layer_bank[1].tolist(), [1.0] * NUM_LAYERS)
+        self.assertEqual(p.layer_bank[:, 1].tolist(), [1.0] * NUM_LAYERS)
         self.assertEqual(round(p.alpha_rows[0].item(), 3), 2.0)
 
     def test_slot_zero_stays_fully_gated_on(self):
         p = plane()
         p.build([req("a", WeightlessResolvedXArgs(layers_override=(1,)),
                      token_count=1, prompt_length=1)])
-        self.assertEqual(p.layer_bank[0].tolist(), [1.0] * NUM_LAYERS)
+        self.assertEqual(p.layer_bank[:, 0].tolist(), [1.0] * NUM_LAYERS)
 
 
 class Capacity(unittest.TestCase):
@@ -277,6 +277,83 @@ class ScalarCoreRefusesControlPlans(unittest.TestCase):
         core, owner = build_core()
         with self.assertRaisesRegex(ValueError, "exceeds buffer"):
             core.set_control_rows(torch.zeros(MAX_TOKENS + 1))
+
+
+class StaleStateCannotSurviveAStep(unittest.TestCase):
+    """A shorter step must not inherit the previous step's plan."""
+
+    def test_short_alpha_write_resets_the_tail(self):
+        core, owner = build_core(alpha=2.0)
+        # Step 1: eight tokens, all unsteered.
+        core.set_control_rows(torch.zeros(8))
+        self.assertEqual(owner._steer_alpha_rows[:8].tolist(), [0.0] * 8)
+        # Step 2: only two tokens scheduled.
+        core.set_control_rows(torch.full((2,), 3.0))
+        self.assertEqual(owner._steer_alpha_rows[:2].tolist(), [3.0, 3.0])
+        # Rows 2-7 must be back at the server alpha, not still 0.0 from
+        # step 1 -- those rows would otherwise serve UNSTEERED.
+        self.assertEqual(owner._steer_alpha_rows[2:8].tolist(), [2.0] * 6)
+
+    def test_short_gate_write_resets_the_tail(self):
+        core, owner = build_core()
+        bank = torch.zeros(NUM_LAYERS, 3)
+        core.set_control_rows(layer_bank=bank)
+        core.set_control_rows(layer_bank=torch.ones(NUM_LAYERS, 1))
+        self.assertEqual(owner._steer_layer_bank[:, 2].tolist(),
+                         [1.0] * NUM_LAYERS)
+
+    def test_short_slot_write_resets_the_tail(self):
+        core, owner = build_core()
+        core.set_control_rows(slot_rows=torch.full((8,), 3,
+                                                   dtype=torch.long))
+        core.set_control_rows(slot_rows=torch.full((2,), 1,
+                                                   dtype=torch.long))
+        self.assertEqual(owner._steer_slot_rows[2:8].tolist(), [0] * 6)
+
+
+class RowMappingNeedsAFlattenedBatch(unittest.TestCase):
+    def test_three_dim_stream_is_refused(self):
+        """[batch, seq, hidden] would index rows by BATCH, not by token."""
+        core, _ = build_core()
+        with self.assertRaisesRegex(RuntimeError, "flattened"):
+            core.apply(1, torch.randn(2, 3, HIDDEN))
+
+    def test_scalar_lane_still_accepts_extra_leading_dims(self):
+        """The unchanged path keeps its `...` einsum generality."""
+        core, _ = build_core(per_request=False, alpha=2.0)
+        h = torch.randn(2, 3, HIDDEN)
+        torch.testing.assert_close(core.apply(1, h.clone()),
+                                   project(h, 1, 2.0))
+
+
+class GeometryIsBothOrNeither(unittest.TestCase):
+    def test_half_specified_geometry_is_refused(self):
+        for kw in ({"max_num_tokens": 8}, {"max_num_reqs": 2}):
+            with self.subTest(**kw):
+                with self.assertRaisesRegex(ValueError, "both-or-neither"):
+                    SteeringCore(DIRS, 1.0, "residual_stream_post_layer",
+                                 NUM_LAYERS, HIDDEN, **kw)
+
+
+class GateAgreesWithTheRequestParser(unittest.TestCase):
+    """Server-side registration and request-side acceptance, one test."""
+
+    def test_same_truthiness_for_every_spelling(self):
+        import os
+        from unittest import mock
+
+        from weightless_runtime.controls import _enabled
+        from weightless_steer.archs.base import (
+            _PER_REQUEST_ENV,
+            _per_request_enabled,
+        )
+
+        for raw in ("1", "true", "TRUE", "yes", "on", "0", "false", "", "no",
+                    " on ", "maybe"):
+            with self.subTest(raw=raw):
+                with mock.patch.dict(os.environ, {_PER_REQUEST_ENV: raw}):
+                    self.assertEqual(_per_request_enabled(),
+                                     _enabled(_PER_REQUEST_ENV))
 
 
 if __name__ == "__main__":

@@ -54,6 +54,12 @@ class SteeringCore:
         self.path = path
         # Per-request geometry. None on both = the scalar lane: one alpha
         # for the whole batch, the original apply, byte-identical graph.
+        if (max_num_tokens is None) != (max_num_reqs is None):
+            raise ValueError(
+                "per-request geometry is both-or-neither: got "
+                f"max_num_tokens={max_num_tokens!r}, "
+                f"max_num_reqs={max_num_reqs!r}"
+            )
         self.max_num_tokens = max_num_tokens
         self.max_num_reqs = max_num_reqs
         self._owner = None
@@ -217,12 +223,19 @@ class SteeringCore:
             )
             module.register_buffer(
                 "_steer_slot_rows",
-                torch.zeros(self.max_num_tokens, dtype=torch.int32),
+                torch.zeros(self.max_num_tokens, dtype=torch.long),
                 persistent=False,
             )
+            # LAYER-MAJOR [num_layers, max_num_reqs + 1], matching
+            # _steer_stack's "indexed by global layer id first" shape. The
+            # transpose is not cosmetic: gating as bank[layer_idx][slots]
+            # keeps layer_idx an ordinary integer index, which dynamo
+            # generalises over, whereas bank[slots, layer_idx] makes it
+            # part of an advanced index and forces a recompile per layer
+            # (measured: 6 graphs for 6 layers vs 2).
             module.register_buffer(
                 "_steer_layer_bank",
-                torch.ones(self.max_num_reqs + 1, self.num_layers,
+                torch.ones(self.num_layers, self.max_num_reqs + 1,
                            dtype=dtype),
                 persistent=False,
             )
@@ -252,9 +265,11 @@ class SteeringCore:
         owner = self._owner
         if owner is None:
             raise RuntimeError("set_control_rows before register_buffers")
-        for name, value in (("_steer_alpha_rows", alpha_rows),
-                            ("_steer_slot_rows", slot_rows),
-                            ("_steer_layer_bank", layer_bank)):
+        for name, value, default in (
+            ("_steer_alpha_rows", alpha_rows, self.alpha),
+            ("_steer_slot_rows", slot_rows, 0),
+            ("_steer_layer_bank", layer_bank, 1),
+        ):
             if value is None:
                 continue
             target = getattr(owner, name)
@@ -271,6 +286,11 @@ class SteeringCore:
                     f"{name}: plan {tuple(value.shape)} exceeds buffer "
                     f"{tuple(target.shape)}"
                 )
+            # Reset first, then write the front. Without the reset the tail
+            # would keep the PREVIOUS step's plan -- a shorter batch would
+            # inherit the last batch's alphas and masks on the rows it does
+            # not cover.
+            target.fill_(default)
             target[tuple(slice(0, v) for v in value.shape)].copy_(value)
 
     def reset_control_rows(self):
@@ -303,9 +323,19 @@ class SteeringCore:
         # and the layer gate from this token's request slot. Both index the
         # front of a fixed-size buffer, which keeps every shape in the graph
         # a function of the captured token count alone.
+        if h.dim() != 2:
+            # Resolved at trace time (h.dim() is static), so this never
+            # becomes a branch inside a captured graph. A 3-D [batch, seq,
+            # hidden] stream would index rows by BATCH here and silently
+            # steer every request at the first request's alpha.
+            raise RuntimeError(
+                f"per-request steering needs a flattened [num_tokens, "
+                f"hidden] stream; this adapter passed {h.dim()} dims "
+                f"({tuple(h.shape)})"
+            )
         n = h.shape[0]
         alpha = owner._steer_alpha_rows[:n].unsqueeze(-1)
-        gate = owner._steer_layer_bank[
-            owner._steer_slot_rows[:n].long(), layer_idx
+        gate = owner._steer_layer_bank[layer_idx][
+            owner._steer_slot_rows[:n]
         ].unsqueeze(-1)
         return h - alpha * gate * proj
