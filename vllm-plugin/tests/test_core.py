@@ -67,6 +67,57 @@ class FromEnvTests(unittest.TestCase):
                              WEIGHTLESS_STEER_ALPHA="4.0")
         self.assertAlmostEqual(core.alpha, 4.0)
 
+    def test_scaling_metadata_is_refused_instead_of_ignored(self):
+        """A v2 file's alpha multipliers must refuse, not be dropped."""
+        for key, value in (("glp.dir_scales", "0"),
+                           ("glp.layer_scales", "1:0")):
+            with self.subTest(key=key):
+                self.write(meta={**good_meta(),
+                                 "glp.spec_version": "2",
+                                 key: value})
+                with self.assertRaisesRegex(ValueError, "alpha multipliers"):
+                    self.from_env(WEIGHTLESS_STEER_PATH=self.path)
+
+    def test_nonfinite_alpha_is_refused(self):
+        """From the file or the env: NaN alpha would NaN every activation."""
+        for value in ("nan", "inf", "-inf"):
+            for source in ("file", "env"):
+                with self.subTest(value=value, source=source):
+                    in_file = value if source == "file" else "1"
+                    self.write(meta={**good_meta(),
+                                     "glp.alpha_default": in_file})
+                    env = {"WEIGHTLESS_STEER_PATH": self.path}
+                    if source == "env":
+                        env["WEIGHTLESS_STEER_ALPHA"] = value
+                    with self.assertRaisesRegex(ValueError, "finite"):
+                        self.from_env(**env)
+
+    def test_invalid_directions_are_refused_even_when_filtered_out(self):
+        """A zero direction steers nothing; a NaN one NaNs the stream.
+
+        Checked on the whole file, not just the selected layers: a layer
+        filter is a serving knob, not a licence to load a broken vector.
+        """
+        for value in (0.0, float("nan"), float("inf")):
+            with self.subTest(value=value):
+                tensors = good_tensors()
+                tensors["direction.2"] = (
+                    np.full(8, value, dtype=np.float32), 0)
+                self.write(tensors=tensors)
+                with self.assertRaisesRegex(ValueError,
+                                            "finite and nonzero"):
+                    self.from_env(WEIGHTLESS_STEER_PATH=self.path,
+                                  WEIGHTLESS_STEER_LAYERS="1")
+
+    def test_extreme_finite_directions_normalize_without_overflow(self):
+        """1e30 squares to inf in f32; normalisation runs in f64."""
+        for value in (1e30, 1e-30):
+            self.write(tensors={
+                f"direction.{i}": (np.full(8, value, dtype=np.float32), 0)
+                for i in (1, 2, 3)})
+            core = self.from_env(WEIGHTLESS_STEER_PATH=self.path)
+            self.assertAlmostEqual(float(core.dirs[1].norm()), 1.0, places=5)
+
     def test_layer_filter(self):
         self.write()
         core = self.from_env(WEIGHTLESS_STEER_PATH=self.path,
@@ -118,6 +169,12 @@ class FromEnvTests(unittest.TestCase):
 
 
 class BufferTests(unittest.TestCase):
+    def test_alpha_must_fit_buffer_dtype(self):
+        """Finite in f32, +inf in f16 -- caught before it reaches a graph."""
+        core = SteeringCore({}, 1e10, HOOK, num_layers=4, hidden_size=8)
+        with self.assertRaisesRegex(ValueError, "representable"):
+            core.register_buffers(torch.nn.Module(), torch.float16)
+
     def test_buffers_dense_shaped_and_non_persistent(self):
         module = torch.nn.Linear(4, 4)  # any nn.Module owner
         dirs = {1: torch.nn.functional.normalize(

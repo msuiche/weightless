@@ -23,6 +23,7 @@ All four were measured failure modes on the hotfix lanes; they port as-is.
 from __future__ import annotations
 
 import logging
+import math
 import os
 
 import torch
@@ -48,6 +49,8 @@ class SteeringCore:
                  max_num_tokens=None, max_num_reqs=None):
         self.dirs = dirs
         self.alpha = float(alpha)
+        if not math.isfinite(self.alpha):
+            raise ValueError("steering alpha must be finite")
         self.hook = hook
         self.num_layers = num_layers
         self.hidden_size = hidden_size
@@ -97,6 +100,19 @@ class SteeringCore:
 
         try:
             meta, raw = load_control_vector(path, hook=hook)
+            # Spec-version-2 alpha multipliers. They rescale alpha per
+            # direction and per layer, and this lane applies ONE scalar
+            # alpha buffer to every steered layer, so a file carrying them
+            # would be served at the wrong strength -- with no error, and
+            # no way to tell from the output. Refuse rather than ignore.
+            scales = sorted(set(meta) & {"glp.dir_scales",
+                                         "glp.layer_scales"})
+            if scales:
+                raise ValueError(
+                    f"{path}: carries {', '.join(scales)}, which this "
+                    f"serving lane does not implement. Refusing to ignore "
+                    f"alpha multipliers."
+                )
 
             # This lane implements rank 1: one scalar alpha buffer per
             # model, one direction per layer. A rank-k (subspace) vector
@@ -113,6 +129,8 @@ class SteeringCore:
             alpha_env = os.environ.get("WEIGHTLESS_STEER_ALPHA", "").strip()
             alpha = (float(alpha_env) if alpha_env
                      else float(meta.get("glp.alpha_default", 1.0)))
+            if not math.isfinite(alpha):
+                raise ValueError("steering alpha must be finite")
 
             want = os.environ.get("WEIGHTLESS_STEER_LAYERS", "").strip()
             selected = (
@@ -133,11 +151,22 @@ class SteeringCore:
                     raise RuntimeError(
                         f"steering vector layer {layer_id} width "
                         f"{vec.numel()} != {hidden_size} "
-                        f"(hidden_size; plain single stream)"
+                        f"(this arch adapter's per-layer stream width)"
                     )
                 # The published vector ships unit directions; normalise
                 # anyway so a non-unit export cannot silently scale alpha.
-                dirs[layer_id] = vec / (vec.norm() + 1e-9)
+                # In float64: a finite but extreme f32 export (1e30) would
+                # overflow its own squared norm in f32 and normalise to
+                # inf or 0. A nonfinite element makes the norm nonfinite,
+                # so this one test also catches NaN/inf directions.
+                norm = vec.double().norm()
+                if not torch.isfinite(norm) or norm <= 0:
+                    raise ValueError(
+                        f"{path}: direction layer {layer_id} must be "
+                        f"finite and nonzero; refusing to steer along a "
+                        f"direction that is neither"
+                    )
+                dirs[layer_id] = (vec.double() / norm).float()
 
             out_of_range = sorted(
                 int(k) for k in raw
@@ -190,6 +219,29 @@ class SteeringCore:
         replaces buffer objects on device moves, so caching the tensors
         themselves would go stale.
         """
+        # Last gate before these values reach a traced graph. from_env
+        # already checked them, but a core can be built directly (tests, a
+        # future loader), and a finite f32 alpha can still be +inf once
+        # cast to the model dtype -- which would make every steered
+        # activation NaN with nothing in the log to say why.
+        if (not math.isfinite(self.alpha)
+                or abs(self.alpha) > torch.finfo(dtype).max):
+            raise ValueError(
+                f"steering alpha {self.alpha!r} must be finite and "
+                f"representable in {dtype}"
+            )
+        for layer_id, vec in self.dirs.items():
+            norm = vec.double().norm()
+            if not torch.isfinite(norm) or norm <= 0:
+                raise ValueError(
+                    f"steering direction layer {layer_id} must be finite "
+                    f"and nonzero"
+                )
+            if not torch.isfinite(vec.to(dtype)).all():
+                raise ValueError(
+                    f"steering direction layer {layer_id} is not "
+                    f"representable in {dtype}"
+                )
         module.register_buffer(
             "_steer_stack",
             torch.zeros(self.num_layers, 1, self.hidden_size, dtype=dtype),

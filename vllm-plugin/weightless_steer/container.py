@@ -224,6 +224,8 @@ def load_control_vector(
                 f"container"
             )
         arr = np.asarray(arr, dtype=np.float32).reshape(-1)
+        if not np.isfinite(arr).all() or not np.any(arr):
+            raise ValueError(f"{path}: {name} must be finite and nonzero")
         grouped.setdefault(idx, {})[j] = torch.from_numpy(arr.copy())
     if not grouped:
         raise ValueError(f"{path}: no direction.<N> tensors found")

@@ -23,7 +23,7 @@ from vllm.model_executor.models.nemotron_h import (
 )
 from vllm.sequence import IntermediateTensors
 
-from .base import SteeredModelMixin
+from .base import SteeredModelMixin, _per_request_enabled
 
 
 class SteeredNemotronHModel(NemotronHModel, SteeredModelMixin):
@@ -95,6 +95,12 @@ class SteeredNemotronHForCausalLM(NemotronHForCausalLM):
     """
 
     def __init__(self, *, vllm_config, prefix: str = ""):
+        if _per_request_enabled():
+            raise RuntimeError(
+                "WEIGHTLESS_ENABLE_MILESTONE_2 requires request validation and "
+                "runner integration, which this plugin does not implement. "
+                "Unset it to serve with scalar steering."
+            )
         super().__init__(vllm_config=vllm_config, prefix=prefix)
         # Swap the already-constructed inner model onto the steered class
         # rather than rebuilding it: make_layers would allocate the whole
@@ -110,3 +116,22 @@ class SteeredNemotronHForCausalLM(NemotronHForCausalLM):
             max_num_tokens=scheduler_config.max_num_batched_tokens,
             max_num_reqs=scheduler_config.max_num_seqs,
         )
+        # The upstream constructor captures its bound forward in the compile
+        # wrapper. Rebind after the class swap and buffer registration, before
+        # warmup can compile or capture a stock, unsteered forward.
+        if not getattr(self.model, "do_not_compile", True):
+            from vllm.compilation.wrapper import TorchCompileWithNoGuardsWrapper
+
+            # Drop the first init's dynamo bytecode hook before registering
+            # the second: register_bytecode_hook appends to a process-global
+            # dict and the wrapper only ever removes the handle it last
+            # stored, so re-initialising without this leaves a hook behind
+            # for the life of the process.
+            cleanup = getattr(TorchCompileWithNoGuardsWrapper, "cleanup", None)
+            if cleanup is not None:
+                cleanup(self.model)
+            TorchCompileWithNoGuardsWrapper.__init__(
+                self.model,
+                compile_prefix=self.model._compile_prefix,
+                is_encoder=self.model._is_encoder,
+            )

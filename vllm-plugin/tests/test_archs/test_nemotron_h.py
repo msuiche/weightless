@@ -31,6 +31,7 @@ from torch import nn
 _HERE = Path(__file__).resolve()
 sys.path.insert(0, str(_HERE.parents[2]))          # vllm-plugin/
 sys.path.insert(0, str(_HERE.parents[1]))          # vllm-plugin/tests/
+sys.path.insert(0, str(_HERE.parents[3]))          # weightless_runtime/
 
 from glpfiles import good_meta, good_tensors, write_gguf  # noqa: E402
 
@@ -189,6 +190,81 @@ class SteeredForwardTests(unittest.TestCase):
             return self.adapter.SteeredNemotronHForCausalLM(
                 vllm_config=_vllm_config())
 
+    def build_control_harness(self):
+        """Wire the control primitives directly.
+
+        Serving refuses the per-request env (no runner glue exists), so
+        the control-plane tests drive _wire_steering themselves.
+        """
+        model = self.build(WEIGHTLESS_STEER_PATH=self.path)
+        env = {"WEIGHTLESS_STEER_PATH": self.path,
+               "WEIGHTLESS_ENABLE_MILESTONE_2": "1"}
+        with mock.patch.dict(os.environ, env):
+            model.model._wire_steering(dtype=torch.float32,
+                                       max_num_tokens=MAX_NUM_TOKENS,
+                                       max_num_reqs=MAX_NUM_REQS)
+        return model
+
+    def test_per_request_serving_fails_before_model_allocation(self):
+        """Refuse the unwired flag, and refuse it before loading weights."""
+        with mock.patch.object(FakeNemotronHForCausalLM,
+                               "__init__") as allocate:
+            with self.assertRaisesRegex(RuntimeError, "runner integration"):
+                self.build(WEIGHTLESS_ENABLE_MILESTONE_2="1")
+        allocate.assert_not_called()
+
+    def test_compilation_rebinds_to_steered_forward(self):
+        """The compile wrapper must capture the STEERED forward.
+
+        Upstream's constructor captures its bound forward before the class
+        swap, so without the rebind the compiled callable runs the stock
+        forward and the whole steering lane is a no-op under compilation.
+        """
+        original_init = FakeNemotronHModel.__init__
+        captured = []
+        # Mirrors the real wrapper: each __init__ registers a dynamo
+        # bytecode hook in a process-global registry, and cleanup() removes
+        # only the handle that instance last stored.
+        live_hooks = {}
+        class Wrapper:
+            def __init__(self, compile_prefix="", is_encoder=False):
+                captured.append(self.forward.__func__)
+                self._hook_handle = len(captured)
+                live_hooks[self._hook_handle] = self
+                self._compiled_callable = torch.compile(
+                    self.forward, backend="eager", fullgraph=True)
+
+            def cleanup(self):
+                live_hooks.pop(getattr(self, "_hook_handle", None), None)
+        def init(model, **kwargs):
+            original_init(model, **kwargs)
+            model.do_not_compile = False
+            model._compile_prefix = ""
+            model._is_encoder = False
+            Wrapper.__init__(model)
+        wrapper_module = types.ModuleType("vllm.compilation.wrapper")
+        wrapper_module.TorchCompileWithNoGuardsWrapper = Wrapper
+        self.write_vector((1, 3), alpha="2.0")
+        previous = sys.modules.get("vllm.compilation.wrapper")
+        sys.modules["vllm.compilation.wrapper"] = wrapper_module
+        try:
+            with mock.patch.object(FakeNemotronHModel, "__init__", init):
+                model = self.build(WEIGHTLESS_STEER_PATH=self.path)
+        finally:
+            if previous is None:
+                sys.modules.pop("vllm.compilation.wrapper", None)
+            else:
+                sys.modules["vllm.compilation.wrapper"] = previous
+        self.assertEqual(captured, [FakeNemotronHModel.forward,
+                                    self.adapter.SteeredNemotronHModel.forward])
+        # The stock init's hook was dropped, not left registered
+        # alongside the new one for the life of the process.
+        self.assertEqual(list(live_hooks), [2])
+        embed = torch.randn(5, HIDDEN)
+        out = model.model._compiled_callable(None, None, inputs_embeds=embed)
+        want = manual_forward(embed, self.file_dirs((1, 3)), alpha=2.0)
+        torch.testing.assert_close(out, want, atol=1e-4, rtol=1e-4)
+
     def test_forward_applies_projection_per_layer(self):
         layers = (1, 3)
         self.write_vector(layers, alpha="2.0")
@@ -222,8 +298,7 @@ class SteeredForwardTests(unittest.TestCase):
 
         layers = (1, 3)
         self.write_vector(layers, alpha="2.0")
-        model = self.build(WEIGHTLESS_STEER_PATH=self.path,
-                           WEIGHTLESS_ENABLE_MILESTONE_2="1")
+        model = self.build_control_harness()
         inner = model.model
         self.assertTrue(inner.weightless_per_request)
         self.assertEqual(inner.weightless_steer_layer_ids, layers)
@@ -257,8 +332,7 @@ class SteeredForwardTests(unittest.TestCase):
     def test_per_request_layer_mask_through_the_forward(self):
         layers = (1, 3)
         self.write_vector(layers, alpha="2.0")
-        model = self.build(WEIGHTLESS_STEER_PATH=self.path,
-                           WEIGHTLESS_ENABLE_MILESTONE_2="1")
+        model = self.build_control_harness()
         from weightless_runtime.controls import WeightlessResolvedXArgs
         from weightless_steer.control_plane import (
             ScheduledRequest, WeightlessControlPlane,
