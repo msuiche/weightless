@@ -189,6 +189,15 @@ services:
       # VLLM_SUPPRESS_STOPS_IN_REASONING if that is set in .env.
       DSPARK_SUPPRESS_STOPS_IN_REASONING: "${DSPARK_SUPPRESS_STOPS_IN_REASONING:-${VLLM_SUPPRESS_STOPS_IN_REASONING:-1}}"
 
+    # Peer gate (2026-09-10 incident): a dead far node must NEVER
+    # restart-loop this container. 2825 restarts in 9h happened because
+    # vllm exits fast when the fabric peer is gone and unless-stopped
+    # re-ran the whole entrypoint every ~12s. Wait here instead; the
+    # boot proceeds by itself when the peer returns.
+    # NOTE: never put #-comments inside the folded command scalar below —
+    # YAML `>` folds same-indent lines onto one line, and a `#` then
+    # comments out the rest of that line (swallowed the peer gate itself
+    # plus an `if` opener on 2026-09-17 — crash loop).
     command:
       - bash
       - -lc
@@ -198,11 +207,6 @@ services:
         export CUDA_PATH="$${CUDA_PATH:-$${CUDA_HOME}}";
         export CUDAToolkit_ROOT="$${CUDAToolkit_ROOT:-$${CUDA_HOME}}";
         export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$${LD_LIBRARY_PATH:-}";
-        # Peer gate (2026-09-10 incident): a dead far node must NEVER
-        # restart-loop this container. 2825 restarts in 9h happened because
-        # vllm exits fast when the fabric peer is gone and unless-stopped
-        # re-ran the whole entrypoint every ~12s. Wait here instead; the
-        # boot proceeds by itself when the peer returns.
         WAIT_PEERS="$${DSPARK_WAIT_FOR:-}";
         if [ -z "$$WAIT_PEERS" ]; then if [ "$${NODE_RANK:-0}" = "0" ]; then WAIT_PEERS="$${WORKER_VLLM_HOST_IP:-}"; else WAIT_PEERS="$${MASTER_ADDR:-}"; fi; fi;
         for PEER in $$WAIT_PEERS; do until ping -c1 -W2 "$$PEER" >/dev/null 2>&1; do echo "[peer-gate] $$PEER unreachable - waiting 30s (a dead peer must not restart-loop vLLM)"; sleep 30; done; done;
