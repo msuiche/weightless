@@ -99,8 +99,11 @@ Supported archs today: `NemotronHForCausalLM` (nemotron_h / Nemotron-H
 stream; the site is the materialized post-layer `hc_post` stream flattened
 to `mhc_num_residual_streams × hidden`, and the adapter defers the last
 layer's in-decoder contract so the final layer is steered too — see the
-adapter docstring). Each additional lane is one module under
-`weightless_steer/archs/`.
+adapter docstring). glm5next is GPU-validated (2026-09-18, Modal 4×H100,
+RedHatAI NVFP4, compiled mode: cyber32 exactly the hotfix reference at
+31/32, benign32 clean, refusal32 2→9/32 vs the hotfix's 1→21/32 — the
+stack's stock baseline is stiffer; numbers in `../BENCHMARK.md`). Each
+additional lane is one module under `weightless_steer/archs/`.
 
 ## Behaviour contract
 
@@ -113,6 +116,13 @@ adapter docstring). Each additional lane is one module under
 - **Unsupported arch + `WEIGHTLESS_STEER_PATH` set serves stock.** Only
   shadowed archs are steered; confirm from the boot log line
   `weightless GLP steering active: hook=... alpha=... layers=...`.
+  Caveat: vLLM's default dictConfig attaches a handler only to the `vllm`
+  logger, so these INFO lines may not render even when steering IS active
+  — a missing line is not proof of absence (that misreading cost a day of
+  debugging a working plugin, 2026-09-17). Confirm by behaviour (an α=0 vs
+  α=2 contrast), or force root INFO via `VLLM_LOGGING_CONFIG_PATH` +
+  `VLLM_CONFIGURE_LOGGING=1`; `../modal/sitecustomize.py` does both and
+  prints its markers to stderr.
 - **Speculative decoding:** the steering applies to the trunk layers only.
   On checkpoints with MTP/nextn draft layers, serve without speculative
   decoding (same caveat as the nemotron hotfix).
