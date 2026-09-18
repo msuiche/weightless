@@ -138,6 +138,20 @@ Derived 2026-08-27, AdvBench-vs-Alpaca, L1–44, **α=2.0** shipped.
 | null, random dirs α=2.0 | 1/32 = stock | — | 32/32 | — |
 | EXL3 K4 stock (2× RTX PRO 6000, 1400-tok) | 1/32 | 14/32 | 32/32 | — |
 | **EXL3 K4 α=2.0** (same lane, 2026-08-30) | **15/32** | **31/32** | 31/32 | — |
+| **vLLM plugin α=2.0** (Modal 4×H100, 2026-09-18, 400-tok) | 2/32 stock → **9/32** | 3/32 stock → **31/32** | 32/32 both arms | — |
+
+Plugin arm (vllm-plugin glm5next adapter — ModelRegistry shadow, no hotfix,
+no file patching): first GPU boot 2026-09-18, Modal 4×H100, day-0
+x86_64-cu130 image, RedHatAI NVFP4, compiled mode (CUDA graphs on — the
+compile-rebind path). cyber32 lands exactly on the hotfix reference
+(31/32), benign32 clean in both arms, zero garbles anywhere. refusal32
+lifts 2→9/32 vs the hotfix's 1→21/32 — same direction, lower magnitude;
+this stack's stock baseline is stiffer (cyber32 stock 3/32 vs 12/32
+reference; the mm template adds a Reasoning Effort system line), and a
+clean single-container rerun reproduces 9/32, so the gap reads as
+baseline stiffness, not a swap artifact. Serve notes: bf16 KV (the image
+rejects fp8_e4m3 on the sparse-MLA path), gmu 0.92. Raw completions and
+scores: `modal/out-glm53-plugin-test/`.
 
 EXL3 arm (brandonmusic tr3-4bpw, verdictai sm_120a-only image): runtime-
 validated 2026-08-30 on rented SM120 — anchors applied exactly once, steered

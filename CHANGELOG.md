@@ -4,6 +4,23 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-09-18
+
+### Added
+- `modal/cloud_serve_glm53.py` + `modal/eval_glm53_plugin.py`: the
+  GLM-5.3-Flash plugin-validation lane on Modal (4×H100, day-0 x86 image,
+  RedHatAI NVFP4, TP4). First GPU boot of the vllm-plugin glm5next adapter:
+  steering engages in compiled mode (CUDA graphs on — the compile-rebind
+  fix exercised for real); cyber32 3→31/32 matches the hotfix reference
+  exactly, benign32 32/32 both arms, refusal32 2→9/32 (hotfix reference
+  1→21/32 — stiffer stock baseline on this stack, not a swap artifact;
+  numbers and raw outputs in BENCHMARK.md + `modal/out-glm53-plugin-test/`).
+- `modal/sitecustomize.py`: registers the plugin at every interpreter start
+  and pre-parses the vector fail-closed. Root cause of a day of "the plugin
+  never runs" debugging: it ran all along — this vLLM build's dictConfig
+  attaches a handler only to the `vllm` logger, so `weightless_steer.*`
+  INFO lines never rendered. The shim prints its markers to stderr instead.
+
 ## 2026-09-17
 
 ### Added
