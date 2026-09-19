@@ -287,7 +287,10 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 ### Changed
 - Inkling DGX lane marked BLOCKED — root cause confirmed: neither FA4
   backend runs Inkling on GB10; 15-boot elimination table + retest path;
-  Modal lane is the working path.
+  Modal lane is the working path. **(Resolved next day — 2026-09-04: the
+  sm121 rel-attention + load-reclaim hotfixes boot real weights TP=2 on
+  2×GB10 with CUDA graphs. The lane works on the Sparks; do not re-mark
+  it blocked from this entry alone.)**
 - hotfix-qwen38 tolerates v0.28.0 forward-anchor drift
   (`_maybe_add_hidden_state`).
 - Hy4 propaganda32 framing: the per-country map is the signal, not the
