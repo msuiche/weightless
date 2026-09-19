@@ -87,3 +87,18 @@ file from brandonmusic's EXL3/B12X fork image
 `../hotfix-glm53-exl3-steering-projective.py`. The fork adds a DFlash
 aux-hidden-state branch — TWO decoder loops, nested one level deeper than the
 day-0 file — which is why the EXL3 variant has two forward anchors.
+
+`hy_v4_nvidia_model.py` is a byte-identical copy of the day-0 image's model
+file, pulled from `vllm/vllm-openai:hy4-preview` at
+
+```
+/usr/local/lib/python3.12/dist-packages/vllm/models/hy_v4/nvidia/model.py
+```
+
+(md5 `5dae595ddd3ba1f8f09a43682fe77ebf`; extracted 2026-09-02 by the
+`fetch_model_src` step of
+`refusal-research/experiments/20260902-hy4-preview-glp/staging/modal_app.py`,
+kept there under `staging/srcdl/src/hy_v4/nvidia/model.py` and used as the
+fail-closed anchor reference for that lane's patcher). This is the reference
+for `../hotfix-hy4-steering-projective.py` and for the plugin adapter
+`vllm-plugin/weightless_steer/archs/hy4.py`.
