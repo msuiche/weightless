@@ -56,6 +56,8 @@ SHADOWED_ARCHS = {
         "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForCausalLM",
     "GlmMoeDsaForCausalLM":
         "weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM",
+    "KimiLinearForCausalLM":
+        "weightless_steer.archs.kimi_k3:SteeredKimiLinearForCausalLM",
 }
 
 

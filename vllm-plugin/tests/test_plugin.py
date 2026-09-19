@@ -71,7 +71,9 @@ class RegisterTests(unittest.TestCase):
              "Qwen3_8FlashNextForCausalLM":
              "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForCausalLM",
              "GlmMoeDsaForCausalLM":
-             "weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM"},
+             "weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM",
+             "KimiLinearForCausalLM":
+             "weightless_steer.archs.kimi_k3:SteeredKimiLinearForCausalLM"},
         )
 
     def test_registration_is_lazy_module_class_string(self):
