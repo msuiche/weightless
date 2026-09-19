@@ -30,6 +30,8 @@ SHADOWED_ARCHS = {
         "weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM",
     "Glm5NextForCausalLM":
         "weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM",
+    "OuroForCausalLM":
+        "weightless_steer.archs.ouro:SteeredOuroForCausalLM",
 }
 
 
