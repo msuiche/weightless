@@ -2134,6 +2134,28 @@ def _node_container_names(values, ssh_host, worker=None):
     return [n.strip() for n in r.stdout.splitlines() if n.strip()]
 
 
+def configure_serve_clients(io, base, model):
+    """Point the agent clients at what a `serve` switch just made live.
+
+    The wizard's interactive agent-setup step does this with confirmations;
+    the non-interactive serve path does it unconditionally but tolerantly —
+    a client-config failure never fails the serve. Covers the omp provider
+    (id, baseUrl, contextWindow/maxTokens) and hermes (default model, base
+    URL, context length)."""
+    host = urllib.parse.urlparse(base).hostname or "localhost"
+    context_length = served_context(base, model)
+    try:
+        io.ok(install_provider(host, model=model,
+                               context_length=context_length, base_url=base))
+    except Exception as exc:
+        io.warn(f"omp client config skipped: {exc}")
+    try:
+        io.ok(install_hermes(host, model,
+                             context_length=context_length, base_url=base))
+    except Exception as exc:
+        io.warn(f"hermes client config skipped: {exc}")
+
+
 def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
     """`setup.py serve <lane>` — non-interactive lane switch for the rig.
 
@@ -2233,7 +2255,8 @@ def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
                 ids, _ = probe_models(base)
                 if ids and (not want or want in ids):
                     io.ok(f"lane {lane_idx} is already serving {want or ids[0]} "
-                          f"on {base} — nothing to do")
+                          f"on {base} — refreshing client configs")
+                    configure_serve_clients(io, base, want or ids[0])
                     return 0
                 # A crash-looping container still appears in docker ps; a
                 # name match without a live endpoint is not "serving".
@@ -2308,6 +2331,7 @@ def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
         ids, _ = probe_models(base)
         if ids and (not want or want in ids):
             io.ok(f"serving {want or ids[0]} on {base}")
+            configure_serve_clients(io, base, want or ids[0])
             return 0
         time.sleep(20)
     io.err(f"endpoint did not come up within 45 min — diagnose: setup.py (Endpoint)")

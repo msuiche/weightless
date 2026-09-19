@@ -37,6 +37,20 @@ providers:
           supportsToolChoice: false
           requiresReasoningContentForToolCalls: true
           requiresAssistantContentForToolCalls: true
+      - id: deepseek-v4-flash-vision-exp-dspark
+        name: DeepSeek V4 Flash Vision-Exp GLP-29 (2x DGX Spark TP=2, :8888)
+        baseUrl: http://localhost:8888/v1
+        reasoning: true
+        input: [text]
+        contextWindow: 1048576
+        maxTokens: 32768
+        compat:
+          supportsDeveloperRole: false
+          supportsReasoningEffort: true
+          maxTokensField: max_tokens
+          supportsToolChoice: false
+          requiresReasoningContentForToolCalls: true
+          requiresAssistantContentForToolCalls: true
       - id: glm53-flash
         name: GLM-5.3-Flash NVFP4 GLP-44 (2x DGX Spark TP=2, :8080)
         baseUrl: http://localhost:8080/v1
