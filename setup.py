@@ -166,14 +166,7 @@ LANES = [
          model_repo="RadixArk/GLM-5.3-NVFP4",
          steer_modes=None,
          port=8000),
-    dict(name="[BLOCKED on GB10] Inkling-Small TP=2 — FA4 backends don't run it on Sparks; use the Modal lane",
-         # 2026-09-03, 15-boot elimination: neither FA4 backend runs
-         # Inkling on GB10 (retest path in the recipe README). The working
-         # path is the Modal lane — plugin-validated 2026-09-19 (H100:4
-         # TP4, mini-eval matches the reference row).
-         blocked=("Neither FA4 backend runs Inkling on GB10 (15-boot "
-                  "elimination, 2026-09-03) — serve via the Modal lane"),
-         blocked_doc="recipe/inkling/README.md",
+    dict(name="Inkling-Small TP=2 serving — 2x DGX Spark, day-0 vLLM v0.28.0",
          example="recipe/inkling/.env.inkling.example",
          target="recipe/inkling/.env.inkling",
          steer_key="WEIGHTLESS_STEER_PATH",
