@@ -166,7 +166,14 @@ LANES = [
          model_repo="RadixArk/GLM-5.3-NVFP4",
          steer_modes=None,
          port=8000),
-    dict(name="Inkling-Small TP=2 serving — 2x DGX Spark, day-0 vLLM v0.28.0",
+    dict(name="[BLOCKED on GB10] Inkling-Small TP=2 — FA4 backends don't run it on Sparks; use the Modal lane",
+         # 2026-09-03, 15-boot elimination: neither FA4 backend runs
+         # Inkling on GB10 (retest path in the recipe README). The working
+         # path is the Modal lane — plugin-validated 2026-09-19 (H100:4
+         # TP4, mini-eval matches the reference row).
+         blocked=("Neither FA4 backend runs Inkling on GB10 (15-boot "
+                  "elimination, 2026-09-03) — serve via the Modal lane"),
+         blocked_doc="recipe/inkling/README.md",
          example="recipe/inkling/.env.inkling.example",
          target="recipe/inkling/.env.inkling",
          steer_key="WEIGHTLESS_STEER_PATH",
@@ -254,17 +261,20 @@ LANES = [
          port=8084),
     # Appended last: tests address LANES by positional index, so new lanes
     # go at the end. This one is deliberately NOT DEPLOYABLE (2026-09-10).
-    dict(name="[BLOCKED] DSV4.1-Flash — deepseek_v41, no merged vLLM, no 2x128GB quant",
-         # Serving needs vllm-project/vllm PR #56201 (branch dsv41-feat),
-         # which is not merged; the 510 GB FP8+MXFP4 checkpoint does not
-         # fit 2x DGX Spark (256 GB) in any quant that exists today. The
-         # GLP-39 vector (residual hook, L1-39) was derived and validated
-         # on Modal (4x H200 TP=4) — see
+    dict(name="[BLOCKED as wizard lane] DSV4.1-Flash — serve via `serve dsv41-exl3` (MiaAI EXL3 stack)",
+         # Native serving needs vllm-project/vllm PR #56201 (branch
+         # dsv41-feat), which is not merged — so there is no recipe lane.
+         # The size problem is SOLVED elsewhere: MiaAI's EXL3 2.9bpw quant
+         # fits 2x DGX Spark and served on the rig (2026-09, see
+         # EXTERNAL_STACKS "dsv41-exl3" — `setup.py serve dsv41-exl3`).
+         # The GLP-39 vector (residual hook, L1-39) was derived and
+         # validated on Modal (4x H200 TP=4) — see
          # refusal-research/experiments/20260910-dsv41-flash-glp/.
-         # Unblock conditions: (1) #56201 merged, (2) a 2x128GB-fitting
-         # quant published. Do NOT point this lane at the rig.
-         blocked=("vLLM #56201 (dsv41-feat) is unmerged and no "
-                  "2x128GB-fitting quant of DeepSeek-V4.1-Flash exists"),
+         # Unblock condition for a wizard lane: #56201 merged. Until then
+         # do NOT point this lane's deploy at the rig.
+         blocked=("vLLM #56201 (dsv41-feat) is unmerged — no native "
+                  "recipe lane; serve via `serve dsv41-exl3` (MiaAI EXL3 "
+                  "2.9bpw, rig-validated)"),
          blocked_doc="recipe/dsv41/README.md",
          example="recipe/dsv41/.env.dsv41.example",
          target="recipe/dsv41/.env.dsv41",

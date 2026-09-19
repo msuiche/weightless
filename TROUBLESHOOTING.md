@@ -18,6 +18,10 @@ Symptom → likely cause, in the order to check:
    re-runs the whole entrypoint every few seconds (2026-09-10: 2,825
    restarts in 9h). The peer gate in `docker-compose.dsv4.yml` waits for
    the peer instead — redeploy the lane if the deployed copy predates it.
+   The gate probes sshd over bash `/dev/tcp/peer:22`; if a container sits
+   in `[peer-gate] … unreachable` while both nodes are visibly up, check
+   the deployed compose's probe — pre-2026-09-17 copies used `ping`, which
+   the gx10 image does not ship, so the check failed forever (d03b5a7).
 3. **Node has no 192.168.100.x fabric address / peers ping DOWN** — the far
    Spark is off or wedged (NO-CARRIER class). Physical check: power LED,
    power brick, QSFP cable. No restart policy fixes a dead peer.
