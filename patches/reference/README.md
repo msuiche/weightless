@@ -48,6 +48,25 @@ re-pull the file from the new container and diff — drifted anchors are
 exactly what the hotfix's fail-closed anchor check exists to catch. The same
 applies to `glm5next.py` and `../hotfix-glm53-steering-projective.py`.
 
+`deepseek_v4_nvidia_model.py` is a **byte-identical** copy of the day-0
+image's model file, pulled from the `dsv4-0731` Modal volume's `src/` dump
+(the `fetch_model_src` step of
+`refusal-research/experiments/20260905-dsv4-residual-glp`, which copied it
+out of `vllm/vllm-openai:deepseekv4-flash-vision` — the Vision-Exp day-0
+tag; the text stack is the same file) at
+
+```
+/usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia/model.py
+```
+
+(md5 `f897a3354a9ac7508c20be7c5d5f7d63`; pulled 2026-09-05, vendored into
+this repo 2026-09-19). This is the reference for
+`../hotfix-dsv4-steering-projective.py` (its four anchors all match) and for
+the plugin adapter pin in
+`vllm-plugin/tests/test_archs/test_dsv4.py`. On an image bump, re-pull and
+diff — drifted anchors are exactly what the fail-closed checks exist to
+catch.
+
 `qwen3_8_flash_next_ple_layer.py` is a byte-identical copy of the same
 image's `vllm/models/qwen3_8_flash_next/nvidia/ple_layer.py` (md5
 `eb23dad30fbb00590704288bcc5010a2`, same pull) — the reference for

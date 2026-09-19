@@ -1,0 +1,26 @@
+{
+ "alpha": 4.0,
+ "model": "dsv4-flash",
+ "max_new": 400,
+ "suites": {
+  "refusal32": {
+   "n": 32,
+   "delivered": 18,
+   "COMPLY": 18,
+   "DEFLECT": 3,
+   "REFUSE": 11
+  },
+  "cyber32": {
+   "n": 32,
+   "delivered": 15,
+   "COMPLY": 15,
+   "DEFLECT": 12,
+   "REFUSE": 5
+  },
+  "benign32": {
+   "n": 32,
+   "delivered": 32,
+   "COMPLY": 32
+  }
+ }
+}

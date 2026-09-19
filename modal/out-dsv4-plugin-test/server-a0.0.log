@@ -1,0 +1,728 @@
+
+
+===== boot attempt 08:52:10 alpha=0.0 =====
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 4, /usr/bin/python3.12)
+WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/api_server.py:24: DeprecationWarning: `vllm.entrypoints.openai.api_server` is deprecated and will likely beunsupported in a future version. Use the corresponding function from `vllm.entrypoints.launchers` instead.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/api_server.py:51: DeprecationWarning: The `python -m vllm.entrypoints.openai.api_server` command is deprecated and may be removed in a future release. Please use `vllm server` instead.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 69, /usr/bin/python3.12)WEIGHTLESS-SHIM: register() ran (pid 68, /usr/bin/python3.12)
+
+WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 99, /usr/bin/python3.12)
+WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 98, /usr/bin/python3.12)
+WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 101, /usr/bin/python3.12)
+WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 100, /usr/bin/python3.12)
+INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:   0% Completed | 0/48 [00:00<?, ?it/s]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:   2% Completed | 1/48 [00:00<00:18,  2.50it/s]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:   4% Completed | 2/48 [00:01<00:48,  1.04s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:   6% Completed | 3/48 [00:03<00:59,  1.32s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:   8% Completed | 4/48 [00:05<01:01,  1.40s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  10% Completed | 5/48 [00:06<00:59,  1.39s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  12% Completed | 6/48 [00:08<01:01,  1.47s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  15% Completed | 7/48 [00:09<00:59,  1.44s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  17% Completed | 8/48 [00:10<00:57,  1.43s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  19% Completed | 9/48 [00:12<00:57,  1.47s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  21% Completed | 10/48 [00:13<00:55,  1.45s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  23% Completed | 11/48 [00:15<00:51,  1.39s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  25% Completed | 12/48 [00:16<00:49,  1.36s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  27% Completed | 13/48 [00:17<00:48,  1.39s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  29% Completed | 14/48 [00:19<00:45,  1.35s/it]
+(Worker_TP0 pid=98) Exception in thread Thread-1 (_report_usage_worker):
+(Worker_TP0 pid=98) Traceback (most recent call last):
+(Worker_TP0 pid=98)   File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+(Worker_TP0 pid=98)     self.run()
+(Worker_TP0 pid=98)   File "/usr/lib/python3.12/threading.py", line 1010, in run
+(Worker_TP0 pid=98)     self._target(*self._args, **self._kwargs)
+(Worker_TP0 pid=98)   File "/usr/local/lib/python3.12/dist-packages/vllm/usage/usage_lib.py", line 172, in _report_usage_worker
+(Worker_TP0 pid=98)     self._report_usage_once(model_architecture, usage_context, extra_kvs)
+(Worker_TP0 pid=98)   File "/usr/local/lib/python3.12/dist-packages/vllm/usage/usage_lib.py", line 216, in _report_usage_once
+(Worker_TP0 pid=98)     info = cpuinfo.get_cpu_info()
+(Worker_TP0 pid=98)            ^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=98)   File "/usr/local/lib/python3.12/dist-packages/cpuinfo/cpuinfo.py", line 2762, in get_cpu_info
+(Worker_TP0 pid=98)     output = json.loads(output, object_hook = _utf_to_str)
+(Worker_TP0 pid=98)              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=98)   File "/usr/lib/python3.12/json/__init__.py", line 359, in loads
+(Worker_TP0 pid=98)     return cls(**kw).decode(s)
+(Worker_TP0 pid=98)            ^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=98)   File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+(Worker_TP0 pid=98)     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+(Worker_TP0 pid=98)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=98)   File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+(Worker_TP0 pid=98)     raise JSONDecodeError("Expecting value", s, err.value) from None
+(Worker_TP0 pid=98) json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  31% Completed | 15/48 [00:20<00:45,  1.37s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  33% Completed | 16/48 [00:22<00:45,  1.41s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  35% Completed | 17/48 [00:23<00:41,  1.34s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  38% Completed | 18/48 [00:24<00:40,  1.33s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  40% Completed | 19/48 [00:25<00:38,  1.34s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  42% Completed | 20/48 [00:27<00:37,  1.35s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  44% Completed | 21/48 [00:28<00:38,  1.42s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  46% Completed | 22/48 [00:30<00:36,  1.40s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  48% Completed | 23/48 [00:31<00:35,  1.40s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  50% Completed | 24/48 [00:32<00:33,  1.39s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  52% Completed | 25/48 [00:34<00:31,  1.36s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  54% Completed | 26/48 [00:35<00:29,  1.33s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  56% Completed | 27/48 [00:36<00:27,  1.33s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  58% Completed | 28/48 [00:38<00:26,  1.32s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  60% Completed | 29/48 [00:39<00:26,  1.41s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  62% Completed | 30/48 [00:41<00:24,  1.38s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  65% Completed | 31/48 [00:42<00:23,  1.38s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  67% Completed | 32/48 [00:43<00:22,  1.39s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  69% Completed | 33/48 [00:45<00:21,  1.45s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  71% Completed | 34/48 [00:46<00:19,  1.43s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  73% Completed | 35/48 [00:48<00:19,  1.48s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  75% Completed | 36/48 [00:49<00:17,  1.45s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  77% Completed | 37/48 [00:51<00:15,  1.45s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  79% Completed | 38/48 [00:52<00:14,  1.41s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  81% Completed | 39/48 [00:53<00:12,  1.36s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  83% Completed | 40/48 [00:55<00:10,  1.35s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  85% Completed | 41/48 [00:56<00:09,  1.36s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  88% Completed | 42/48 [00:57<00:08,  1.34s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  90% Completed | 43/48 [00:59<00:07,  1.54s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  92% Completed | 44/48 [01:01<00:06,  1.50s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  94% Completed | 45/48 [01:01<00:03,  1.19s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  96% Completed | 46/48 [01:02<00:02,  1.18s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards:  98% Completed | 47/48 [01:04<00:01,  1.19s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards: 100% Completed | 48/48 [01:05<00:00,  1.26s/it]
+(Worker_TP0 pid=98) Loading safetensors checkpoint shards: 100% Completed | 48/48 [01:05<00:00,  1.36s/it]
+(Worker_TP0 pid=98) 
+(Worker_TP1 pid=99) 2026-09-19 08:55:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+(Worker_TP0 pid=98) 2026-09-19 08:55:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+(Worker_TP2 pid=100) 2026-09-19 08:55:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+(Worker_TP3 pid=101) 2026-09-19 08:55:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+(Worker_TP1 pid=99) 2026-09-19 08:55:13  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+(Worker_TP2 pid=100) 2026-09-19 08:55:13  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+(Worker_TP0 pid=98) 2026-09-19 08:55:13  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+(Worker_TP3 pid=101) 2026-09-19 08:55:13  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+(Worker_TP3 pid=101) 2026-09-19 08:55:26  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+(Worker_TP0 pid=98) 2026-09-19 08:55:26  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+(Worker_TP2 pid=100) 2026-09-19 08:55:26  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+(Worker_TP1 pid=99) 2026-09-19 08:55:27  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+[08:55:27] : Warning: T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.
+[08:55:27] : Warning: T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.
+[08:55:27] : Warning: T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.
+[08:55:27] : Warning: T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.
+(Worker_TP3 pid=101) 2026-09-19 08:55:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+(Worker_TP0 pid=98) 2026-09-19 08:55:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+(Worker_TP1 pid=99) 2026-09-19 08:55:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+(Worker_TP2 pid=100) 2026-09-19 08:55:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+(Worker_TP3 pid=101) 2026-09-19 08:55:31  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP1 pid=99) 2026-09-19 08:55:31  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP2 pid=100) 2026-09-19 08:55:31  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP0 pid=98) 2026-09-19 08:55:31  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP3 pid=101) 2026-09-19 08:55:39  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP1 pid=99) 2026-09-19 08:55:39  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP2 pid=100) 2026-09-19 08:55:39  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP0 pid=98) 2026-09-19 08:55:39  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP0 pid=98) 2026-09-19 08:56:04  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `hc_head_fuse_tilelang` with `out_idx=None`
+(Worker_TP3 pid=101) (Worker_TP1 pid=99) 2026-09-19 08:56:04  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `hc_head_fuse_tilelang` with `out_idx=None`2026-09-19 08:56:04  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `hc_head_fuse_tilelang` with `out_idx=None`
+(Worker_TP2 pid=100) 
+2026-09-19 08:56:04  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `hc_head_fuse_tilelang` with `out_idx=None`
+(Worker_TP2 pid=100) 2026-09-19 08:56:07  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `hc_head_fuse_tilelang`
+(Worker_TP3 pid=101) 2026-09-19 08:56:07  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `hc_head_fuse_tilelang`
+(Worker_TP0 pid=98) 2026-09-19 08:56:07  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `hc_head_fuse_tilelang`
+(Worker_TP1 pid=99) 2026-09-19 08:56:07  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `hc_head_fuse_tilelang`
+(Worker_TP0 pid=98) Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:00<?, ?it/s](Worker_TP3 pid=101) 2026-09-19 08:56:14  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+(Worker_TP2 pid=100) 2026-09-19 08:56:14  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+                                                                        (Worker_TP0 pid=98) 2026-09-19 08:56:14  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:03<?, ?it/s](Worker_TP1 pid=99) 2026-09-19 08:56:14  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+(Worker_TP3 pid=101) 2026-09-19 08:56:22  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+(Worker_TP2 pid=100) 2026-09-19 08:56:22  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+(Worker_TP1 pid=99) 2026-09-19 08:56:22  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+                                                                        (Worker_TP0 pid=98) 2026-09-19 08:56:22  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:11<?, ?it/s](Worker_TP2 pid=100) 2026-09-19 08:56:31  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+(Worker_TP3 pid=101) 2026-09-19 08:56:31  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+(Worker_TP1 pid=99) 2026-09-19 08:56:31  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+                                                                        (Worker_TP0 pid=98) 2026-09-19 08:56:31  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:20<?, ?it/s](Worker_TP2 pid=100) 2026-09-19 08:56:32  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+(Worker_TP3 pid=101) 2026-09-19 08:56:32  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+(Worker_TP1 pid=99) 2026-09-19 08:56:32  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+                                                                        (Worker_TP0 pid=98) 2026-09-19 08:56:32  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:22<?, ?it/s](Worker_TP2 pid=100) 2026-09-19 08:56:33  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP3 pid=101) 2026-09-19 08:56:33  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+                                                                        (Worker_TP0 pid=98) 2026-09-19 08:56:33  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:23<?, ?it/s](Worker_TP1 pid=99) 2026-09-19 08:56:33  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP2 pid=100) 2026-09-19 08:56:41  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP1 pid=99) 2026-09-19 08:56:41  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP3 pid=101) 2026-09-19 08:56:41  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+                                                                        (Worker_TP0 pid=98) 2026-09-19 08:56:41  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:31<?, ?it/s]Capturing CUDA graphs (PIECEWISE):  20%|██        | 1/5 [00:41<02:47, 41.88s/it](Worker_TP1 pid=99) 2026-09-19 08:56:57  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+(Worker_TP2 pid=100) 2026-09-19 08:56:57  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+(Worker_TP3 pid=101) 2026-09-19 08:56:57  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+Capturing CUDA graphs (PIECEWISE):  40%|████      | 2/5 [00:46<01:00, 20.17s/it]                                                                                (Worker_TP0 pid=98) 2026-09-19 08:56:57  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+Capturing CUDA graphs (PIECEWISE):  40%|████      | 2/5 [00:46<01:00, 20.17s/it](Worker_TP1 pid=99) 2026-09-19 08:56:58  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+(Worker_TP2 pid=100) 2026-09-19 08:56:58  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+(Worker_TP3 pid=101) 2026-09-19 08:56:58  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+                                                                                (Worker_TP0 pid=98) 2026-09-19 08:56:58  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+Capturing CUDA graphs (PIECEWISE):  40%|████      | 2/5 [00:48<01:00, 20.17s/it](Worker_TP1 pid=99) 2026-09-19 08:56:59  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP2 pid=100) 2026-09-19 08:56:59  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP3 pid=101) 2026-09-19 08:56:59  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+                                                                                (Worker_TP0 pid=98) 2026-09-19 08:56:59  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+Capturing CUDA graphs (PIECEWISE):  40%|████      | 2/5 [00:49<01:00, 20.17s/it](Worker_TP1 pid=99) 2026-09-19 08:57:07  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP3 pid=101) 2026-09-19 08:57:07  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP2 pid=100) 2026-09-19 08:57:07  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+                                                                                (Worker_TP0 pid=98) 2026-09-19 08:57:08  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+Capturing CUDA graphs (PIECEWISE):  40%|████      | 2/5 [00:57<01:00, 20.17s/it]Capturing CUDA graphs (PIECEWISE):  60%|██████    | 3/5 [00:59<00:33, 16.69s/it]Capturing CUDA graphs (PIECEWISE):  80%|████████  | 4/5 [01:00<00:10, 10.49s/it]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 5/5 [01:01<00:00,  7.28s/it]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 5/5 [01:01<00:00, 12.39s/it]
+(Worker_TP0 pid=98) Capturing CUDA graphs (FULL):   0%|          | 0/2 [00:00<?, ?it/s]Capturing CUDA graphs (FULL):  50%|█████     | 1/2 [00:00<00:00,  4.32it/s]Capturing CUDA graphs (FULL): 100%|██████████| 2/2 [00:00<00:00,  3.95it/s]Capturing CUDA graphs (FULL): 100%|██████████| 2/2 [00:00<00:00,  3.99it/s]
+(Worker_TP0 pid=98) DeepGEMM warmup:   0%|          | 0/1281 [00:00<?, ?it/s]DeepGEMM warmup:   0%|          | 1/1281 [00:02<1:00:21,  2.83s/it]DeepGEMM warmup:   0%|          | 6/1281 [00:04<15:15,  1.39it/s]  DeepGEMM warmup:   1%|          | 8/1281 [00:06<17:19,  1.22it/s]DeepGEMM warmup:   1%|          | 12/1281 [00:09<14:25,  1.47it/s]DeepGEMM warmup:   1%|          | 14/1281 [00:11<16:05,  1.31it/s]DeepGEMM warmup:   1%|▏         | 17/1281 [00:13<15:20,  1.37it/s]DeepGEMM warmup:   1%|▏         | 19/1281 [00:15<17:01,  1.23it/s]DeepGEMM warmup:   2%|▏         | 21/1281 [00:18<21:14,  1.01s/it]DeepGEMM warmup:   2%|▏         | 25/1281 [00:20<17:03,  1.23it/s]DeepGEMM warmup:   2%|▏         | 27/1281 [00:22<18:34,  1.12it/s]DeepGEMM warmup:   2%|▏         | 31/1281 [00:25<16:08,  1.29it/s]DeepGEMM warmup:   2%|▏         | 32/1281 [00:27<20:01,  1.04it/s]DeepGEMM warmup:   3%|▎         | 34/1281 [00:30<23:13,  1.12s/it]DeepGEMM warmup:   3%|▎         | 40/1281 [00:32<14:51,  1.39it/s]DeepGEMM warmup:   3%|▎         | 43/1281 [00:35<14:57,  1.38it/s]DeepGEMM warmup:   4%|▍         | 51/1281 [00:37<10:20,  1.98it/s]DeepGEMM warmup:   4%|▍         | 53/1281 [00:42<16:51,  1.21it/s]DeepGEMM warmup:   4%|▍         | 56/1281 [00:46<19:44,  1.03it/s]DeepGEMM warmup:   5%|▌         | 67/1281 [00:49<10:53,  1.86it/s]DeepGEMM warmup:   6%|▌         | 71/1281 [00:51<11:10,  1.80it/s]DeepGEMM warmup:   6%|▌         | 75/1281 [00:54<12:12,  1.65it/s]DeepGEMM warmup:   7%|▋         | 84/1281 [00:56<09:09,  2.18it/s]DeepGEMM warmup:   7%|▋         | 90/1281 [01:02<11:27,  1.73it/s]DeepGEMM warmup:   7%|▋         | 95/1281 [01:06<12:40,  1.56it/s]DeepGEMM warmup:   9%|▉         | 114/1281 [01:09<06:55,  2.81it/s]DeepGEMM warmup:  15%|█▍        | 190/1281 [01:12<02:01,  9.00it/s]DeepGEMM warmup:  15%|█▌        | 195/1281 [01:14<02:24,  7.54it/s]DeepGEMM warmup:  15%|█▌        | 197/1281 [01:16<03:01,  5.96it/s]DeepGEMM warmup:  16%|█▌        | 203/1281 [01:18<03:29,  5.14it/s]DeepGEMM warmup:  16%|█▋        | 210/1281 [01:21<04:14,  4.20it/s]DeepGEMM warmup:  17%|█▋        | 217/1281 [01:23<04:31,  3.92it/s]DeepGEMM warmup:  18%|█▊        | 227/1281 [01:28<05:47,  3.03it/s]DeepGEMM warmup:  18%|█▊        | 232/1281 [01:32<07:18,  2.39it/s]DeepGEMM warmup:  19%|█▊        | 239/1281 [01:35<07:13,  2.40it/s]DeepGEMM warmup:  20%|█▉        | 254/1281 [01:40<06:27,  2.65it/s]DeepGEMM warmup:  21%|██        | 264/1281 [01:44<06:30,  2.60it/s]DeepGEMM warmup:  24%|██▍       | 306/1281 [01:47<02:55,  5.55it/s]DeepGEMM warmup:  41%|████      | 528/1281 [01:49<00:29, 25.37it/s]DeepGEMM warmup:  42%|████▏     | 533/1281 [01:51<00:35, 20.98it/s]DeepGEMM warmup:  42%|████▏     | 536/1281 [01:53<00:44, 16.81it/s]DeepGEMM warmup:  42%|████▏     | 540/1281 [01:55<00:56, 13.22it/s]DeepGEMM warmup:  42%|████▏     | 544/1281 [01:58<01:21,  9.01it/s]DeepGEMM warmup:  43%|████▎     | 548/1281 [02:00<01:41,  7.20it/s]DeepGEMM warmup:  43%|████▎     | 553/1281 [02:02<02:01,  6.00it/s]DeepGEMM warmup:  44%|████▎     | 558/1281 [02:05<02:48,  4.29it/s]DeepGEMM warmup:  44%|████▍     | 562/1281 [02:07<03:16,  3.66it/s]DeepGEMM warmup:  44%|████▍     | 567/1281 [02:09<03:40,  3.24it/s]DeepGEMM warmup:  45%|████▍     | 573/1281 [02:14<05:18,  2.22it/s]DeepGEMM warmup:  45%|████▌     | 579/1281 [02:19<06:00,  1.95it/s]DeepGEMM warmup:  46%|████▌     | 585/1281 [02:21<05:24,  2.14it/s]DeepGEMM warmup:  46%|████▋     | 594/1281 [02:24<04:47,  2.39it/s]DeepGEMM warmup:  47%|████▋     | 601/1281 [02:26<04:26,  2.55it/s]DeepGEMM warmup:  47%|████▋     | 606/1281 [02:31<06:03,  1.86it/s]DeepGEMM warmup:  48%|████▊     | 612/1281 [02:35<06:28,  1.72it/s]DeepGEMM warmup:  49%|████▊     | 623/1281 [02:38<04:48,  2.28it/s]DeepGEMM warmup:  64%|██████▎   | 814/1281 [02:40<00:21, 21.33it/s]DeepGEMM warmup:  64%|██████▍   | 819/1281 [02:42<00:26, 17.34it/s]DeepGEMM warmup:  64%|██████▍   | 822/1281 [02:43<00:33, 13.78it/s]DeepGEMM warmup:  64%|██████▍   | 826/1281 [02:45<00:41, 10.87it/s]DeepGEMM warmup:  65%|██████▍   | 829/1281 [02:47<00:54,  8.36it/s]DeepGEMM warmup:  65%|██████▍   | 832/1281 [02:49<01:09,  6.41it/s]DeepGEMM warmup:  65%|██████▌   | 835/1281 [02:51<01:28,  5.03it/s]DeepGEMM warmup:  65%|██████▌   | 838/1281 [02:54<02:06,  3.49it/s]DeepGEMM warmup:  66%|██████▌   | 842/1281 [02:56<02:23,  3.06it/s]DeepGEMM warmup:  66%|██████▌   | 844/1281 [02:58<03:00,  2.42it/s]DeepGEMM warmup:  66%|██████▌   | 846/1281 [03:00<03:35,  2.02it/s]DeepGEMM warmup:  66%|██████▋   | 849/1281 [03:02<03:50,  1.88it/s]DeepGEMM warmup:  67%|██████▋   | 856/1281 [03:05<03:28,  2.04it/s]DeepGEMM warmup:  67%|██████▋   | 862/1281 [03:08<03:06,  2.25it/s]DeepGEMM warmup:  68%|██████▊   | 865/1281 [03:10<03:25,  2.02it/s]DeepGEMM warmup:  68%|██████▊   | 874/1281 [03:12<02:36,  2.60it/s]DeepGEMM warmup:  68%|██████▊   | 875/1281 [03:17<04:51,  1.39it/s]DeepGEMM warmup:  69%|██████▊   | 878/1281 [03:19<04:49,  1.39it/s]DeepGEMM warmup:  69%|██████▉   | 885/1281 [03:24<04:25,  1.49it/s]DeepGEMM warmup:  70%|██████▉   | 891/1281 [03:27<04:01,  1.62it/s]DeepGEMM warmup:  70%|██████▉   | 895/1281 [03:29<03:50,  1.67it/s]DeepGEMM warmup:  70%|███████   | 901/1281 [03:32<03:29,  1.81it/s]DeepGEMM warmup:  72%|███████▏  | 919/1281 [03:37<02:20,  2.57it/s]DeepGEMM warmup:  72%|███████▏  | 928/1281 [03:41<02:23,  2.46it/s]DeepGEMM warmup:  74%|███████▍  | 947/1281 [03:46<01:57,  2.83it/s]DeepGEMM warmup:  75%|███████▍  | 958/1281 [03:49<01:46,  3.02it/s]DeepGEMM warmup:  78%|███████▊  | 996/1281 [03:52<00:52,  5.46it/s]DeepGEMM warmup:  78%|███████▊  | 1001/1281 [03:54<00:58,  4.78it/s]DeepGEMM warmup:  78%|███████▊  | 1003/1281 [03:57<01:11,  3.88it/s]DeepGEMM warmup:  79%|███████▊  | 1008/1281 [03:59<01:19,  3.42it/s]DeepGEMM warmup:  79%|███████▉  | 1012/1281 [04:02<01:36,  2.80it/s]DeepGEMM warmup:  79%|███████▉  | 1016/1281 [04:04<01:44,  2.53it/s]DeepGEMM warmup:  80%|███████▉  | 1021/1281 [04:06<01:45,  2.46it/s]DeepGEMM warmup:  80%|████████  | 1026/1281 [04:09<01:51,  2.28it/s]DeepGEMM warmup:  80%|████████  | 1030/1281 [04:11<01:57,  2.13it/s]DeepGEMM warmup:  81%|████████  | 1035/1281 [04:14<01:54,  2.15it/s]DeepGEMM warmup:  81%|████████▏ | 1041/1281 [04:16<01:44,  2.31it/s]DeepGEMM warmup:  81%|████████▏ | 1043/1281 [04:19<02:25,  1.64it/s]DeepGEMM warmup:  82%|████████▏ | 1047/1281 [04:22<02:25,  1.61it/s]DeepGEMM warmup:  82%|████████▏ | 1053/1281 [04:24<01:59,  1.91it/s]DeepGEMM warmup:  83%|████████▎ | 1062/1281 [04:26<01:29,  2.46it/s]DeepGEMM warmup:  83%|████████▎ | 1069/1281 [04:29<01:19,  2.67it/s]DeepGEMM warmup:  84%|████████▍ | 1074/1281 [04:32<01:33,  2.22it/s]DeepGEMM warmup:  84%|████████▍ | 1080/1281 [04:35<01:33,  2.15it/s]DeepGEMM warmup:  85%|████████▌ | 1091/1281 [04:37<01:06,  2.84it/s]DeepGEMM warmup: 100%|██████████| 1281/1281 [04:37<00:00,  4.61it/s]
+(Worker_TP0 pid=98) (Worker_TP1 pid=99) 2026-09-19 09:02:03,323 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP3 pid=101) (Worker_TP2 pid=100) 2026-09-19 09:02:03,323 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-09-19 09:02:03,324 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-09-19 09:02:03,324 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP3 pid=101) (Worker_TP0 pid=98) (Worker_TP2 pid=100) (Worker_TP1 pid=99) 2026-09-19 09:02:03,468 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-09-19 09:02:03,468 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-09-19 09:02:03,468 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-09-19 09:02:03,468 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP0 pid=98) 2026-09-19 09:02:03,508 - INFO - autotuner.py:2652 - flashinfer.jit: [Autotuner]: Saved 0 configs to /data/cache/vllm/flashinfer_autotune_cache/0.6.18/90a/378a2d3af4ed9777f61abce2b0fe571fc29f7e78decf4079b30f521da70e55ea/autotune_configs.json (0 new, 0 from previous config)
+(Worker_TP0 pid=98) Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:00<?, ?it/s]Capturing CUDA graphs (PIECEWISE):  20%|██        | 1/5 [00:00<00:03,  1.30it/s]Capturing CUDA graphs (PIECEWISE):  40%|████      | 2/5 [00:01<00:02,  1.32it/s]Capturing CUDA graphs (PIECEWISE):  60%|██████    | 3/5 [00:02<00:01,  1.26it/s]Capturing CUDA graphs (PIECEWISE):  80%|████████  | 4/5 [00:03<00:00,  1.23it/s]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 5/5 [00:03<00:00,  1.27it/s]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 5/5 [00:03<00:00,  1.27it/s]
+(Worker_TP0 pid=98) Capturing CUDA graphs (FULL):   0%|          | 0/4 [00:00<?, ?it/s]Capturing CUDA graphs (FULL):  25%|██▌       | 1/4 [00:00<00:01,  2.91it/s]Capturing CUDA graphs (FULL):  50%|█████     | 2/4 [00:00<00:00,  3.62it/s]Capturing CUDA graphs (FULL):  75%|███████▌  | 3/4 [00:00<00:00,  3.45it/s]Capturing CUDA graphs (FULL): 100%|██████████| 4/4 [00:01<00:00,  3.73it/s]Capturing CUDA graphs (FULL): 100%|██████████| 4/4 [00:01<00:00,  3.59it/s]
+(APIServer pid=4) INFO uvicorn.error: Started server process [4]
+(APIServer pid=4) INFO uvicorn.error: Waiting for application startup.
+(APIServer pid=4) INFO uvicorn.error: Application startup complete.
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:41636 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:38701 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:50289 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:58926 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:59937 - "GET /v1/models HTTP/1.1" 200
+(Worker_TP1 pid=99) 2026-09-19 09:02:20  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP3 pid=101) 2026-09-19 09:02:20  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP0 pid=98) 2026-09-19 09:02:20  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP2 pid=100) 2026-09-19 09:02:20  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP3 pid=101) 2026-09-19 09:02:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP0 pid=98) 2026-09-19 09:02:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP1 pid=99) 2026-09-19 09:02:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP2 pid=100) 2026-09-19 09:02:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:29596 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:23646 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:56653 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:65507 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:31398 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:52626 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:53364 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:60384 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:49524 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:53974 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:50766 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:47788 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:65040 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:31510 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:48650 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:30766 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:64211 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:43314 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:41058 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:49300 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:48608 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:27141 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:39860 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:29494 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:31401 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:65200 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:26348 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:31906 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:28270 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:57737 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:47398 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:29585 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:24380 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:45030 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:19718 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:52246 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:23680 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:35090 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:41336 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:47657 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:27696 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:41763 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:16829 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:34993 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:36672 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:26205 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:26734 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:33696 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:26465 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:62839 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:23918 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:61872 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:58319 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:49242 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:63890 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:50002 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:30549 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:37801 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:24131 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:54414 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:56464 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:65015 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:38124 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:57506 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:41360 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:50180 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:33564 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:43164 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:44295 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:44721 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:61443 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:32381 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:39056 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:35817 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:35575 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:53192 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:35023 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:55135 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:21486 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:18133 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:54108 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:28956 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:62118 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:21387 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:24046 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:22777 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:50966 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:65119 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:47069 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:16688 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:37063 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:46877 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:62548 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:39989 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:52614 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:35786 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.26.50:56923 - "POST /v1/chat/completions HTTP/1.1" 200
+
+
+===== boot attempt 10:17:57 alpha=0.0 =====
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 4, /usr/bin/python3.12)
+WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/api_server.py:24: DeprecationWarning: `vllm.entrypoints.openai.api_server` is deprecated and will likely beunsupported in a future version. Use the corresponding function from `vllm.entrypoints.launchers` instead.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/api_server.py:51: DeprecationWarning: The `python -m vllm.entrypoints.openai.api_server` command is deprecated and may be removed in a future release. Please use `vllm server` instead.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 40, /usr/bin/python3.12)INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+
+WEIGHTLESS-SHIM: register() ran (pid 39, /usr/bin/python3.12)
+WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 71, /usr/bin/python3.12)INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+
+WEIGHTLESS-SHIM: register() ran (pid 69, /usr/bin/python3.12)
+WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+WEIGHTLESS-SHIM: register() ran (pid 70, /usr/bin/python3.12)WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+
+
+WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed DeepseekV4ForCausalLM -> weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 68, /usr/bin/python3.12)
+WARNING weightless_steer.container: /data/vector/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29-L10-38-a4.gguf: transferred vector -- glp.derived_at='residual_stream_post_layer', apply hook 'ffn_out_pre_residual'
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=DeepSeek-V4-Flash-0731 rev=7872f01b1d1f alpha_default=6.0
+INFO weightless_steer.container: weightless GLP vector: 29 steered layers, n_embd=4096, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+INFO weightless_steer.core: weightless GLP steering active: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=ffn_out_pre_residual alpha=0.000 layers=10..38 (29) width=4096
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:   0% Completed | 0/48 [00:00<?, ?it/s]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:   2% Completed | 1/48 [00:00<00:06,  7.12it/s]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:   4% Completed | 2/48 [00:01<00:29,  1.56it/s]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:   6% Completed | 3/48 [00:02<00:35,  1.26it/s]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:   8% Completed | 4/48 [00:03<00:39,  1.11it/s]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  10% Completed | 5/48 [00:04<00:43,  1.01s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  12% Completed | 6/48 [00:05<00:44,  1.06s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  15% Completed | 7/48 [00:06<00:43,  1.06s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  17% Completed | 8/48 [00:07<00:43,  1.08s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  19% Completed | 9/48 [00:08<00:42,  1.08s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  21% Completed | 10/48 [00:10<00:43,  1.14s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  23% Completed | 11/48 [00:11<00:41,  1.12s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  25% Completed | 12/48 [00:12<00:39,  1.09s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  27% Completed | 13/48 [00:13<00:37,  1.06s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  29% Completed | 14/48 [00:14<00:35,  1.05s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  31% Completed | 15/48 [00:15<00:34,  1.04s/it]
+(Worker_TP0 pid=68) Exception in thread Thread-1 (_report_usage_worker):
+(Worker_TP0 pid=68) Traceback (most recent call last):
+(Worker_TP0 pid=68)   File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+(Worker_TP0 pid=68)     self.run()
+(Worker_TP0 pid=68)   File "/usr/lib/python3.12/threading.py", line 1010, in run
+(Worker_TP0 pid=68)     self._target(*self._args, **self._kwargs)
+(Worker_TP0 pid=68)   File "/usr/local/lib/python3.12/dist-packages/vllm/usage/usage_lib.py", line 172, in _report_usage_worker
+(Worker_TP0 pid=68)     self._report_usage_once(model_architecture, usage_context, extra_kvs)
+(Worker_TP0 pid=68)   File "/usr/local/lib/python3.12/dist-packages/vllm/usage/usage_lib.py", line 216, in _report_usage_once
+(Worker_TP0 pid=68)     info = cpuinfo.get_cpu_info()
+(Worker_TP0 pid=68)            ^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=68)   File "/usr/local/lib/python3.12/dist-packages/cpuinfo/cpuinfo.py", line 2762, in get_cpu_info
+(Worker_TP0 pid=68)     output = json.loads(output, object_hook = _utf_to_str)
+(Worker_TP0 pid=68)              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=68)   File "/usr/lib/python3.12/json/__init__.py", line 359, in loads
+(Worker_TP0 pid=68)     return cls(**kw).decode(s)
+(Worker_TP0 pid=68)            ^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=68)   File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+(Worker_TP0 pid=68)     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+(Worker_TP0 pid=68)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=68)   File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+(Worker_TP0 pid=68)     raise JSONDecodeError("Expecting value", s, err.value) from None
+(Worker_TP0 pid=68) json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  33% Completed | 16/48 [00:18<00:59,  1.86s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  35% Completed | 17/48 [00:41<04:09,  8.04s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  38% Completed | 18/48 [00:50<04:07,  8.26s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  40% Completed | 19/48 [00:53<03:17,  6.81s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  42% Completed | 20/48 [01:01<03:18,  7.09s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  44% Completed | 21/48 [01:03<02:29,  5.54s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  46% Completed | 22/48 [01:06<02:06,  4.85s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  48% Completed | 23/48 [01:11<02:03,  4.93s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  50% Completed | 24/48 [01:19<02:16,  5.69s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  52% Completed | 25/48 [01:22<01:53,  4.92s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  54% Completed | 26/48 [01:25<01:35,  4.32s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  56% Completed | 27/48 [01:32<01:49,  5.19s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  58% Completed | 28/48 [01:37<01:41,  5.09s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  60% Completed | 29/48 [01:44<01:50,  5.80s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  62% Completed | 30/48 [01:53<02:00,  6.69s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  65% Completed | 31/48 [02:00<01:53,  6.67s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  67% Completed | 32/48 [02:10<02:05,  7.83s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  69% Completed | 33/48 [02:19<02:01,  8.07s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  71% Completed | 34/48 [02:29<02:01,  8.68s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  73% Completed | 35/48 [02:41<02:08,  9.85s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  75% Completed | 36/48 [02:54<02:06, 10.56s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  77% Completed | 37/48 [03:04<01:56, 10.59s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  79% Completed | 38/48 [03:20<02:02, 12.25s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  81% Completed | 39/48 [03:34<01:54, 12.76s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  83% Completed | 40/48 [03:56<02:03, 15.49s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  85% Completed | 41/48 [04:27<02:19, 19.94s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  88% Completed | 42/48 [04:59<02:22, 23.69s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  90% Completed | 43/48 [05:32<02:13, 26.64s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  92% Completed | 44/48 [06:08<01:57, 29.26s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  94% Completed | 45/48 [06:19<01:11, 23.81s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  96% Completed | 46/48 [06:56<00:55, 27.64s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards:  98% Completed | 47/48 [07:33<00:30, 30.52s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards: 100% Completed | 48/48 [08:12<00:00, 33.16s/it]
+(Worker_TP0 pid=68) Loading safetensors checkpoint shards: 100% Completed | 48/48 [08:12<00:00, 10.26s/it]
+(Worker_TP0 pid=68) 
+(Worker_TP3 pid=71) 2026-09-19 10:27:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+(Worker_TP1 pid=69) (Worker_TP2 pid=70) 2026-09-19 10:27:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`(Worker_TP0 pid=68) 2026-09-19 10:27:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+2026-09-19 10:27:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+
+(Worker_TP3 pid=71) 2026-09-19 10:28:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+(Worker_TP0 pid=68) 2026-09-19 10:28:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+(Worker_TP2 pid=70) 2026-09-19 10:28:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+(Worker_TP1 pid=69) 2026-09-19 10:28:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+(Worker_TP3 pid=71) (Worker_TP1 pid=69) (Worker_TP2 pid=70) 2026-09-19 10:28:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`(Worker_TP0 pid=68) 2026-09-19 10:28:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`2026-09-19 10:28:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+2026-09-19 10:28:12  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_post_tilelang` with `out_idx=None`
+
+
+[[1010::[28[2810:10::13:1328] 28] :: Warning: :: Warning: 13T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.13T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.] 
+] 
+: Warning: : Warning: T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.T.vectorized loop over `i_hci` with extent 4 is lowered as a serial loop because TileLang could not find a valid vectorization plan. Scalar accumulator updates inside the loop are a common cause; move reductions to T.unroll or T.serial if this is intended.
+
+(Worker_TP1 pid=69) 2026-09-19 10:28:14  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+(Worker_TP2 pid=70) 2026-09-19 10:28:14  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+(Worker_TP3 pid=71) (Worker_TP0 pid=68) 2026-09-19 10:28:14  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`2026-09-19 10:28:14  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_post_tilelang`
+
+(Worker_TP3 pid=71) 2026-09-19 10:28:15  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP1 pid=69) 2026-09-19 10:28:15  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP0 pid=68) 2026-09-19 10:28:15  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP2 pid=70) 2026-09-19 10:28:15  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP0 pid=68) 2026-09-19 10:28:24  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP1 pid=69) 2026-09-19 10:28:24  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP3 pid=71) 2026-09-19 10:28:25  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP2 pid=70) 2026-09-19 10:28:25  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP1 pid=69) (Worker_TP0 pid=68) 2026-09-19 10:28:50  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `hc_head_fuse_tilelang` with `out_idx=None`2026-09-19 10:28:50  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `hc_head_fuse_tilelang` with `out_idx=None`
+
+(Worker_TP3 pid=71) (Worker_TP2 pid=70) 2026-09-19 10:28:50  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `hc_head_fuse_tilelang` with `out_idx=None`2026-09-19 10:28:50  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `hc_head_fuse_tilelang` with `out_idx=None`
+
+(Worker_TP1 pid=69) 2026-09-19 10:28:53  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `hc_head_fuse_tilelang`
+(Worker_TP0 pid=68) 2026-09-19 10:28:53  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `hc_head_fuse_tilelang`
+(Worker_TP2 pid=70) 2026-09-19 10:28:53  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `hc_head_fuse_tilelang`
+(Worker_TP3 pid=71) 2026-09-19 10:28:53  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `hc_head_fuse_tilelang`
+(Worker_TP0 pid=68) Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:00<?, ?it/s]                                                                        (Worker_TP0 pid=68) 2026-09-19 10:29:07  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:09<?, ?it/s](Worker_TP1 pid=69) (Worker_TP3 pid=71) 2026-09-19 10:29:07  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`2026-09-19 10:29:07  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+
+(Worker_TP2 pid=70) 2026-09-19 10:29:07  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang` with `out_idx=None`
+                                                                        (Worker_TP0 pid=68) 2026-09-19 10:29:16  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:18<?, ?it/s](Worker_TP1 pid=69) 2026-09-19 10:29:16  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+(Worker_TP3 pid=71) 2026-09-19 10:29:16  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+(Worker_TP2 pid=70) 2026-09-19 10:29:16  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_broadcast_with_norm_tilelang`
+(Worker_TP3 pid=71) 2026-09-19 10:29:26  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+(Worker_TP1 pid=69) 2026-09-19 10:29:26  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+                                                                        (Worker_TP0 pid=68) 2026-09-19 10:29:26  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:28<?, ?it/s](Worker_TP2 pid=70) 2026-09-19 10:29:26  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+(Worker_TP3 pid=71) 2026-09-19 10:29:27  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+(Worker_TP1 pid=69) 2026-09-19 10:29:27  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+                                                                        (Worker_TP0 pid=68) 2026-09-19 10:29:27  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:29<?, ?it/s](Worker_TP2 pid=70) 2026-09-19 10:29:27  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+(Worker_TP3 pid=71) 2026-09-19 10:29:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP1 pid=69) 2026-09-19 10:29:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+                                                                        (Worker_TP0 pid=68) 2026-09-19 10:29:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:30<?, ?it/s](Worker_TP2 pid=70) 2026-09-19 10:29:28  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP3 pid=71) 2026-09-19 10:29:37  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+                                                                        (Worker_TP0 pid=68) 2026-09-19 10:29:38  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:39<?, ?it/s](Worker_TP1 pid=69) 2026-09-19 10:29:38  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP2 pid=70) 2026-09-19 10:29:38  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+Capturing CUDA graphs (PIECEWISE):  20%|██        | 1/5 [00:59<03:58, 59.54s/it]Capturing CUDA graphs (PIECEWISE):  40%|████      | 2/5 [01:05<01:23, 27.77s/it](Worker_TP2 pid=70)                                                                                 2026-09-19 10:30:03  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`(Worker_TP1 pid=69) (Worker_TP3 pid=71) 
+2026-09-19 10:30:03  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`(Worker_TP0 pid=68) 2026-09-19 10:30:03  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+2026-09-19 10:30:03  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_fused_tilelang` with `out_idx=None`
+
+Capturing CUDA graphs (PIECEWISE):  40%|████      | 2/5 [01:05<01:23, 27.77s/it]                                                                                (Worker_TP3 pid=71) 2026-09-19 10:30:04  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`(Worker_TP0 pid=68) 
+2026-09-19 10:30:04  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+Capturing CUDA graphs (PIECEWISE):  40%|████      | 2/5 [01:06<01:23, 27.77s/it](Worker_TP2 pid=70) 2026-09-19 10:30:04  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+(Worker_TP1 pid=69) 2026-09-19 10:30:04  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_fused_tilelang`
+(Worker_TP2 pid=70) 2026-09-19 10:30:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP3 pid=71) 2026-09-19 10:30:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+                                                                                (Worker_TP0 pid=68) 2026-09-19 10:30:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+Capturing CUDA graphs (PIECEWISE):  40%|████      | 2/5 [01:07<01:23, 27.77s/it](Worker_TP1 pid=69) 2026-09-19 10:30:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP1 pid=69) 2026-09-19 10:30:15  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP3 pid=71) 2026-09-19 10:30:15  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+                                                                                (Worker_TP0 pid=68) 2026-09-19 10:30:15  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+Capturing CUDA graphs (PIECEWISE):  40%|████      | 2/5 [01:17<01:23, 27.77s/it](Worker_TP2 pid=70) 2026-09-19 10:30:15  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+Capturing CUDA graphs (PIECEWISE):  60%|██████    | 3/5 [01:19<00:43, 21.65s/it]Capturing CUDA graphs (PIECEWISE):  80%|████████  | 4/5 [01:20<00:13, 13.52s/it]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 5/5 [01:25<00:00, 10.32s/it]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 5/5 [01:25<00:00, 17.03s/it]
+(Worker_TP0 pid=68) Capturing CUDA graphs (FULL):   0%|          | 0/2 [00:00<?, ?it/s]Capturing CUDA graphs (FULL):  50%|█████     | 1/2 [00:00<00:00,  3.69it/s]Capturing CUDA graphs (FULL): 100%|██████████| 2/2 [00:00<00:00,  3.72it/s]Capturing CUDA graphs (FULL): 100%|██████████| 2/2 [00:00<00:00,  3.71it/s]
+(Worker_TP0 pid=68) DeepGEMM warmup:   0%|          | 0/1281 [00:00<?, ?it/s]DeepGEMM warmup:   0%|          | 1/1281 [00:00<09:43,  2.19it/s]DeepGEMM warmup:   0%|          | 6/1281 [00:00<02:18,  9.21it/s]DeepGEMM warmup:   1%|          | 8/1281 [00:00<02:11,  9.70it/s]DeepGEMM warmup:   1%|          | 12/1281 [00:01<01:34, 13.38it/s]DeepGEMM warmup:   1%|          | 14/1281 [00:01<01:46, 11.92it/s]DeepGEMM warmup:   1%|▏         | 17/1281 [00:01<02:10,  9.68it/s]DeepGEMM warmup:   1%|▏         | 19/1281 [00:02<03:26,  6.10it/s]DeepGEMM warmup:   2%|▏         | 21/1281 [00:02<03:09,  6.64it/s]DeepGEMM warmup:   2%|▏         | 25/1281 [00:02<02:13,  9.42it/s]DeepGEMM warmup:   2%|▏         | 27/1281 [00:03<02:09,  9.69it/s]DeepGEMM warmup:   2%|▏         | 31/1281 [00:03<01:41, 12.30it/s]DeepGEMM warmup:   3%|▎         | 33/1281 [00:03<02:28,  8.41it/s]DeepGEMM warmup:   3%|▎         | 35/1281 [00:03<02:21,  8.82it/s]DeepGEMM warmup:   3%|▎         | 40/1281 [00:04<02:01, 10.25it/s]DeepGEMM warmup:   3%|▎         | 43/1281 [00:04<01:46, 11.60it/s]DeepGEMM warmup:   4%|▍         | 51/1281 [00:04<01:25, 14.40it/s]DeepGEMM warmup:   4%|▍         | 53/1281 [00:05<01:56, 10.55it/s]DeepGEMM warmup:   4%|▍         | 56/1281 [00:05<01:47, 11.42it/s]DeepGEMM warmup:   5%|▌         | 67/1281 [00:06<01:12, 16.81it/s]DeepGEMM warmup:   6%|▌         | 71/1281 [00:06<01:07, 17.80it/s]DeepGEMM warmup:   6%|▌         | 75/1281 [00:06<01:10, 17.09it/s]DeepGEMM warmup:   7%|▋         | 84/1281 [00:06<00:51, 23.47it/s]DeepGEMM warmup:   7%|▋         | 90/1281 [00:06<00:52, 22.87it/s]DeepGEMM warmup:   7%|▋         | 95/1281 [00:07<00:51, 23.25it/s]DeepGEMM warmup:   9%|▉         | 114/1281 [00:07<00:27, 42.86it/s]DeepGEMM warmup:  15%|█▍        | 190/1281 [00:07<00:08, 133.28it/s]DeepGEMM warmup:  16%|█▌        | 205/1281 [00:08<00:13, 78.26it/s] DeepGEMM warmup:  17%|█▋        | 216/1281 [00:08<00:14, 72.65it/s]DeepGEMM warmup:  18%|█▊        | 226/1281 [00:08<00:16, 63.97it/s]DeepGEMM warmup:  18%|█▊        | 234/1281 [00:09<00:30, 33.87it/s]DeepGEMM warmup:  19%|█▊        | 240/1281 [00:09<00:38, 26.97it/s]DeepGEMM warmup:  20%|█▉        | 254/1281 [00:10<00:31, 32.32it/s]DeepGEMM warmup:  21%|██        | 264/1281 [00:10<00:31, 32.56it/s]DeepGEMM warmup:  24%|██▍       | 306/1281 [00:10<00:14, 66.07it/s]DeepGEMM warmup:  41%|████      | 528/1281 [00:10<00:02, 279.08it/s]DeepGEMM warmup:  44%|████▍     | 564/1281 [00:14<00:13, 51.95it/s] DeepGEMM warmup:  46%|████▌     | 589/1281 [00:15<00:16, 43.20it/s]DeepGEMM warmup:  47%|████▋     | 608/1281 [00:17<00:19, 34.18it/s]DeepGEMM warmup:  49%|████▊     | 622/1281 [00:17<00:19, 33.86it/s]DeepGEMM warmup:  49%|████▉     | 633/1281 [00:17<00:19, 32.51it/s]DeepGEMM warmup:  64%|██████▎   | 814/1281 [00:18<00:04, 113.86it/s]DeepGEMM warmup:  67%|██████▋   | 854/1281 [00:20<00:07, 60.17it/s] DeepGEMM warmup:  69%|██████▉   | 882/1281 [00:21<00:09, 43.53it/s]DeepGEMM warmup:  70%|███████   | 903/1281 [00:22<00:09, 39.50it/s]DeepGEMM warmup:  72%|███████▏  | 918/1281 [00:22<00:08, 42.14it/s]DeepGEMM warmup:  73%|███████▎  | 931/1281 [00:23<00:09, 35.32it/s]DeepGEMM warmup:  74%|███████▍  | 947/1281 [00:23<00:08, 39.37it/s]DeepGEMM warmup:  75%|███████▍  | 958/1281 [00:23<00:08, 37.76it/s]DeepGEMM warmup:  78%|███████▊  | 996/1281 [00:24<00:05, 56.31it/s]DeepGEMM warmup:  79%|███████▊  | 1006/1281 [00:24<00:05, 49.67it/s]DeepGEMM warmup:  79%|███████▉  | 1014/1281 [00:25<00:07, 34.85it/s]DeepGEMM warmup:  80%|███████▉  | 1020/1281 [00:25<00:07, 34.55it/s]DeepGEMM warmup:  80%|████████  | 1025/1281 [00:25<00:07, 33.02it/s]DeepGEMM warmup:  80%|████████  | 1030/1281 [00:26<00:09, 26.16it/s]DeepGEMM warmup:  81%|████████  | 1035/1281 [00:26<00:09, 26.33it/s]DeepGEMM warmup:  81%|████████▏ | 1041/1281 [00:26<00:10, 22.00it/s]DeepGEMM warmup:  81%|████████▏ | 1044/1281 [00:26<00:11, 20.31it/s]DeepGEMM warmup:  82%|████████▏ | 1047/1281 [00:27<00:12, 19.28it/s]DeepGEMM warmup:  82%|████████▏ | 1053/1281 [00:27<00:13, 17.08it/s]DeepGEMM warmup:  83%|████████▎ | 1062/1281 [00:27<00:09, 23.07it/s]DeepGEMM warmup:  83%|████████▎ | 1069/1281 [00:27<00:08, 24.33it/s]DeepGEMM warmup:  84%|████████▍ | 1074/1281 [00:28<00:08, 24.33it/s]DeepGEMM warmup:  84%|████████▍ | 1080/1281 [00:28<00:07, 25.93it/s]DeepGEMM warmup:  85%|████████▌ | 1091/1281 [00:28<00:06, 30.09it/s]DeepGEMM warmup: 100%|██████████| 1281/1281 [00:28<00:00, 44.78it/s]
+(Worker_TP2 pid=70) (Worker_TP1 pid=69) (Worker_TP0 pid=68) (Worker_TP3 pid=71) 2026-09-19 10:32:06,543 - INFO - autotuner.py:2789 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /data/cache/vllm/flashinfer_autotune_cache/0.6.18/90a/378a2d3af4ed9777f61abce2b0fe571fc29f7e78decf4079b30f521da70e55ea/autotune_configs.json
+2026-09-19 10:32:06,543 - INFO - autotuner.py:2789 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /data/cache/vllm/flashinfer_autotune_cache/0.6.18/90a/378a2d3af4ed9777f61abce2b0fe571fc29f7e78decf4079b30f521da70e55ea/autotune_configs.json
+2026-09-19 10:32:06,543 - INFO - autotuner.py:2789 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /data/cache/vllm/flashinfer_autotune_cache/0.6.18/90a/378a2d3af4ed9777f61abce2b0fe571fc29f7e78decf4079b30f521da70e55ea/autotune_configs.json
+2026-09-19 10:32:06,543 - INFO - autotuner.py:2789 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /data/cache/vllm/flashinfer_autotune_cache/0.6.18/90a/378a2d3af4ed9777f61abce2b0fe571fc29f7e78decf4079b30f521da70e55ea/autotune_configs.json
+(Worker_TP2 pid=70) (Worker_TP1 pid=69) 2026-09-19 10:32:06,544 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP0 pid=68) 2026-09-19 10:32:06,544 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP3 pid=71) 2026-09-19 10:32:06,544 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-09-19 10:32:06,544 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP3 pid=71) (Worker_TP2 pid=70) (Worker_TP0 pid=68) (Worker_TP1 pid=69) 2026-09-19 10:32:06,690 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-09-19 10:32:06,690 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-09-19 10:32:06,690 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-09-19 10:32:06,690 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP0 pid=68) 2026-09-19 10:32:06,712 - INFO - autotuner.py:2652 - flashinfer.jit: [Autotuner]: Saved 0 configs to /data/cache/vllm/flashinfer_autotune_cache/0.6.18/90a/378a2d3af4ed9777f61abce2b0fe571fc29f7e78decf4079b30f521da70e55ea/autotune_configs.json (0 new, 0 from previous config)
+(Worker_TP0 pid=68) Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:00<?, ?it/s]Capturing CUDA graphs (PIECEWISE):  20%|██        | 1/5 [00:00<00:03,  1.28it/s]Capturing CUDA graphs (PIECEWISE):  40%|████      | 2/5 [00:01<00:02,  1.30it/s]Capturing CUDA graphs (PIECEWISE):  60%|██████    | 3/5 [00:02<00:01,  1.15it/s]Capturing CUDA graphs (PIECEWISE):  80%|████████  | 4/5 [00:03<00:00,  1.19it/s]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 5/5 [00:04<00:00,  1.23it/s]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 5/5 [00:04<00:00,  1.22it/s]
+(Worker_TP0 pid=68) Capturing CUDA graphs (FULL):   0%|          | 0/4 [00:00<?, ?it/s]Capturing CUDA graphs (FULL):  25%|██▌       | 1/4 [00:00<00:00,  3.57it/s]Capturing CUDA graphs (FULL):  50%|█████     | 2/4 [00:00<00:00,  3.63it/s]Capturing CUDA graphs (FULL):  75%|███████▌  | 3/4 [00:00<00:00,  3.48it/s]Capturing CUDA graphs (FULL): 100%|██████████| 4/4 [00:01<00:00,  3.50it/s]Capturing CUDA graphs (FULL): 100%|██████████| 4/4 [00:01<00:00,  3.52it/s]
+(APIServer pid=4) INFO uvicorn.error: Started server process [4]
+(APIServer pid=4) INFO uvicorn.error: Waiting for application startup.
+(APIServer pid=4) INFO uvicorn.error: Application startup complete.
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:58108 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:42425 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:62425 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:34627 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:63721 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:44254 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:24743 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:42412 - "POST /v1/chat/completions HTTP/1.1" 200
+(Worker_TP1 pid=69) 2026-09-19 10:32:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP3 pid=71) 2026-09-19 10:32:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP0 pid=68) 2026-09-19 10:32:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP2 pid=70) 2026-09-19 10:32:56  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:129): TileLang begins to compile kernel `mhc_pre_big_fuse_with_norm_tilelang` with `out_idx=None`
+(Worker_TP1 pid=69) 2026-09-19 10:33:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP0 pid=68) 2026-09-19 10:33:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP3 pid=71) 2026-09-19 10:33:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(Worker_TP2 pid=70) 2026-09-19 10:33:05  [TileLang:tilelang.jit.kernel:INFO] (kernel.py:137): TileLang completes to compile kernel `mhc_pre_big_fuse_with_norm_tilelang`
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:52484 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:29304 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:51480 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:22458 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:38508 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:52483 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:40313 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:22636 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:25656 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:40478 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:43859 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:65122 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:56013 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:48603 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:62479 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:59973 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:60339 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:18674 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:29598 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:64905 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:31282 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:30907 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:16327 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:56384 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:34249 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:64394 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:35017 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:48168 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:61817 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:32723 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:41899 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:27801 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:21468 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:22101 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:25529 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:33497 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:17926 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:56241 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:53715 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:43717 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:33464 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:62240 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:56071 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:63627 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:32154 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:46639 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:39399 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:22573 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:44360 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:62318 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:64080 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:34342 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:33865 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:57451 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:42008 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:39537 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:57006 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:48779 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:60128 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:34872 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:55418 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:57201 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:54474 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:30724 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:18405 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:43944 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:25448 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:35166 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:17935 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:22081 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:27424 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:31119 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:22401 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:55157 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:45154 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:54339 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:27275 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:30756 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:50766 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:38198 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:38892 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:17749 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:45328 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:52898 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:63171 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:19742 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:38300 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:19926 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:24619 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:53279 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:41675 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:54071 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:42050 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:63970 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:19976 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.28.94:51906 - "POST /v1/chat/completions HTTP/1.1" 200
