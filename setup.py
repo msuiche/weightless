@@ -278,13 +278,19 @@ LANES = [
     # go at the end. Swaps with lane 0 (same port; the serve flow parks first).
     dict(name="DSV4-Vision-Exp TP=2 serving — 2x DGX Spark, Anemll recipe",
          # Same DeepseekV4ForCausalLM arch and image as lane 0; the endpoint
-         # serves text-only (the checkpoint's 259 vision.* tensors stay
-         # unloaded weight). 202 GB FP8 = ~101 GB/node, so the env carries
-         # GPU_MEMORY_UTILIZATION_TEXT=0.90 and MAX_MODEL_LEN=262144 — 1M
-         # does not fit at this weight footprint. The GLP-29 vector was
-         # captured at the residual site; the served file is the -ffn
-         # relabel (hook_point=ffn_out_pre_residual, tensor bytes intact —
-         # the 2026-09-04 transferred-vector pattern, relabel_gguf.py).
+         # serves text-only. The image's loader is text-only and REFUSES the
+         # checkpoint's vision.*/aligner.*/image_* tensors (2026-09-19 wall:
+         # "no module or parameter named 'aligner'"), so the served model is
+         # the vision-stripped tree from refusal-research's strip_vision.py,
+         # staged at $HF_CACHE/visionexp-text-fp8 on both nodes and addressed
+         # as a local path (/cache/huggingface/visionexp-text-fp8) — the
+         # asset plan no-ops download/revision for it. 202 GB FP8 = ~101
+         # GB/node, so the env carries GPU_MEMORY_UTILIZATION_TEXT=0.90 and
+         # MAX_MODEL_LEN=262144 — 1M does not fit at this weight footprint.
+         # The GLP-29 vector was captured at the residual site; the served
+         # file is the -ffn relabel (hook_point=ffn_out_pre_residual, tensor
+         # bytes intact — the 2026-09-04 transferred-vector pattern,
+         # relabel_gguf.py).
          example="recipe/anemll/.env.dsv4vx.example",
          target="recipe/anemll/.env.dsv4vx",
          steer_key="WEIGHTLESS_STEER_PATH",
@@ -698,12 +704,13 @@ def asset_commands(lane_idx, values, ssh_host=None):
                 + ' || { echo "cache incomplete — fetching online"; '
                   'unset HF_HUB_OFFLINE TRANSFORMERS_OFFLINE; '
                   '"$HOME/.cache/weightless-hf/bin/hf" download ' + quoted + '; }')
-    revision = (env.get("DSPARK_REVISION") if lane_idx in (0, 11)
-                else env.get("MODEL_REVISION") if lane_idx in (7, 9) else None)
-    args = [repo, "--cache-dir", cache]
-    if revision:
-        args += ["--revision", revision]
-    add(f"download model weights: {repo}", dl(args))
+    if not local_model:
+        revision = (env.get("DSPARK_REVISION") if lane_idx in (0, 11)
+                    else env.get("MODEL_REVISION") if lane_idx in (7, 9) else None)
+        args = [repo, "--cache-dir", cache]
+        if revision:
+            args += ["--revision", revision]
+        add(f"download model weights: {repo}", dl(args))
     if lane_idx == 9 and env.get("SPECULATIVE_MODE", "dflash") == "dflash":
         # The DFlash drafter is a separate repo the serve command references
         # by id; prefetch it too so the boot stays offline-first.
@@ -717,16 +724,22 @@ def asset_commands(lane_idx, values, ssh_host=None):
         dest = f"{user}@{worker}:{worker_cache}/"
         mkdir = shlex.join(["ssh", "-o", "BatchMode=yes", f"{user}@{worker}",
                             "mkdir -p " + q(worker_cache)])
-        add(f"rsync model cache to worker {worker} (fabric)",
-            mkdir + " && " + shlex.join(["rsync", "-a", "--partial", "--progress", "-s",
-                                         "-e", "ssh -o BatchMode=yes",
-                                         f"{cache}/{model_dir}", dest]))
+        if local_model:
+            add(f"rsync local model dir to worker {worker} (fabric)",
+                mkdir + " && " + shlex.join(["rsync", "-a", "--partial", "--progress", "-s",
+                                             "-e", "ssh -o BatchMode=yes",
+                                             local_host, dest]))
+        else:
+            add(f"rsync model cache to worker {worker} (fabric)",
+                mkdir + " && " + shlex.join(["rsync", "-a", "--partial", "--progress", "-s",
+                                             "-e", "ssh -o BatchMode=yes",
+                                             f"{cache}/{model_dir}", dest]))
     for worker in [None, *workers]:
         node_cache = worker_cache if worker else cache
         label = worker or "head"
         # HF_HOME-based launchers resolve hub/models--..., while TP2 and the
         # GLM template lookup use models--... directly at the cache root.
-        if lane_idx in (0, 2, 3, 5, 11):
+        if lane_idx in (0, 2, 3, 5, 11) and not local_model:
             link = f"{node_cache}/hub/{model_dir}"
             source = f"{node_cache}/{model_dir}"
             add(f"expose HF hub cache on {label}",

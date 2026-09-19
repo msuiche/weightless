@@ -246,9 +246,20 @@ class AssetAndParkingTests(unittest.TestCase):
                 self.assertEqual(lane["docker_image"], env[lane["image_key"]])
                 if env.get("MODEL"):
                     self.assertEqual(lane["model_repo"], env["MODEL"])
+                model_ref = (env.get("MODEL") or env.get("WEIGHTLESS_MODEL")
+                             or env.get("MODEL_ID") or lane["model_repo"])
+                local_model = model_ref.startswith("/")
                 plan = setup.asset_commands(idx, self.values, "head.local")
                 commands = "\n".join(shlex.join(argv) for _, argv in plan)
-                self.assertIn(lane["model_repo"], commands)
+                if local_model:
+                    # A local path is already staged on the nodes (e.g. lane
+                    # 11's vision-stripped tree): no download, no revision,
+                    # no hub symlink — the rsync mirrors the mapped dir.
+                    self.assertNotIn("download model weights", commands)
+                    self.assertNotIn("--revision", commands)
+                    self.assertNotIn("expose HF hub cache", commands)
+                else:
+                    self.assertIn(lane["model_repo"], commands)
                 # Stock lanes ship no GLP vector (e.g. museglimmer) — no
                 # steering downloads to assert on those.
                 if lane.get("vector_repo"):
@@ -258,13 +269,18 @@ class AssetAndParkingTests(unittest.TestCase):
                 nodes = lane.get("nodes", 1)
                 self.assertEqual(sum(desc.startswith("download GLP") for desc, _ in plan),
                                  nodes if lane.get("vector_repo") else 0)
-                self.assertEqual(sum(desc.startswith("rsync model cache") for desc, _ in plan), nodes - 1)
+                self.assertEqual(sum(desc.startswith(("rsync model cache",
+                                                      "rsync local model dir"))
+                                     for desc, _ in plan), nodes - 1)
                 pulls = [argv for desc, argv in plan if desc.startswith("pull Docker")]
                 self.assertEqual(len(pulls), 0 if lane.get("local_image") else nodes)
                 for desc, argv in plan:
                     self.assertIn("tester@head.local", argv)
                     if desc.startswith("rsync model cache"):
                         self.assertIn("models--" + lane["model_repo"].replace("/", "--"), argv[-1])
+                        self.assertIn("--progress", argv[-1])
+                    if desc.startswith("rsync local model dir"):
+                        self.assertIn("/home/tester/.cache/huggingface", argv[-1])
                         self.assertIn("--progress", argv[-1])
                 # The remote shell programs must parse without being executed.
                 for _, argv in plan:
