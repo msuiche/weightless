@@ -1,9 +1,9 @@
 # Upstreaming GLP steering into vLLM: extension-point survey and recommended path
 
-Status: design doc; the recommended path (1) is implemented in
-`vllm-plugin/` (plugin package + nemotron_h adapter + offline tests),
-2026-09-11. No upstream PR has been opened or is proposed here as a first
-step.
+Status: design doc for what shipped. Path (1) is the fleet: ten arch
+adapters in `vllm-plugin/`, every one GPU-validated on Modal
+(2026-09-18/19), 223 offline tests. No upstream PR has been opened or is
+proposed here as a first step.
 
 Today we serve steered models through `patches/hotfix-*-steering-projective.py`:
 fail-closed boot scripts that rewrite vLLM model files inside the container
@@ -219,8 +219,8 @@ level of investment.** The plugin package subsumes today's hotfixes lane by
 lane; when/if upstream lands a hook, the per-arch subclasses shrink to
 interface implementations and the steering core is untouched.
 
-Skeleton (as implemented, with the nemotron_h adapter as the first lane;
-glm5_next and qwen3_next adapters remain follow-up lanes):
+Skeleton (as implemented — nemotron_h was the first lane; the fleet now
+covers all ten serving archs):
 
 ```
 vllm-plugin/

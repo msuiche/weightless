@@ -94,15 +94,16 @@ The model weights are never redistributed — what this repo ships is the
   directions, derived by us and published under
   [`msuiche/`](https://huggingface.co/msuiche) (see
   [Steering artifacts](#steering-artifacts-ours)). No model weights inside.
-- **The patch.** Two delivery mechanisms install the same hook. Today's
-  lanes run a fail-closed boot hotfix per lane (`patches/hotfix-*.py`)
-  that loads the GLP file and installs the projective hook inside stock
-  vLLM at container start — no image build, no forked runtime. New
-  architectures land as adapters in the installable plugin instead
-  (`vllm-plugin/weightless_steer/archs/`, one adapter per arch): the
-  plugin shadows the model class in vLLM's `ModelRegistry`, so no
-  container files get rewritten at all. Structural guard tests in
-  `tests/structure/`, hardware-validated numbers in each lane's README.
+- **The patch.** The installable plugin (`vllm-plugin/`, dist
+  `weightless-steer`): one adapter per architecture in
+  `weightless_steer/archs/` shadows the model class in vLLM's
+  `ModelRegistry`, installing the same projective hook with no container
+  file rewrites at all — ten archs, every one GPU-validated on Modal
+  (2026-09-18/19, per-lane numbers in BENCHMARK.md). The boot hotfixes
+  (`patches/hotfix-*.py`) are the per-lane mechanism the plugin replaces:
+  still what the live rigs run today, kept as the fallback stack and as
+  the semantic reference each adapter is pinned against by structure
+  tests (`tests/structure/`, `vllm-plugin/tests/`).
 - **Quant-friendly.** The hook steers activations at runtime (the
   calibrated site per lane: post-layer residual where the runtime
   materialises it, the pre-fold FFN write on the DSV4 lane, 2026-09-04
