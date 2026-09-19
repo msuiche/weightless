@@ -1,0 +1,230 @@
+
+
+===== boot attempt 09:01:32 alpha=1.0 =====
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed GlmMoeDsaForCausalLM -> weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 4, /usr/bin/python3.12)
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=GLM-5.3-NVFP4 rev=363e8f086905 alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: 77 steered layers, n_embd=6144, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77]
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed GlmMoeDsaForCausalLM -> weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed GlmMoeDsaForCausalLM -> weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 77, /usr/bin/python3.12)WEIGHTLESS-SHIM: register() ran (pid 76, /usr/bin/python3.12)
+
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=GLM-5.3-NVFP4 rev=363e8f086905 alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=GLM-5.3-NVFP4 rev=363e8f086905 alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: 77 steered layers, n_embd=6144, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77]
+INFO weightless_steer.container: weightless GLP vector: 77 steered layers, n_embd=6144, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77]
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed GlmMoeDsaForCausalLM -> weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 123, /usr/bin/python3.12)INFO weightless_steer.plugin: weightless-steer: shadowed GlmMoeDsaForCausalLM -> weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM
+
+WEIGHTLESS-SHIM: register() ran (pid 120, /usr/bin/python3.12)
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed GlmMoeDsaForCausalLM -> weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 124, /usr/bin/python3.12)
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed GlmMoeDsaForCausalLM -> weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 117, /usr/bin/python3.12)INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed GlmMoeDsaForCausalLM -> weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed GlmMoeDsaForCausalLM -> weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=GLM-5.3-NVFP4 rev=363e8f086905 alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=GLM-5.3-NVFP4 rev=363e8f086905 alpha_default=1.0
+INFO weightless_steer.plugin: weightless-steer: shadowed GlmMoeDsaForCausalLM -> weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed GlmMoeDsaForCausalLM -> weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 118, /usr/bin/python3.12)WEIGHTLESS-SHIM: register() ran (pid 121, /usr/bin/python3.12)WEIGHTLESS-SHIM: register() ran (pid 119, /usr/bin/python3.12)WEIGHTLESS-SHIM: register() ran (pid 122, /usr/bin/python3.12)
+
+
+
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=GLM-5.3-NVFP4 rev=363e8f086905 alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=GLM-5.3-NVFP4 rev=363e8f086905 alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: 77 steered layers, n_embd=6144, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77]
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=GLM-5.3-NVFP4 rev=363e8f086905 alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: 77 steered layers, n_embd=6144, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77]
+INFO weightless_steer.container: weightless GLP vector: 77 steered layers, n_embd=6144, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77]
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=GLM-5.3-NVFP4 rev=363e8f086905 alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=GLM-5.3-NVFP4 rev=363e8f086905 alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=GLM-5.3-NVFP4 rev=363e8f086905 alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: 77 steered layers, n_embd=6144, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77]
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+INFO weightless_steer.container: weightless GLP vector: 77 steered layers, n_embd=6144, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77]
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+INFO weightless_steer.container: weightless GLP vector: 77 steered layers, n_embd=6144, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77]
+INFO weightless_steer.container: weightless GLP vector: 77 steered layers, n_embd=6144, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77]
+INFO weightless_steer.container: weightless GLP vector: 77 steered layers, n_embd=6144, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77]
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77) width=6144
+
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:   0% Completed | 0/47 [00:00<?, ?it/s]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:   2% Completed | 1/47 [00:07<05:30,  7.18s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:   4% Completed | 2/47 [00:14<05:22,  7.16s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:   6% Completed | 3/47 [00:21<05:09,  7.04s/it]
+(Worker_TP0 pid=117) Exception in thread Thread-1 (_report_usage_worker):
+(Worker_TP0 pid=117) Traceback (most recent call last):
+(Worker_TP0 pid=117)   File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+(Worker_TP0 pid=117)     self.run()
+(Worker_TP0 pid=117)   File "/usr/lib/python3.12/threading.py", line 1010, in run
+(Worker_TP0 pid=117)     self._target(*self._args, **self._kwargs)
+(Worker_TP0 pid=117)   File "/usr/local/lib/python3.12/dist-packages/vllm/usage/usage_lib.py", line 172, in _report_usage_worker
+(Worker_TP0 pid=117)     self._report_usage_once(model_architecture, usage_context, extra_kvs)
+(Worker_TP0 pid=117)   File "/usr/local/lib/python3.12/dist-packages/vllm/usage/usage_lib.py", line 216, in _report_usage_once
+(Worker_TP0 pid=117)     info = cpuinfo.get_cpu_info()
+(Worker_TP0 pid=117)            ^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=117)   File "/usr/local/lib/python3.12/dist-packages/cpuinfo/cpuinfo.py", line 2762, in get_cpu_info
+(Worker_TP0 pid=117)     output = json.loads(output, object_hook = _utf_to_str)
+(Worker_TP0 pid=117)              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=117)   File "/usr/lib/python3.12/json/__init__.py", line 359, in loads
+(Worker_TP0 pid=117)     return cls(**kw).decode(s)
+(Worker_TP0 pid=117)            ^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=117)   File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+(Worker_TP0 pid=117)     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+(Worker_TP0 pid=117)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=117)   File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+(Worker_TP0 pid=117)     raise JSONDecodeError("Expecting value", s, err.value) from None
+(Worker_TP0 pid=117) json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:   9% Completed | 4/47 [00:28<05:06,  7.12s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  11% Completed | 5/47 [00:34<04:47,  6.85s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  13% Completed | 6/47 [00:41<04:38,  6.80s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  15% Completed | 7/47 [00:47<04:27,  6.68s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  17% Completed | 8/47 [00:54<04:17,  6.60s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  19% Completed | 9/47 [01:00<04:09,  6.58s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  21% Completed | 10/47 [01:08<04:10,  6.77s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  23% Completed | 11/47 [01:14<03:55,  6.54s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  26% Completed | 12/47 [01:21<03:52,  6.66s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  28% Completed | 13/47 [01:28<03:54,  6.90s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  30% Completed | 14/47 [01:35<03:50,  6.97s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  32% Completed | 15/47 [01:42<03:37,  6.80s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  34% Completed | 16/47 [01:48<03:31,  6.83s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  36% Completed | 17/47 [01:56<03:29,  7.00s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  38% Completed | 18/47 [02:03<03:24,  7.04s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  40% Completed | 19/47 [02:09<03:11,  6.84s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  43% Completed | 20/47 [02:16<03:04,  6.84s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  45% Completed | 21/47 [02:24<03:04,  7.11s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  47% Completed | 22/47 [02:31<02:53,  6.95s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  49% Completed | 23/47 [02:37<02:46,  6.94s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  51% Completed | 24/47 [02:45<02:43,  7.11s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  53% Completed | 25/47 [02:52<02:34,  7.00s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  55% Completed | 26/47 [02:59<02:30,  7.15s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  57% Completed | 27/47 [03:07<02:29,  7.46s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  60% Completed | 28/47 [03:14<02:15,  7.16s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  62% Completed | 29/47 [03:20<02:05,  6.98s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  64% Completed | 30/47 [03:27<01:59,  7.00s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  66% Completed | 31/47 [03:35<01:53,  7.07s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  68% Completed | 32/47 [03:42<01:46,  7.12s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  70% Completed | 33/47 [03:49<01:37,  6.97s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  72% Completed | 34/47 [03:55<01:28,  6.80s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  74% Completed | 35/47 [04:02<01:21,  6.77s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  77% Completed | 36/47 [04:09<01:16,  6.97s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  79% Completed | 37/47 [04:16<01:08,  6.87s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  81% Completed | 38/47 [04:22<00:59,  6.61s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  83% Completed | 39/47 [04:29<00:53,  6.71s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  85% Completed | 40/47 [04:35<00:46,  6.70s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  87% Completed | 41/47 [04:42<00:40,  6.73s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  89% Completed | 42/47 [04:49<00:34,  6.81s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  91% Completed | 43/47 [04:57<00:28,  7.08s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  94% Completed | 44/47 [05:05<00:22,  7.47s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  96% Completed | 45/47 [05:15<00:16,  8.07s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards:  98% Completed | 46/47 [05:23<00:08,  8.00s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards: 100% Completed | 47/47 [05:27<00:00,  7.01s/it]
+(Worker_TP0 pid=117) Loading safetensors checkpoint shards: 100% Completed | 47/47 [05:27<00:00,  6.97s/it]
+(Worker_TP0 pid=117) 
+(Worker_TP4 pid=121) (Worker_TP2 pid=119) (Worker_TP6 pid=123) 2026-09-19 09:42:48,148 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-09-19 09:42:48,149 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-09-19 09:42:48,149 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP0 pid=117) 2026-09-19 09:42:48,194 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP5 pid=122) 2026-09-19 09:42:48,194 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP1 pid=118) (Worker_TP7 pid=124) 2026-09-19 09:42:48,201 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP3 pid=120) 2026-09-19 09:42:48,202 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-09-19 09:42:48,202 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP4 pid=121) (Worker_TP6 pid=123) 2026-09-19 09:42:48,501 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-09-19 09:42:48,501 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP2 pid=119) 2026-09-19 09:42:48,503 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP0 pid=117) 2026-09-19 09:42:48,546 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP5 pid=122) 2026-09-19 09:42:48,549 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP7 pid=124) 2026-09-19 09:42:48,554 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP3 pid=120) (Worker_TP1 pid=118) 2026-09-19 09:42:48,557 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-09-19 09:42:48,557 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP0 pid=117) 2026-09-19 09:42:48,586 - INFO - autotuner.py:2269 - flashinfer.jit: [Autotuner]: Saved 0 configs to /data/cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/898f1ac0a6eb5d0e82e4386855c5c94361ca525ba35b15cbf6fe51d1a72d3508/autotune_configs.json (0 new, 0 from previous config)
+(Worker_TP0 pid=117) Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   0%|          | 0/5 [00:00<?, ?it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  20%|██        | 1/5 [00:01<00:04,  1.22s/it]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  40%|████      | 2/5 [00:02<00:03,  1.21s/it]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  60%|██████    | 3/5 [00:03<00:02,  1.19s/it]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  80%|████████  | 4/5 [00:04<00:01,  1.24s/it]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE): 100%|██████████| 5/5 [00:07<00:00,  1.78s/it]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE): 100%|██████████| 5/5 [00:07<00:00,  1.53s/it]
+(Worker_TP0 pid=117) Capturing CUDA graphs (decode, FULL):   0%|          | 0/4 [00:00<?, ?it/s]Capturing CUDA graphs (decode, FULL):  25%|██▌       | 1/4 [00:01<00:03,  1.10s/it]Capturing CUDA graphs (decode, FULL):  50%|█████     | 2/4 [00:02<00:02,  1.09s/it]Capturing CUDA graphs (decode, FULL):  75%|███████▌  | 3/4 [00:03<00:01,  1.10s/it]Capturing CUDA graphs (decode, FULL): 100%|██████████| 4/4 [00:04<00:00,  1.06s/it]Capturing CUDA graphs (decode, FULL): 100%|██████████| 4/4 [00:04<00:00,  1.07s/it]
+(APIServer pid=4) INFO uvicorn.error: Started server process [4]
+(APIServer pid=4) INFO uvicorn.error: Waiting for application startup.
+(APIServer pid=4) INFO uvicorn.error: Application startup complete.
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:65240 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:54895 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:41812 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:47151 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:59482 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:29184 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:47912 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:50105 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:48195 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:51393 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:46679 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:56033 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:62661 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:18596 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:19248 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:62010 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:63818 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:29749 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:56577 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.0.159:34942 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO vllm.entrypoints.launcher: [shutdown] API server: shutdown triggered
+(APIServer pid=4) 

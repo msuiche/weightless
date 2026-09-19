@@ -69,7 +69,9 @@ class RegisterTests(unittest.TestCase):
              "Qwen3_8FlashNextForConditionalGeneration":
              "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForConditionalGeneration",
              "Qwen3_8FlashNextForCausalLM":
-             "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForCausalLM"},
+             "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForCausalLM",
+             "GlmMoeDsaForCausalLM":
+             "weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM"},
         )
 
     def test_registration_is_lazy_module_class_string(self):
@@ -88,6 +90,7 @@ class RegisterTests(unittest.TestCase):
         self.assertNotIn("weightless_steer.archs.hy4", sys.modules)
         self.assertNotIn("weightless_steer.archs.dsv4", sys.modules)
         self.assertNotIn("weightless_steer.archs.qwen38fn", sys.modules)
+        self.assertNotIn("weightless_steer.archs.glm53xl", sys.modules)
 
 
 if __name__ == "__main__":
