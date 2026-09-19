@@ -25,6 +25,7 @@ ROUTES = {
     "glm-5.3": 8081,                     # GLM-5.3 743B, TP=4
     "inkling-small-nvfp4": 8082,         # Inkling-Small NVFP4, TP=2
     "deepseek-v4-flash-dspark": 8888,    # DSV4 Flash 0731 NVFP4, TP=2
+    "deepseek-v4-flash-vision-exp-dspark": 8888,  # DSV4 Vision-Exp text-only FP8, TP=2 (same port: lanes swap)
 }
 
 HOP_BY_HOP = {"connection", "keep-alive", "transfer-encoding", "te",

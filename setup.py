@@ -2134,14 +2134,17 @@ def _node_container_names(values, ssh_host, worker=None):
     return [n.strip() for n in r.stdout.splitlines() if n.strip()]
 
 
-def configure_serve_clients(io, base, model):
+def configure_serve_clients(io, base, model, values=None, ssh_host=None):
     """Point the agent clients at what a `serve` switch just made live.
 
     The wizard's interactive agent-setup step does this with confirmations;
     the non-interactive serve path does it unconditionally but tolerantly —
     a client-config failure never fails the serve. Covers the omp provider
     (id, baseUrl, contextWindow/maxTokens) and hermes (default model, base
-    URL, context length)."""
+    URL, context length) on this machine, plus the hermes config ON THE
+    HEAD NODE when one exists there (the user's hermes runs on the rig:
+    update model.default + context_length remotely, preserving the head's
+    own base_url — it may point at the local router, not the vLLM port)."""
     host = urllib.parse.urlparse(base).hostname or "localhost"
     context_length = served_context(base, model)
     try:
@@ -2154,6 +2157,17 @@ def configure_serve_clients(io, base, model):
                              context_length=context_length, base_url=base))
     except Exception as exc:
         io.warn(f"hermes client config skipped: {exc}")
+    if values and ssh_host and context_length:
+        remote = (
+            "test -f ~/.hermes/config.yaml || exit 0; "
+            "cp ~/.hermes/config.yaml ~/.hermes/config.yaml.bak-serve 2>/dev/null; "
+            f"sed -i 's/^  default: .*/  default: {model}/; "
+            f"s/^  context_length: .*/  context_length: {context_length}/' "
+            "~/.hermes/config.yaml")
+        if subprocess.call(node_command(values, ssh_host, remote)) == 0:
+            io.ok(f"hermes on {ssh_host} set to {model} ({context_length:,} ctx)")
+        else:
+            io.warn(f"hermes config on {ssh_host} not updated")
 
 
 def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
@@ -2256,7 +2270,7 @@ def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
                 if ids and (not want or want in ids):
                     io.ok(f"lane {lane_idx} is already serving {want or ids[0]} "
                           f"on {base} — refreshing client configs")
-                    configure_serve_clients(io, base, want or ids[0])
+                    configure_serve_clients(io, base, want or ids[0], values, ssh_host)
                     return 0
                 # A crash-looping container still appears in docker ps; a
                 # name match without a live endpoint is not "serving".
@@ -2331,7 +2345,7 @@ def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
         ids, _ = probe_models(base)
         if ids and (not want or want in ids):
             io.ok(f"serving {want or ids[0]} on {base}")
-            configure_serve_clients(io, base, want or ids[0])
+            configure_serve_clients(io, base, want or ids[0], values, ssh_host)
             return 0
         time.sleep(20)
     io.err(f"endpoint did not come up within 45 min — diagnose: setup.py (Endpoint)")
