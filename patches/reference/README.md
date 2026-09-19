@@ -75,6 +75,22 @@ anchor strings happen to be identical in both, but the lane hotfix anchors on
 THIS file because it is what tonyd2wild's image will execute. On an overlay
 bump, re-fetch and diff.
 
+`inkling_v0280.py` is a byte-identical copy of vLLM v0.28.0's
+`vllm/models/inkling/nvidia/model.py` (the stock `vllm/vllm-openai:v0.28.0`
+image layout), fetched 2026-09-19 from
+
+```
+https://raw.githubusercontent.com/vllm-project/vllm/v0.28.0/vllm/models/inkling/nvidia/model.py
+```
+
+(md5 `a87183f109d3abeb283b1439568301cf`). This is the reference for
+`../hotfix-inkling-steering-projective.py` and for the plugin adapter
+`vllm-plugin/weightless_steer/archs/inkling.py`. NOTE: the local `../vllm`
+checkout carries a v0.27-era inkling (`pending` annotated
+`tuple[torch.Tensor | None, InklingShortConv]`, no MoE `forward_partials`);
+v0.28.0 renamed the delta alias to `InklingDelta` (which also covers the
+MoE shared-expert tuple partial) — pin against THIS file, not the checkout.
+
 `glm5next_b12x_exl3.py` is a byte-identical copy of the GLM-5.3-Flash model
 file from brandonmusic's EXL3/B12X fork image
 (`verdictai/glm53-flash-exl3-k4:r19-sm120-tp2-ep2-dcp2-v84-*`), extracted

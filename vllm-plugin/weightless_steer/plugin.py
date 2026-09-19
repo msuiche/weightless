@@ -30,6 +30,13 @@ SHADOWED_ARCHS = {
         "weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM",
     "Glm5NextForCausalLM":
         "weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM",
+    # Both inkling entry classes: the multimodal wrapper builds InklingModel
+    # directly (not through the registry), so one shadow does not cover the
+    # other — and Inkling-Small-NVFP4 resolves to the conditional one.
+    "InklingForCausalLM":
+        "weightless_steer.archs.inkling:SteeredInklingForCausalLM",
+    "InklingForConditionalGeneration":
+        "weightless_steer.archs.inkling:SteeredInklingForConditionalGeneration",
 }
 
 

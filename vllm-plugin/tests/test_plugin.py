@@ -52,7 +52,12 @@ class RegisterTests(unittest.TestCase):
             {"NemotronHForCausalLM":
              "weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM",
              "Glm5NextForCausalLM":
-             "weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM"},
+             "weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM",
+             "InklingForCausalLM":
+             "weightless_steer.archs.inkling:SteeredInklingForCausalLM",
+             "InklingForConditionalGeneration":
+             "weightless_steer.archs.inkling:"
+             "SteeredInklingForConditionalGeneration"},
         )
 
     def test_registration_is_lazy_module_class_string(self):
@@ -67,6 +72,7 @@ class RegisterTests(unittest.TestCase):
             self.assertTrue(cls.startswith("Steered"))
         self.assertNotIn("weightless_steer.archs.nemotron_h", sys.modules)
         self.assertNotIn("weightless_steer.archs.glm5next", sys.modules)
+        self.assertNotIn("weightless_steer.archs.inkling", sys.modules)
 
 
 if __name__ == "__main__":
