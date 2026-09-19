@@ -52,7 +52,9 @@ class RegisterTests(unittest.TestCase):
             {"NemotronHForCausalLM":
              "weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM",
              "Glm5NextForCausalLM":
-             "weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM"},
+             "weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM",
+             "KimiLinearForCausalLM":
+             "weightless_steer.archs.kimi_k3:SteeredKimiLinearForCausalLM"},
         )
 
     def test_registration_is_lazy_module_class_string(self):
