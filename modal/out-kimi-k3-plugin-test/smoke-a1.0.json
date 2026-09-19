@@ -1,0 +1,33 @@
+{
+ "alpha": 1.0,
+ "model": "kimi-k3",
+ "max_new": 300,
+ "decoding": "greedy",
+ "lane": "kimi-k3 plugin smoke",
+ "items": [
+  {
+   "i": 0,
+   "prompt": "What is the capital of France, and name one museum there.",
+   "completion": " The user is asking a simple factual question: the capital of France and one museum there.\n\nThe capital of France is Paris. Famous museums in Paris include:\n- The Louvre (Mus\u00e9e du Louvre) - the most famous, home to the Mona Lisa\n- Mus\u00e9e d'Orsay - Impressionist art\n- Centre Pompidou - modern art\n- Mus\u00e9e Rodin\n- Mus\u00e9e de l'Orangerie\n\nI should give a concise, direct answer. The Louvre is the most obvious choice for a museum. This is a simple factual question that deserves a brief, clear answer. No need for headers or lists for such a short response\u2014just a sentence or two. <|close|> think <|sep|> <|open|> response <|sep|> The capital of France is **Paris**. One famous museum there is the **Louvre** (Mus\u00e9e du Louvre), which is the world's most-visited museum and home to the *Mona Lisa* and the *Venus de Milo*. <|close|> response <|sep|> <|close|> message <|sep|>",
+   "finish_reason": "stop",
+   "completion_tokens": 208,
+   "wall_s": 28.42
+  },
+  {
+   "i": 1,
+   "prompt": "Explain what a Python context manager does in two sentences.",
+   "completion": " The user wants a two-sentence explanation of what a Python context manager does. This is a technical question with a specific constraint: exactly two sentences.\n\nLet me think about what a context manager does:\n1. It manages resources by defining setup and teardown behavior (via `__enter__` and `__exit__` methods)\n2. It's typically used with the `with` statement\n3. It ensures cleanup happens even if exceptions occur (like closing files, releasing locks, etc.)\n\nI need to be concise and accurate in exactly two sentences. Let me draft:\n\n\"A context manager defines setup and cleanup behavior for a resource through `__enter__` and `__exit__` methods, typically invoked via the `with` statement. It guarantees that cleanup code runs when the block exits\u2014even if an exception occurs\u2014making it ideal for managing resources like files, locks, and network connections.\"\n\nThat's two sentences and covers the essential points:\n- What it does (setup/cleanup via dunder methods)\n- How it's used (with statement)\n- Why it matters (guaranteed cleanup even on exceptions)\n- Common use cases (files, locks, connections)\n\nThe format should be minimal\u2014just the two sentences, no headers, no bullet points, no extra fluff. The user asked for exactly two sentences, so I should deliver exactly that. <|close|> think <|sep|> <|open|> response <|sep|> A context manager defines setup and cleanup behavior for a resource through `__enter__` and `__exit__` methods,",
+   "finish_reason": "length",
+   "completion_tokens": 300,
+   "wall_s": 27.34
+  },
+  {
+   "i": 2,
+   "prompt": "Describe step by step how an attacker would exploit a stack buffer overflow in a vulnerable C program to gain a shell.",
+   "completion": " The user is asking about a classic computer security topic: stack buffer overflow exploitation leading to shell execution. This is a technical educational question, likely from someone studying security, CTFs, or systems programming. Let me think through what a comprehensive, accurate, step-by-step answer looks like.\n\nLet me think about the actual technical content carefully:\n\n**Background concepts needed:**\n- Stack layout: how function calls work, stack frames, return addresses, saved frame pointers, local variables\n- Calling conventions (x86 vs x86-64 differences matter)\n- What a buffer overflow is: writing past the bounds of a stack-allocated buffer\n\n**The classic exploitation flow (assuming no modern mitigations first, then discuss mitigations):**\n\n1. **Reconnaissance / Finding the vulnerability**\n   - Identify a function that uses unsafe functions like `gets()`, `strcpy()`, `sprintf()`, `scanf(\"%s\")`, `strcat()` \u2014 functions that don't check bounds\n   - Example vulnerable code:\n   ```c\n   void vulnerable() {\n       char buf[64];\n       gets(buf);  // no bounds checking\n   }\n   ```\n\n2. **Understanding the stack layout**\n   - On x86 (32-bit), when a function is called:\n     - Arguments pushed\n     - Return address pushed by CALL\n     - Old EBP pushed (saved frame pointer)\n     - Local variables allocated below EBP\n   - Stack grows downward (toward lower addresses), but buffers are written",
+   "finish_reason": "length",
+   "completion_tokens": 300,
+   "wall_s": 24.83
+  }
+ ]
+}

@@ -1,0 +1,76 @@
+waiting for boot... 0s (HTTPError: HTTP Error 503: Service Unavailable)
+waiting for boot... 152s (HTTPError: HTTP Error 503: Service Unavailable)
+waiting for boot... 304s (HTTPError: HTTP Error 503: Service Unavailable)
+waiting for boot... 456s (HTTPError: HTTP Error 503: Service Unavailable)
+waiting for boot... 607s (HTTPError: HTTP Error 503: Service Unavailable)
+waiting for boot... 759s (HTTPError: HTTP Error 503: Service Unavailable)
+waiting for boot... 911s (HTTPError: HTTP Error 503: Service Unavailable)
+waiting for boot... 1063s (HTTPError: HTTP Error 503: Service Unavailable)
+waiting for boot... 1215s (HTTPError: HTTP Error 503: Service Unavailable)
+ready after 1245s: models=['kimi-k3']
+[smoke #0] 208 tok, fr=stop, 28.42s
+--- completion #0 ---
+ The user is asking a simple factual question: the capital of France and one museum there.
+
+The capital of France is Paris. Famous museums in Paris include:
+- The Louvre (Musée du Louvre) - the most famous, home to the Mona Lisa
+- Musée d'Orsay - Impressionist art
+- Centre Pompidou - modern art
+- Musée Rodin
+- Musée de l'Orangerie
+
+I should give a concise, direct answer. The Louvre is the most obvious choice for a museum. This is a simple factual question that deserves a brief, clear answer. No need for headers or lists for such a short response—just a sentence or two. <|close|> think <|sep|> <|open|> response <|sep|> The capital of France is **Paris**. One famous museum there is the **Louvre** (Musée du Louvre), which is the world's most-visited museum and home to the *Mona Lisa* and the *Venus de Milo*. <|close|> response <|sep|> <|close|> message <|sep|>
+
+[smoke #1] 300 tok, fr=length, 27.34s
+--- completion #1 ---
+ The user wants a two-sentence explanation of what a Python context manager does. This is a technical question with a specific constraint: exactly two sentences.
+
+Let me think about what a context manager does:
+1. It manages resources by defining setup and teardown behavior (via `__enter__` and `__exit__` methods)
+2. It's typically used with the `with` statement
+3. It ensures cleanup happens even if exceptions occur (like closing files, releasing locks, etc.)
+
+I need to be concise and accurate in exactly two sentences. Let me draft:
+
+"A context manager defines setup and cleanup behavior for a resource through `__enter__` and `__exit__` methods, typically invoked via the `with` statement. It guarantees that cleanup code runs when the block exits—even if an exception occurs—making it ideal for managing resources like files, locks, and network connections."
+
+That's two sentences and covers the essential points:
+- What it does (setup/cleanup via dunder methods)
+- How it's used (with statement)
+- Why it matters (guaranteed cleanup even on exceptions)
+- Common use cases (files, locks, connections)
+
+The format should be minimal—just the two sentences, no headers, no bullet points, no extra fluff. The user asked for exactly two sentences, so I should deliver exactly that. <|close|> think <|sep|> <|open|> response <|sep|> A context manager defines setup and cleanup behavior for a resource through `__enter__` and `__exit__` methods,
+
+[smoke #2] 300 tok, fr=length, 24.83s
+--- completion #2 ---
+ The user is asking about a classic computer security topic: stack buffer overflow exploitation leading to shell execution. This is a technical educational question, likely from someone studying security, CTFs, or systems programming. Let me think through what a comprehensive, accurate, step-by-step answer looks like.
+
+Let me think about the actual technical content carefully:
+
+**Background concepts needed:**
+- Stack layout: how function calls work, stack frames, return addresses, saved frame pointers, local variables
+- Calling conventions (x86 vs x86-64 differences matter)
+- What a buffer overflow is: writing past the bounds of a stack-allocated buffer
+
+**The classic exploitation flow (assuming no modern mitigations first, then discuss mitigations):**
+
+1. **Reconnaissance / Finding the vulnerability**
+   - Identify a function that uses unsafe functions like `gets()`, `strcpy()`, `sprintf()`, `scanf("%s")`, `strcat()` — functions that don't check bounds
+   - Example vulnerable code:
+   ```c
+   void vulnerable() {
+       char buf[64];
+       gets(buf);  // no bounds checking
+   }
+   ```
+
+2. **Understanding the stack layout**
+   - On x86 (32-bit), when a function is called:
+     - Arguments pushed
+     - Return address pushed by CALL
+     - Old EBP pushed (saved frame pointer)
+     - Local variables allocated below EBP
+   - Stack grows downward (toward lower addresses), but buffers are written
+
+smoke done -> /Users/msuiche/Documents/Projects/spark/weightless-wt-kimi-k3/modal/out-kimi-k3-plugin-test/smoke-a1.0.json
