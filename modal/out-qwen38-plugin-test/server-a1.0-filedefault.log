@@ -1,0 +1,178 @@
+
+
+===== boot attempt 09:01:36 alpha=file-default =====
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Qwen3_5ForCausalLM -> weightless_steer.archs.qwen38:SteeredQwen3_5ForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Qwen3_5ForConditionalGeneration -> weightless_steer.archs.qwen38:SteeredQwen3_5ForConditionalGeneration
+WEIGHTLESS-SHIM: register() ran (pid 4, /usr/bin/python3.12)
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=Qwen3.8-27B rev=1d4bf0f2ff60 alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: 49 steered layers, n_embd=5120, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58]
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=10..58 (49) width=5120
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=10..58 (49) width=5120
+(APIServer pid=4) [ERROR] `min_frames` is part of Qwen3VLVideoProcessorInitKwargs, but not documented. Make sure to add it to the docstring of the function in /usr/local/lib/python3.12/dist-packages/transformers/models/qwen3_vl/video_processing_qwen3_vl.py.
+(APIServer pid=4) [ERROR] `max_frames` is part of Qwen3VLVideoProcessorInitKwargs, but not documented. Make sure to add it to the docstring of the function in /usr/local/lib/python3.12/dist-packages/transformers/models/qwen3_vl/video_processing_qwen3_vl.py.
+(APIServer pid=4) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or `backend="pil"` instead of `use_fast=False`.
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Qwen3_5ForCausalLM -> weightless_steer.archs.qwen38:SteeredQwen3_5ForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Qwen3_5ForConditionalGeneration -> weightless_steer.archs.qwen38:SteeredQwen3_5ForConditionalGeneration
+WEIGHTLESS-SHIM: register() ran (pid 30, /usr/bin/python3.12)
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=Qwen3.8-27B rev=1d4bf0f2ff60 alpha_default=1.0
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Qwen3_5ForCausalLM -> weightless_steer.archs.qwen38:SteeredQwen3_5ForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Qwen3_5ForConditionalGeneration -> weightless_steer.archs.qwen38:SteeredQwen3_5ForConditionalGeneration
+WEIGHTLESS-SHIM: register() ran (pid 31, /usr/bin/python3.12)
+INFO weightless_steer.container: weightless GLP vector: 49 steered layers, n_embd=5120, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58]
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=Qwen3.8-27B rev=1d4bf0f2ff60 alpha_default=1.0
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=10..58 (49) width=5120
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=10..58 (49) width=5120
+INFO weightless_steer.container: weightless GLP vector: 49 steered layers, n_embd=5120, rank=1, layers [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58]
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 layers=10..58 (49) width=5120
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 layers=10..58 (49) width=5120
+(EngineCore pid=31) [ERROR] `min_frames` is part of Qwen3VLVideoProcessorInitKwargs, but not documented. Make sure to add it to the docstring of the function in /usr/local/lib/python3.12/dist-packages/transformers/models/qwen3_vl/video_processing_qwen3_vl.py.
+(EngineCore pid=31) [ERROR] `max_frames` is part of Qwen3VLVideoProcessorInitKwargs, but not documented. Make sure to add it to the docstring of the function in /usr/local/lib/python3.12/dist-packages/transformers/models/qwen3_vl/video_processing_qwen3_vl.py.
+(EngineCore pid=31) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or `backend="pil"` instead of `use_fast=False`.
+(EngineCore pid=31) Loading safetensors checkpoint shards:   0% Completed | 0/2 [00:00<?, ?it/s]
+(EngineCore pid=31) Loading safetensors checkpoint shards:  50% Completed | 1/2 [00:11<00:11, 11.08s/it]
+(EngineCore pid=31) Loading safetensors checkpoint shards: 100% Completed | 2/2 [00:11<00:00,  5.59s/it]
+(EngineCore pid=31) 
+(EngineCore pid=31) Exception in thread Thread-1 (_report_usage_worker):
+(EngineCore pid=31) Traceback (most recent call last):
+(EngineCore pid=31)   File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+(EngineCore pid=31)     self.run()
+(EngineCore pid=31)   File "/usr/lib/python3.12/threading.py", line 1010, in run
+(EngineCore pid=31)     self._target(*self._args, **self._kwargs)
+(EngineCore pid=31)   File "/usr/local/lib/python3.12/dist-packages/vllm/usage/usage_lib.py", line 172, in _report_usage_worker
+(EngineCore pid=31)     self._report_usage_once(model_architecture, usage_context, extra_kvs)
+(EngineCore pid=31)   File "/usr/local/lib/python3.12/dist-packages/vllm/usage/usage_lib.py", line 216, in _report_usage_once
+(EngineCore pid=31)     info = cpuinfo.get_cpu_info()
+(EngineCore pid=31)            ^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=31)   File "/usr/local/lib/python3.12/dist-packages/cpuinfo/cpuinfo.py", line 2762, in get_cpu_info
+(EngineCore pid=31)     output = json.loads(output, object_hook = _utf_to_str)
+(EngineCore pid=31)              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=31)   File "/usr/lib/python3.12/json/__init__.py", line 359, in loads
+(EngineCore pid=31)     return cls(**kw).decode(s)
+(EngineCore pid=31)            ^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=31)   File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+(EngineCore pid=31)     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+(EngineCore pid=31)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=31)   File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+(EngineCore pid=31)     raise JSONDecodeError("Expecting value", s, err.value) from None
+(EngineCore pid=31) json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+(EngineCore pid=31) 2026-09-19 09:05:17,392 - INFO - autotuner.py:2397 - flashinfer.jit: [Autotuner]: Loaded 0 configs from /data/cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/13dcc2d4dee1c1923848c555aa4a01b928a19ba271210fc1684b7c58c674632b/autotune_configs.json
+(EngineCore pid=31) 2026-09-19 09:05:17,393 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=31) 2026-09-19 09:05:17,755 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=31) 2026-09-19 09:05:17,775 - INFO - autotuner.py:2269 - flashinfer.jit: [Autotuner]: Saved 0 configs to /data/cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/13dcc2d4dee1c1923848c555aa4a01b928a19ba271210fc1684b7c58c674632b/autotune_configs.json (0 new, 0 from previous config)
+(EngineCore pid=31) Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   0%|          | 0/5 [00:00<?, ?it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  40%|████      | 2/5 [00:00<00:00, 11.65it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  80%|████████  | 4/5 [00:00<00:00, 10.71it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE): 100%|██████████| 5/5 [00:00<00:00,  9.89it/s]
+(EngineCore pid=31) Capturing CUDA graphs (decode, FULL):   0%|          | 0/4 [00:00<?, ?it/s]Capturing CUDA graphs (decode, FULL):  25%|██▌       | 1/4 [00:00<00:00,  7.13it/s]Capturing CUDA graphs (decode, FULL):  50%|█████     | 2/4 [00:00<00:00,  7.75it/s]Capturing CUDA graphs (decode, FULL):  75%|███████▌  | 3/4 [00:00<00:00,  7.96it/s]Capturing CUDA graphs (decode, FULL): 100%|██████████| 4/4 [00:01<00:00,  1.57it/s]Capturing CUDA graphs (decode, FULL): 100%|██████████| 4/4 [00:01<00:00,  2.22it/s]
+(APIServer pid=4) INFO uvicorn.error: Started server process [4]
+(APIServer pid=4) INFO uvicorn.error: Waiting for application startup.
+(APIServer pid=4) INFO uvicorn.error: Application startup complete.
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:32394 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:29184 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:34244 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:30609 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:38776 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:55967 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:64201 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:28821 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:19546 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:47501 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:60301 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:63592 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:35101 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:16669 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:39852 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:35108 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:48036 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:42217 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:43292 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:34901 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:45407 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:63858 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:64523 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:32840 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:60773 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:43117 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:33485 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:27741 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:55063 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:59476 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:30649 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:57166 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:28280 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:50797 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:42163 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:47682 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:34024 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:60994 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:62813 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:26084 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:57146 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:54336 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:40530 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:18432 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:32055 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:48230 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:33363 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:30324 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:22515 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:42570 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:26602 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:25176 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:64408 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:44563 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:36130 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:27399 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:30628 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:19055 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:43813 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:19487 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:28888 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:54755 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:33975 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:41992 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:43447 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:61527 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:32988 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:41459 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:60372 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:46856 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:37582 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:20587 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:56001 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:45137 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:25401 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:54417 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:30467 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:52196 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:44334 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:21339 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:16404 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:38657 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:47559 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:52281 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:62762 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:47170 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:46667 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:50330 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:44164 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:29196 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:55741 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:63529 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:42920 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:34187 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:37806 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:30887 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:35978 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:26902 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:20324 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.17.186:21009 - "POST /v1/chat/completions HTTP/1.1" 200
