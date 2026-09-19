@@ -721,40 +721,64 @@ _GGUF_T_SZ = {0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1,
 
 
 def _read_gguf(path):
-    """Minimal GGUF v3 reader: (metadata dict, [(name, dims, dtype, bytes)])."""
+    """Minimal GGUF v3 reader: (metadata dict, [(name, dims, dtype, bytes)]).
+
+    Every read is bounds-checked and every string must be valid UTF-8: this
+    reader is shared by validate/inspect/export and both apply lanes, and a
+    malformed file must fail here with a ValueError each caller already
+    handles -- not crash with struct.error/KeyError halfway through, and
+    never hand a consumer a tensor payload shorter than the shape declares.
+    """
     import struct
     d = open(path, "rb").read()
     if d[:4] != b"GGUF":
         raise ValueError("not a GGUF file")
-    version = struct.unpack("<I", d[4:8])[0]
+
+    def take(o, n, what):
+        if o + n > len(d):
+            raise ValueError(f"truncated GGUF: {what} needs {n} byte(s) at "
+                             f"offset {o}, file is {len(d)} bytes")
+        return d[o:o + n]
+
+    version = struct.unpack("<I", take(4, 4, "header"))[0]
     if version != 3:
         raise ValueError(f"GGUF v{version}, spec covers v3")
 
     def read_str(o):
-        n = struct.unpack("<Q", d[o:o + 8])[0]
-        return d[o + 8:o + 8 + n].decode("utf-8", "replace"), o + 8 + n
+        n = struct.unpack("<Q", take(o, 8, "string length"))[0]
+        try:
+            s = take(o + 8, n, "string payload").decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise ValueError(f"invalid UTF-8 in string at offset {o}: {e}") from None
+        return s, o + 8 + n
 
-    n_tensors, n_kv = struct.unpack("<QQ", d[8:24])
+    n_tensors, n_kv = struct.unpack("<QQ", take(8, 16, "header"))
     off = 24
     meta = {}
     for _ in range(n_kv):
         k, off = read_str(off)
-        vt = struct.unpack("<I", d[off:off + 4])[0]
+        vt = struct.unpack("<I", take(off, 4, f"value type of {k!r}"))[0]
         off += 4
         if vt == 8:
             v, off = read_str(off)
         elif vt == 9:  # array: recorded as a marker, values not needed here
-            et = struct.unpack("<I", d[off:off + 4])[0]
-            n = struct.unpack("<Q", d[off + 4:off + 12])[0]
-            off += 12 + n * _GGUF_T_SZ[et]
+            et = struct.unpack("<I", take(off, 4, f"array type of {k!r}"))[0]
+            n = struct.unpack("<Q", take(off + 4, 8, f"array length of {k!r}"))[0]
+            off += 12
+            if et not in _GGUF_T_SZ:
+                raise ValueError(f"unsupported array element type {et} for {k!r}")
+            take(off, n * _GGUF_T_SZ[et], f"array payload of {k!r}")
+            off += n * _GGUF_T_SZ[et]
             v = f"<array[{n}]>"
         elif vt == 7:
-            v = bool(d[off]); off += 1
+            v = bool(take(off, 1, f"value of {k!r}")[0]); off += 1
         elif vt in (4, 5, 6):
-            v = struct.unpack({4: "<I", 5: "<i", 6: "<f"}[vt], d[off:off + 4])[0]
+            v = struct.unpack({4: "<I", 5: "<i", 6: "<f"}[vt],
+                              take(off, 4, f"value of {k!r}"))[0]
             off += 4
         elif vt in (10, 11, 12):
-            v = struct.unpack({10: "<Q", 11: "<q", 12: "<d"}[vt], d[off:off + 8])[0]
+            v = struct.unpack({10: "<Q", 11: "<q", 12: "<d"}[vt],
+                              take(off, 8, f"value of {k!r}"))[0]
             off += 8
         else:
             raise ValueError(f"unsupported kv type {vt} for {k!r}")
@@ -762,10 +786,13 @@ def _read_gguf(path):
     infos = []
     for _ in range(n_tensors):
         name, off = read_str(off)
-        nd = struct.unpack("<I", d[off:off + 4])[0]; off += 4
-        dims = struct.unpack(f"<{nd}Q", d[off:off + 8 * nd]); off += 8 * nd
-        dtype = struct.unpack("<I", d[off:off + 4])[0]; off += 4
-        toff = struct.unpack("<Q", d[off:off + 8])[0]; off += 8
+        nd = struct.unpack("<I", take(off, 4, f"rank of {name!r}"))[0]; off += 4
+        dims = struct.unpack(f"<{nd}Q", take(off, 8 * nd, f"shape of {name!r}"))
+        off += 8 * nd
+        dtype = struct.unpack("<I", take(off, 4, f"dtype of {name!r}"))[0]
+        off += 4
+        toff = struct.unpack("<Q", take(off, 8, f"data offset of {name!r}"))[0]
+        off += 8
         infos.append((name, dims, dtype, toff))
     base = (off + 31) // 32 * 32
     # tensor dtype sizes are GGML types, NOT the kv value-type table above:
@@ -777,9 +804,9 @@ def _read_gguf(path):
         for x in dims:
             n *= x
         if dtype == 0:
-            raw = d[base + toff: base + toff + 4 * n]
+            raw = take(base + toff, 4 * n, f"payload of tensor {name!r}")
         elif dtype == 1:
-            raw = d[base + toff: base + toff + 2 * n]
+            raw = take(base + toff, 2 * n, f"payload of tensor {name!r}")
         else:
             raw = b""
         tensors.append((name, dims, dtype, raw))
@@ -803,7 +830,7 @@ def validate_gguf(path, out=print):
 
     try:
         meta, tensors = _read_gguf(path)
-    except ValueError as e:
+    except (ValueError, OSError) as e:
         out(f"  [FAIL] {e}")
         return 1
 

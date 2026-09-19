@@ -69,7 +69,13 @@ def parse_metrics(text: str) -> dict:
         m = re.match(r"^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[^}]*\})?\s+([0-9eE.+-]+)$", line)
         if not m:
             continue
-        name, labels, val = m.group(1), m.group(2) or "", float(m.group(3))
+        try:
+            val = float(m.group(3))
+        except ValueError:
+            continue  # regex-shaped but not a number ("1e", "1.2.3", ".")
+        if not math.isfinite(val):
+            continue  # overflow ("1e999") — "nan"/"inf" text can't match the regex
+        name, labels = m.group(1), m.group(2) or ""
         key = name if not labels else f"{name}|{labels[1:-1]}"
         out[key] = val
     return out
@@ -114,9 +120,13 @@ def render(target: str, m: dict, prev: dict | None, dt: float,
     hits_q = g(m, "vllm:prefix_cache_hits_total")
     queries = g(m, "vllm:prefix_cache_queries_total")
     hit_rate = (hits_q / queries * 100) if queries else 0.0
-    done = {re.search(r'finished_reason="([^"]+)"', k).group(1): int(v)
-            for k, v in m.items()
-            if k.startswith("vllm:request_success_total|") and 'finished_reason="' in k}
+    done = {}
+    for k, v in m.items():
+        if not k.startswith("vllm:request_success_total|"):
+            continue
+        reason = re.search(r'(?:^|[|,])finished_reason="([^"]+)"', k)
+        if reason:
+            done[reason.group(1)] = int(v)
     ttft_c, ttft_s = g(m, "vllm:time_to_first_token_seconds_count"), g(m, "vllm:time_to_first_token_seconds_sum")
     ttft_avg = (ttft_s / ttft_c) if ttft_c else 0.0
     ttft_win = max(0.0, ((ttft_s - g(prev, "vllm:time_to_first_token_seconds_sum")) /
@@ -126,10 +136,14 @@ def render(target: str, m: dict, prev: dict | None, dt: float,
     accepted = rate("vllm:spec_decode_num_accepted_tokens_total")
     d_tot, a_tot = g(m, "vllm:spec_decode_num_draft_tokens_total"), g(m, "vllm:spec_decode_num_accepted_tokens_total")
     acc_rate = (a_tot / d_tot * 100) if d_tot else 0.0
-    per_pos = sorted(
-        ((int(k.split('position="')[1].split('"')[0]), v) for k, v in m.items()
-         if k.startswith("vllm:spec_decode_num_accepted_tokens_per_pos_total|")),
-        key=lambda t: t[0])
+    per_pos = []
+    for k, v in m.items():
+        if not k.startswith("vllm:spec_decode_num_accepted_tokens_per_pos_total|"):
+            continue
+        pos = re.search(r'(?:^|[|,])position="(\d+)"', k)
+        if pos:
+            per_pos.append((int(pos.group(1)), v))
+    per_pos.sort(key=lambda t: t[0])
     pos_pct = " ".join(f"{int(v / max(1, per_pos[0][1]) * 100)}" for _, v in per_pos) if per_pos else ""
 
     L = []

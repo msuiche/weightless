@@ -289,6 +289,71 @@ with tempfile.TemporaryDirectory() as t:
     except ValueError:
         check("export: refuses non-F32 directions", True)
 
+    # --- malformed files: one clean ValueError, never an internal error -----
+    # _read_gguf is the single reader every lane shares. Before the bounds
+    # checks, a truncated file crashed it with struct.error/KeyError, and a
+    # file cut inside the tensor data let export write a safetensors file
+    # whose declared shape its buffer could not back.
+    raw = open(good, "rb").read()
+
+    cut_meta = os.path.join(t, "cut_meta.gguf")    # truncated inside the kv block
+    open(cut_meta, "wb").write(raw[:60])
+    check("malformed: truncated metadata fails validate cleanly",
+          cv.validate_gguf(cut_meta, out=quiet) == 1)
+    try:
+        cv.inspect_gguf(cut_meta)
+        check("malformed: truncated metadata errors in inspect", False,
+              "it did not")
+    except ValueError as e:
+        check("malformed: truncated metadata errors in inspect",
+              "truncated" in str(e), str(e)[:70])
+
+    cut_head = os.path.join(t, "cut_head.gguf")    # magic intact, header cut off
+    open(cut_head, "wb").write(raw[:6])
+    check("malformed: truncated header fails validate cleanly",
+          cv.validate_gguf(cut_head, out=quiet) == 1)
+
+    cut_data = os.path.join(t, "cut_data.gguf")    # metadata intact, data short
+    open(cut_data, "wb").write(raw[:-3])
+    check("malformed: truncated tensor payload fails validate cleanly",
+          cv.validate_gguf(cut_data, out=quiet) == 1)
+    try:
+        cv.export_safetensors(cut_data, os.path.join(t, "x.safetensors"))
+        check("malformed: export refuses a short tensor payload", False,
+              "it wrote a safetensors file its buffer cannot back")
+    except ValueError as e:
+        check("malformed: export refuses a short tensor payload",
+              "truncated" in str(e), str(e)[:70])
+
+    # a string-array kv is legal GGUF (every real model file has them); the
+    # reader must refuse it cleanly rather than die on a KeyError
+    str_arr = os.path.join(t, "str_arr.gguf")
+    kv_arr = (struct.pack("<Q", 4) + b"tags" + struct.pack("<I", 9)
+              + struct.pack("<I", 8) + struct.pack("<Q", 1)
+              + struct.pack("<Q", 2) + b"hi")
+    _gguf(str_arr, _GOOD_KVS + [kv_arr], {1: _u1, 2: _u2})
+    check("malformed: string-array kv fails validate cleanly (was KeyError)",
+          cv.validate_gguf(str_arr, out=quiet) == 1)
+
+    # a corrupt tensor name must not decode with replacement characters and
+    # silently drop the tensor from the report
+    bad_utf8 = os.path.join(t, "bad_utf8.gguf")
+    _gguf(bad_utf8, _GOOD_KVS, {1: _u1, 2: _u2})
+    d = bytearray(open(bad_utf8, "rb").read())
+    d[d.find(b"direction.1")] = 0xFF
+    open(bad_utf8, "wb").write(bytes(d))
+    try:
+        cv.inspect_gguf(bad_utf8)
+        check("malformed: invalid UTF-8 in a tensor name errors", False,
+              "it did not")
+    except ValueError as e:
+        check("malformed: invalid UTF-8 in a tensor name errors",
+              "UTF-8" in str(e), str(e)[:70])
+
+    check("malformed: validate on a missing path fails cleanly (was a "
+          "traceback)",
+          cv.validate_gguf(os.path.join(t, "missing.gguf"), out=quiet) == 1)
+
 # --- everything below needs torch -------------------------------------------
 try:
     import torch
