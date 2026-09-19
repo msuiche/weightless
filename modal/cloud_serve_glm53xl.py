@@ -295,7 +295,7 @@ def preflight():
          "print('deepseek_v2 md5', md5)\n"
          f"assert md5 == {DEEPSEEK_V2_MD5!r}, (\n"
          "    'image deepseek_v2.py drifted from the vendored reference; '\n"
-         "    the adapter forward copy needs re-pinning')\n"
+         "    'the adapter forward copy needs re-pinning')\n"
          "assert hasattr(m, 'GlmMoeDsaForCausalLM')\n"
          "assert hasattr(m, 'DeepseekV2Model')\n"
          "print('DEEPSEEK_V2 REFERENCE MATCH OK')"],
