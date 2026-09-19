@@ -4,6 +4,48 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-09-19
+
+### Added
+- Lane 11 (`setup.py serve 11`): **DSV4-Vision-Exp TP=2 serving — 2x DGX
+  Spark, Anemll recipe**. Same image and DeepseekV4ForCausalLM arch as lane
+  0, but its own env (`recipe/anemll/.env.dsv4vx`, tracked
+  `.env.dsv4vx.example`), compose project (`deepseek-v4-flash-visionexp`)
+  and remote dir (`dspark-visionexp`), so the 0731 lane's on-rig files
+  survive swaps. New start-script variant
+  `start-deepseek-v4-flash-visionexp-dspark.sh` (env/project/dir names only).
+  setup.py: `DEPLOY_MAP`/`CONTAINER_GREP` (`visionexp` — longest match beats
+  lane 0's `deepseek`) and the `DSPARK_REVISION`/hub-expose gates now cover
+  lane 11.
+- `.env.dsv4vx` values that differ from 0731 and why: FP8 original pinned at
+  snapshot `6821d6ad`, served name `deepseek-v4-flash-vision-exp-dspark`,
+  `GPU_MEMORY_UTILIZATION_TEXT=0.90` (202 GB FP8 ≈ 101 GB of weights per
+  node — a 0.80 budget does not fit them), `MAX_MODEL_LEN=262144` (1M does
+  not fit at this footprint), `MTP_NUM_TOKENS=6` (this checkpoint's nextn
+  count is 3 so k must divide by 3, and dspark_block_size=5 so k<5 truncates
+  draft blocks; 6 is the smallest value satisfying both — 0731's 5 fails
+  SpeculativeConfig validation here), `ENABLE_VLLM_GB10_PATCH=0` with the
+  NVFP4 flip documented as one env block.
+- Steering: the fresh per-layer GLP-29 Vision-Exp vector at **α=1.0** (its
+  own alpha_default; α=4 garbles — dose cliff per BENCHMARK.md). The vector
+  was captured at `residual_stream_post_layer` and this lane's hotfix only
+  implements `ffn_out_pre_residual`, so the served file is a hook-point
+  relabel (`relabel_gguf.py`: hook_point→ffn_out_pre_residual,
+  derived_at stays residual — the 2026-09-04 transferred-vector pattern;
+  tensor bytes and glp.content_sha256 untouched), uploaded to the gated
+  vector repo as `...-L10-38-a1.0-ffn.gguf` next to the original.
+
+### Blocked
+- The FP8 original checkpoint carries the vision tower (259 `vision.*`
+  tensors + `aligner` + image-token embeddings) and the Anemll 0.1.1 image's
+  `DeepseekV4ForCausalLM` refuses them at weight load ("no module or
+  parameter named 'aligner'") — engine dies before profiling. Steering had
+  already engaged on both ranks (`hook=ffn_out_pre_residual alpha=1.000,
+  layers=29`). No weight surgery improvised (the strip_vision.py call is a
+  conversation); the lane waits on the NVFP4 flip
+  (`msuiche/DeepSeek-V4-Flash-Vision-Exp-NVFP4`, download running) or that
+  decision. 0731 relaunched after the attempt.
+
 ## 2026-09-18
 
 ### Added

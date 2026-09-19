@@ -274,6 +274,34 @@ LANES = [
          model_repo="deepseek-ai/DeepSeek-V4.1-Flash",
          steer_modes=None,
          port=8889),
+    # Appended last: tests address LANES by positional index, so new lanes
+    # go at the end. Swaps with lane 0 (same port; the serve flow parks first).
+    dict(name="DSV4-Vision-Exp TP=2 serving — 2x DGX Spark, Anemll recipe",
+         # Same DeepseekV4ForCausalLM arch and image as lane 0; the endpoint
+         # serves text-only (the checkpoint's 259 vision.* tensors stay
+         # unloaded weight). 202 GB FP8 = ~101 GB/node, so the env carries
+         # GPU_MEMORY_UTILIZATION_TEXT=0.90 and MAX_MODEL_LEN=262144 — 1M
+         # does not fit at this weight footprint. The GLP-29 vector was
+         # captured at the residual site; the served file is the -ffn
+         # relabel (hook_point=ffn_out_pre_residual, tensor bytes intact —
+         # the 2026-09-04 transferred-vector pattern, relabel_gguf.py).
+         example="recipe/anemll/.env.dsv4vx.example",
+         target="recipe/anemll/.env.dsv4vx",
+         steer_key="WEIGHTLESS_STEER_PATH",
+         steer_hook="ffn_out_pre_residual",
+         structure_test="tests/structure/test-dsv4-hotfix-structure.py",
+         vector_repo="msuiche/DeepSeek-V4-Flash-Vision-Exp-abliterated-cyber-GLP-29",
+         model_repo="deepseek-ai/DeepSeek-V4-Flash-Vision-Exp",
+         docker_image="ghcr.io/anemll/dspark-vllm-gx10:0.1.1",
+         image_key="DSPARK_VLLM_IMAGE",
+         steer_modes=None,
+         nodes=2,
+         remote_dir="dspark-visionexp",
+         recipe_files=[".env.dsv4vx", "docker-compose.dsv4.yml",
+                       "start-deepseek-v4-flash-visionexp-dspark.sh"],
+         start_script="start-deepseek-v4-flash-visionexp-dspark.sh",
+         hotfix="hotfix-dsv4-steering-projective.py",
+         port=8888),
 ]
 PLACEHOLDER_HINTS = {
     "head-ip": ("Head node IP or hostname", ""),
@@ -663,7 +691,7 @@ def asset_commands(lane_idx, values, ssh_host=None):
                 + ' || { echo "cache incomplete — fetching online"; '
                   'unset HF_HUB_OFFLINE TRANSFORMERS_OFFLINE; '
                   '"$HOME/.cache/weightless-hf/bin/hf" download ' + quoted + '; }')
-    revision = (env.get("DSPARK_REVISION") if lane_idx == 0
+    revision = (env.get("DSPARK_REVISION") if lane_idx in (0, 11)
                 else env.get("MODEL_REVISION") if lane_idx in (7, 9) else None)
     args = [repo, "--cache-dir", cache]
     if revision:
@@ -691,7 +719,7 @@ def asset_commands(lane_idx, values, ssh_host=None):
         label = worker or "head"
         # HF_HOME-based launchers resolve hub/models--..., while TP2 and the
         # GLM template lookup use models--... directly at the cache root.
-        if lane_idx in (0, 2, 3, 5):
+        if lane_idx in (0, 2, 3, 5, 11):
             link = f"{node_cache}/hub/{model_dir}"
             source = f"{node_cache}/{model_dir}"
             add(f"expose HF hub cache on {label}",
@@ -1018,9 +1046,14 @@ DEPLOY_MAP = {
         ("patches/hotfix-nemotron35-steering-projective.py", "nemotron35-glp/patches/hotfix-nemotron35-steering-projective.py")],
     9: [("recipe/museglimmer/.env.museglimmer", "museglimmer/recipe/museglimmer/.env.museglimmer"),
         ("recipe/museglimmer/serve-museglimmer.sh", "museglimmer/recipe/museglimmer/serve-museglimmer.sh")],
+    11: [("recipe/anemll/.env.dsv4vx", "dspark-visionexp/.env.dsv4vx"),
+         ("recipe/anemll/docker-compose.dsv4.yml", "dspark-visionexp/docker-compose.dsv4.yml"),
+         ("recipe/anemll/start-deepseek-v4-flash-visionexp-dspark.sh", "dspark-visionexp/start-deepseek-v4-flash-visionexp-dspark.sh"),
+         ("patches/hotfix-dsv4-steering-projective.py", "dspark-visionexp/patches/hotfix-dsv4-steering-projective.py")],
 }
 CONTAINER_GREP = {0: "deepseek", 1: "qwen38", 2: "qwen38fn", 3: "glm53", 4: "glm5xl",
-                  5: "inkling-sm121", 6: "glm53tp2", 7: "nemotron35", 9: "museglimmer"}
+                  5: "inkling-sm121", 6: "glm53tp2", 7: "nemotron35", 9: "museglimmer",
+                  11: "visionexp"}
 
 
 def current_lanes(output):
