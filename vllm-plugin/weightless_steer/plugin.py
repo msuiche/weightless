@@ -37,6 +37,8 @@ SHADOWED_ARCHS = {
         "weightless_steer.archs.qwen38:SteeredQwen3_5ForCausalLM",
     "Qwen3_5ForConditionalGeneration":
         "weightless_steer.archs.qwen38:SteeredQwen3_5ForConditionalGeneration",
+    "HYV4ForCausalLM":
+        "weightless_steer.archs.hy4:SteeredHy4ForCausalLM",
 }
 
 
