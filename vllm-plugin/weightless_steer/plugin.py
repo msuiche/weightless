@@ -30,6 +30,16 @@ SHADOWED_ARCHS = {
         "weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM",
     "Glm5NextForCausalLM":
         "weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM",
+    # qwen38fn: the RadixArk NVFP4 checkpoint declares Qwen4ExpForCausalLM's
+    # multimodal sibling (the day-0 image's registry name for the arch); the
+    # wrapper instantiates its language model directly, so the CausalLM
+    # shadow alone would not cover the actually-served arch.
+    "Qwen4ExpForConditionalGeneration":
+        "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForConditionalGeneration",
+    "Qwen3_8FlashNextForConditionalGeneration":
+        "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForConditionalGeneration",
+    "Qwen3_8FlashNextForCausalLM":
+        "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForCausalLM",
 }
 
 
