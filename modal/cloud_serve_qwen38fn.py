@@ -203,11 +203,13 @@ print("ADAPTER IMPORT OK:",
       q.SteeredQwen3_8FlashNextForCausalLM.__mro__[1].__module__,
       q.SteeredQwen3_8FlashNextForConditionalGeneration.__mro__[1].__module__)
 # What does the image's registry map the checkpoint's arch name to?
-import inspect
-src = inspect.getsource(ModelRegistry)
-for line in src.splitlines():
-    if "Qwen4Exp" in line or "Qwen3_8FlashNext" in line or "qwen3_8_flash_next" in line:
-        print("REGISTRY MAP:", line.strip())
+# (ModelRegistry is a _ModelRegistry instance here; inspect its models dict.)
+models = getattr(ModelRegistry, "models", {})
+for name, spec in models.items():
+    if "Qwen4Exp" in name or "Qwen3_8FlashNext" in name:
+        mod = getattr(spec, "module_name", spec)
+        cls = getattr(spec, "class_name", "?")
+        print("REGISTRY MAP:", name, "->", mod, cls)
 """
 
 _PREFLIGHT_STOCK = r"""

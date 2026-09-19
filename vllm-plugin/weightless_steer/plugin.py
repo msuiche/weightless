@@ -33,9 +33,12 @@ SHADOWED_ARCHS = {
     # qwen38fn: the RadixArk NVFP4 checkpoint declares Qwen4ExpForCausalLM's
     # multimodal sibling (the day-0 image's registry name for the arch); the
     # wrapper instantiates its language model directly, so the CausalLM
-    # shadow alone would not cover the actually-served arch.
+    # shadow alone would not cover it. The image registers both Qwen4Exp*
+    # and Qwen3_8FlashNext* names (preflight-verified).
     "Qwen4ExpForConditionalGeneration":
         "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForConditionalGeneration",
+    "Qwen4ExpForCausalLM":
+        "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForCausalLM",
     "Qwen3_8FlashNextForConditionalGeneration":
         "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForConditionalGeneration",
     "Qwen3_8FlashNextForCausalLM":

@@ -65,13 +65,15 @@ MoE is refused by upstream itself for this arch (NotImplementedError in
 the layer constructor).
 
 Serving classes: the RadixArk NVFP4 checkpoint declares
-architectures=["Qwen4ExpForConditionalGeneration"], so BOTH wrapper
-classes get a steered subclass here and plugin.SHADOWED_ARCHS registers
-all three day-0 names. Unlike glm5next, the multimodal wrapper builds its
-language model by DIRECTLY instantiating Qwen3_8FlashNextForCausalLM (not
-through the registry), so shadowing the CausalLM name alone would leave
-the actually-served multimodal arch unsteered — the wrapper subclass swaps
-its language_model.model onto the steered inner class instead.
+architectures=["Qwen4ExpForConditionalGeneration"], and the day-0 image
+registers both the Qwen4Exp* and Qwen3_8FlashNext* names for the arch
+(preflight-verified), so BOTH wrapper classes get a steered subclass here
+and plugin.SHADOWED_ARCHS registers all four names. Unlike glm5next, the
+multimodal wrapper builds its language model by DIRECTLY instantiating
+Qwen3_8FlashNextForCausalLM (not through the registry), so shadowing the
+CausalLM names alone would leave the actually-served multimodal arch
+unsteered — the wrapper subclass swaps its language_model.model onto the
+steered inner class instead.
 
 Upstream classes are imported from vllm.models.qwen3_8_flash_next.nvidia.model —
 the day-0 image layout (vllm/vllm-openai:qwen38-flash-next, fork

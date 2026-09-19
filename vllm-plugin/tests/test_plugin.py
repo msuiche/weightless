@@ -55,6 +55,8 @@ class RegisterTests(unittest.TestCase):
              "weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM",
              "Qwen4ExpForConditionalGeneration":
              "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForConditionalGeneration",
+             "Qwen4ExpForCausalLM":
+             "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForCausalLM",
              "Qwen3_8FlashNextForConditionalGeneration":
              "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForConditionalGeneration",
              "Qwen3_8FlashNextForCausalLM":
