@@ -135,3 +135,16 @@ kept there under `staging/srcdl/src/hy_v4/nvidia/model.py` and used as the
 fail-closed anchor reference for that lane's patcher). This is the reference
 for `../hotfix-hy4-steering-projective.py` and for the plugin adapter
 `vllm-plugin/weightless_steer/archs/hy4.py`.
+`ouro_v0260.py` is a **byte-identical** copy of
+`vllm/model_executor/models/ouro.py` at the vLLM v0.26.0 tag:
+
+```
+https://raw.githubusercontent.com/vllm-project/vllm/v0.26.0/vllm/model_executor/models/ouro.py
+```
+
+(md5 `7aac1c6ff186b59f13857be82000b5f2`; fetched 2026-09-19). Ouro was
+removed from upstream main in #49786 (~2h after the v0.26.0 image was
+built), so v0.26.0 is both the last carrying the arch and the pin target —
+this is the reference for `../hotfix-ouro-steering-projective.py` and for
+the plugin adapter `vllm-plugin/weightless_steer/archs/ouro.py` (whose
+copied forward loop test_ouro.py pins against this file).

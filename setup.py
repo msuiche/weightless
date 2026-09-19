@@ -666,6 +666,13 @@ def asset_commands(lane_idx, values, ssh_host=None):
     worker_cache = env.get("WORKER_HF_CACHE", cache)
     repo = (env.get("MODEL") or env.get("WEIGHTLESS_MODEL")
             or env.get("MODEL_ID") or lane["model_repo"])
+    # A local path (container /cache/huggingface/<dir>, host $HF_CACHE/<dir>)
+    # is already staged on the nodes — e.g. lane 11's vision-stripped
+    # text-only FP8 tree. No download, no revision pin, no hub symlink;
+    # the rsync step below mirrors the mapped dir to the workers instead.
+    local_model = repo.startswith("/")
+    local_host = (cache + repo[len("/cache/huggingface"):]
+                  if repo.startswith("/cache/huggingface/") else repo)
     model_dir = "models--" + repo.replace("/", "--")
     image = env.get(lane["image_key"], lane["docker_image"])
     q = shlex.quote

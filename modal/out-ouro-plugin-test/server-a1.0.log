@@ -1,0 +1,231 @@
+
+
+===== boot attempt 10:36:16 alpha=1.0 =====
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed OuroForCausalLM -> weightless_steer.archs.ouro:SteeredOuroForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 4, /usr/bin/python3.12)
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=Ouro-2.6B rev=1ed04250da1a alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: 192 steered layers, n_embd=2048, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192]
+INFO weightless_steer.archs.ouro: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 exec_steps=0..191 (192) width=2048
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 exec_steps=0..191 (192) width=2048
+(APIServer pid=4) /usr/local/lib/python3.12/dist-packages/transformers/modeling_rope_utils.py:1036: FutureWarning: `rope_config_validation` is deprecated and has been removed. Its functionality has been moved to RotaryEmbeddingConfigMixin.validate_rope method. PreTrainedConfig inherits this class, so please call self.validate_rope() instead. Also, make sure to use the new rope_parameters syntax. You can call self.standardize_rope_params() in the meantime.
+(APIServer pid=4)   warnings.warn(
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:298: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed OuroForCausalLM -> weightless_steer.archs.ouro:SteeredOuroForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 22, /usr/bin/python3.12)
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed OuroForCausalLM -> weightless_steer.archs.ouro:SteeredOuroForCausalLM
+WEIGHTLESS-SHIM: register() ran (pid 21, /usr/bin/python3.12)
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=Ouro-2.6B rev=1ed04250da1a alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: 192 steered layers, n_embd=2048, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192]
+INFO weightless_steer.archs.ouro: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 exec_steps=0..191 (192) width=2048
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 exec_steps=0..191 (192) width=2048
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=Ouro-2.6B rev=1ed04250da1a alpha_default=1.0
+INFO weightless_steer.container: weightless GLP vector: 192 steered layers, n_embd=2048, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192]
+INFO weightless_steer.archs.ouro: weightless GLP steering active: hook=residual_stream_post_layer alpha=1.000 exec_steps=0..191 (192) width=2048
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=1.000 exec_steps=0..191 (192) width=2048
+(EngineCore pid=22) Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+(EngineCore pid=22) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:02<00:00,  2.24s/it]
+(EngineCore pid=22) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:02<00:00,  2.24s/it]
+(EngineCore pid=22) 
+(EngineCore pid=22) /usr/local/lib/python3.12/dist-packages/transformers/modeling_rope_utils.py:1036: FutureWarning: `rope_config_validation` is deprecated and has been removed. Its functionality has been moved to RotaryEmbeddingConfigMixin.validate_rope method. PreTrainedConfig inherits this class, so please call self.validate_rope() instead. Also, make sure to use the new rope_parameters syntax. You can call self.standardize_rope_params() in the meantime.
+(EngineCore pid=22)   warnings.warn(
+(EngineCore pid=22) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(EngineCore pid=22) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(EngineCore pid=22) Exception in thread Thread-1 (_report_usage_worker):
+(EngineCore pid=22) Traceback (most recent call last):
+(EngineCore pid=22)   File "/usr/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+(EngineCore pid=22)     self.run()
+(EngineCore pid=22)   File "/usr/lib/python3.12/threading.py", line 1012, in run
+(EngineCore pid=22)     self._target(*self._args, **self._kwargs)
+(EngineCore pid=22)   File "/usr/local/lib/python3.12/dist-packages/vllm/usage/usage_lib.py", line 173, in _report_usage_worker
+(EngineCore pid=22)     self._report_usage_once(model_architecture, usage_context, extra_kvs)
+(EngineCore pid=22)   File "/usr/local/lib/python3.12/dist-packages/vllm/usage/usage_lib.py", line 217, in _report_usage_once
+(EngineCore pid=22)     info = cpuinfo.get_cpu_info()
+(EngineCore pid=22)            ^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=22)   File "/usr/local/lib/python3.12/dist-packages/cpuinfo/cpuinfo.py", line 2762, in get_cpu_info
+(EngineCore pid=22)     output = json.loads(output, object_hook = _utf_to_str)
+(EngineCore pid=22)              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=22)   File "/usr/lib/python3.12/json/__init__.py", line 359, in loads
+(EngineCore pid=22)     return cls(**kw).decode(s)
+(EngineCore pid=22)            ^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=22)   File "/usr/lib/python3.12/json/decoder.py", line 338, in decode
+(EngineCore pid=22)     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+(EngineCore pid=22)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=22)   File "/usr/lib/python3.12/json/decoder.py", line 356, in raw_decode
+(EngineCore pid=22)     raise JSONDecodeError("Expecting value", s, err.value) from None
+(EngineCore pid=22) json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+(EngineCore pid=22) /usr/local/lib/python3.12/dist-packages/transformers/modeling_rope_utils.py:1036: FutureWarning: `rope_config_validation` is deprecated and has been removed. Its functionality has been moved to RotaryEmbeddingConfigMixin.validate_rope method. PreTrainedConfig inherits this class, so please call self.validate_rope() instead. Also, make sure to use the new rope_parameters syntax. You can call self.standardize_rope_params() in the meantime.
+(EngineCore pid=22)   warnings.warn(
+(EngineCore pid=22) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(EngineCore pid=22) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(EngineCore pid=22) /usr/local/lib/python3.12/dist-packages/transformers/modeling_rope_utils.py:1036: FutureWarning: `rope_config_validation` is deprecated and has been removed. Its functionality has been moved to RotaryEmbeddingConfigMixin.validate_rope method. PreTrainedConfig inherits this class, so please call self.validate_rope() instead. Also, make sure to use the new rope_parameters syntax. You can call self.standardize_rope_params() in the meantime.
+(EngineCore pid=22)   warnings.warn(
+(EngineCore pid=22) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(EngineCore pid=22) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(EngineCore pid=22) 2026-09-19 10:48:22,283 - INFO - autotuner.py:651 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=22) 2026-09-19 10:48:22,518 - INFO - autotuner.py:674 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(EngineCore pid=22) Capturing CUDA graphs (PIECEWISE):   0%|          | 0/5 [00:00<?, ?it/s]Capturing CUDA graphs (PIECEWISE):  20%|██        | 1/5 [00:00<00:01,  3.73it/s]Capturing CUDA graphs (PIECEWISE):  40%|████      | 2/5 [00:00<00:00,  3.46it/s]Capturing CUDA graphs (PIECEWISE):  60%|██████    | 3/5 [00:00<00:00,  3.45it/s]Capturing CUDA graphs (PIECEWISE):  80%|████████  | 4/5 [00:01<00:00,  3.46it/s]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 5/5 [00:01<00:00,  3.56it/s]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 5/5 [00:01<00:00,  3.53it/s]
+(EngineCore pid=22) Capturing CUDA graphs (FULL):   0%|          | 0/4 [00:00<?, ?it/s]Capturing CUDA graphs (FULL):  25%|██▌       | 1/4 [00:00<00:00,  5.15it/s]Capturing CUDA graphs (FULL):  50%|█████     | 2/4 [00:00<00:00,  5.80it/s]Capturing CUDA graphs (FULL):  75%|███████▌  | 3/4 [00:00<00:00,  6.02it/s]Capturing CUDA graphs (FULL): 100%|██████████| 4/4 [00:00<00:00,  6.13it/s]Capturing CUDA graphs (FULL): 100%|██████████| 4/4 [00:00<00:00,  5.98it/s]
+(EngineCore pid=22) /usr/local/lib/python3.12/dist-packages/transformers/modeling_rope_utils.py:1036: FutureWarning: `rope_config_validation` is deprecated and has been removed. Its functionality has been moved to RotaryEmbeddingConfigMixin.validate_rope method. PreTrainedConfig inherits this class, so please call self.validate_rope() instead. Also, make sure to use the new rope_parameters syntax. You can call self.standardize_rope_params() in the meantime.
+(EngineCore pid=22)   warnings.warn(
+(EngineCore pid=22) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(EngineCore pid=22) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(EngineCore pid=22) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(EngineCore pid=22) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) /usr/local/lib/python3.12/dist-packages/transformers/modeling_rope_utils.py:1036: FutureWarning: `rope_config_validation` is deprecated and has been removed. Its functionality has been moved to RotaryEmbeddingConfigMixin.validate_rope method. PreTrainedConfig inherits this class, so please call self.validate_rope() instead. Also, make sure to use the new rope_parameters syntax. You can call self.standardize_rope_params() in the meantime.
+(APIServer pid=4)   warnings.warn(
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) [transformers] `layer_type_validation` is deprecated and will be removed in v5.20. Use `PreTrainedConfig.validate_layer_type` instead
+(APIServer pid=4) INFO uvicorn.error: Started server process [4]
+(APIServer pid=4) INFO uvicorn.error: Waiting for application startup.
+(APIServer pid=4) INFO uvicorn.error: Application startup complete.
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:43745 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:60343 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:19631 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:49753 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:45634 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:18792 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:30247 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:19187 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:59328 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:46225 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:42432 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:24196 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:42455 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:58449 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:25523 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:29924 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:32125 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:59661 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:20305 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:64089 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:28652 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:53356 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:60284 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:43401 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:16543 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:17409 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:36628 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:43930 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:65105 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:52931 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:18977 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:58812 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:64145 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:23515 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:39037 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:21273 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:51337 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:21694 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:18815 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:43913 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:23387 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:58917 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:32896 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:33640 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:25480 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:17050 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:22806 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:64115 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:48204 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:22936 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:22548 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:51433 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:31913 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:31932 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:26320 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:62576 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:58285 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:45919 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:42303 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:61849 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:52441 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:43589 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:20581 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:58791 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:55740 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:58634 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:18592 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:32434 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:44147 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:36384 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:20370 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:64383 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:26937 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:52943 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:64923 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:26689 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:33519 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:45023 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:63378 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:20022 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:19751 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:54567 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:45436 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:30493 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:44910 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:64842 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:40729 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:40292 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:19806 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:30293 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:30807 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:47247 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:57924 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:18755 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:64645 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:56265 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:53990 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:25456 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:32428 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:56581 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:32913 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:38875 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:59494 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.12.198:59462 - "POST /v1/chat/completions HTTP/1.1" 200

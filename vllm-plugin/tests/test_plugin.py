@@ -73,7 +73,9 @@ class RegisterTests(unittest.TestCase):
              "GlmMoeDsaForCausalLM":
              "weightless_steer.archs.glm53xl:SteeredGlmMoeDsaForCausalLM",
              "KimiLinearForCausalLM":
-             "weightless_steer.archs.kimi_k3:SteeredKimiLinearForCausalLM"},
+             "weightless_steer.archs.kimi_k3:SteeredKimiLinearForCausalLM",
+             "OuroForCausalLM":
+             "weightless_steer.archs.ouro:SteeredOuroForCausalLM"},
         )
 
     def test_registration_is_lazy_module_class_string(self):
@@ -93,6 +95,7 @@ class RegisterTests(unittest.TestCase):
         self.assertNotIn("weightless_steer.archs.dsv4", sys.modules)
         self.assertNotIn("weightless_steer.archs.qwen38fn", sys.modules)
         self.assertNotIn("weightless_steer.archs.glm53xl", sys.modules)
+        self.assertNotIn("weightless_steer.archs.ouro", sys.modules)
 
 
 if __name__ == "__main__":
