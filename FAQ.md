@@ -82,7 +82,9 @@ sometimes rank-k: looped models re-instantiate a rotated component each
 pass (our Nanbeige study: the 44 per-layer directions span a ~7-dim
 subspace), and hedging is a genuinely independent axis (cos ≈ 0.05 with
 the refusal direction). spec_version 1 files are rank-1; spec_version 2
-carries k orthonormal directions per layer. Rank-1 is the special case,
+carries k orthonormal directions per layer (Gram–Schmidt at write time,
+validated on load), with per-direction α via `glp.dir_scales` and
+per-layer overrides via `glp.layer_scales`. Rank-1 is the special case,
 not the claim.
 
 ### Can I steer TOWARD a behavior instead of removing one?
