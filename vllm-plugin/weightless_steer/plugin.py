@@ -30,6 +30,13 @@ SHADOWED_ARCHS = {
         "weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM",
     "Glm5NextForCausalLM":
         "weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM",
+    # Qwen3.8-27B declares the multimodal wrapper arch, and that wrapper
+    # builds its Qwen3_5ForCausalLM DIRECTLY (not via the registry), so both
+    # names must be shadowed — see archs/qwen38.py.
+    "Qwen3_5ForCausalLM":
+        "weightless_steer.archs.qwen38:SteeredQwen3_5ForCausalLM",
+    "Qwen3_5ForConditionalGeneration":
+        "weightless_steer.archs.qwen38:SteeredQwen3_5ForConditionalGeneration",
 }
 
 

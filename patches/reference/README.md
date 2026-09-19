@@ -87,3 +87,17 @@ file from brandonmusic's EXL3/B12X fork image
 `../hotfix-glm53-exl3-steering-projective.py`. The fork adds a DFlash
 aux-hidden-state branch — TWO decoder loops, nested one level deeper than the
 day-0 file — which is why the EXL3 variant has two forward anchors.
+
+`qwen3_next_v0280.py` is a **byte-identical** copy of vLLM v0.28.0's
+`vllm/model_executor/models/qwen3_next.py` (md5
+`67beddd57e889a8841e8f47894b21d01`), fetched 2026-09-19 from
+
+```
+https://raw.githubusercontent.com/vllm-project/vllm/v0.28.0/vllm/model_executor/models/qwen3_next.py
+```
+
+This is the structural reference for the qwen38 plugin adapter
+(`vllm-plugin/weightless_steer/archs/qwen38.py`): `Qwen3_5Model` inherits
+`Qwen3NextModel.forward` unchanged, so the adapter's copied layer loop pins
+against THIS file. The Modal preflight re-checks the same anchor against the
+image's own copy before any GPU spend; on an image bump, re-pull and diff.
