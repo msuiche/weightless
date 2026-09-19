@@ -11,7 +11,11 @@ live in `BENCHMARK.md`; this file tracks what shipped.
   vector maintenance, effective range (requants/merges), GLP vs LoRA vs
   llama.cpp CVC, projection vs addition, MoE/looped models, hedging
   directions, α calibration, termination integrity, refusal
-  non-determinism, serving paths, bake scope caveat.
+  non-determinism, serving paths, bake scope caveat. Second pass: vector
+  vs checkpoint redistribution, behavior-agnostic derivation, subspace
+  vs single direction, add mode, closed models, filename convention,
+  derive-your-own recipe + gates, GLP×GCD composition, serving overhead,
+  upstream support outlook (23 entries total).
 - Lane 11 (`setup.py serve 11`): **DSV4-Vision-Exp TP=2 serving — 2x DGX
   Spark, Anemll recipe**. Same image and DeepseekV4ForCausalLM arch as lane
   0, but its own env (`recipe/anemll/.env.dsv4vx`, tracked
