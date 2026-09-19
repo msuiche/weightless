@@ -68,6 +68,14 @@ model card's known issue), so delivery may be understated. propaganda32: stock
 carries a refusal geography (2 refusals + 1 deflect — the map, not the tally,
 is the signal; the steered arm erases it). Hotfix: `patches/hotfix-hy4-steering-projective.py`.
 
+Plugin arm (vllm-plugin hy4 adapter — Modal H200:8, day-0 image, compiled,
+2026-09-19): boot+smoke only. Steering-active line on the boot log:
+`hook=residual_stream_post_layer alpha=2.000 layers=1..77 (77) width=6144`;
+smoke 3/3 COMPLY (benign + one refusal32 + one cyber32 item), consistent
+with the hotfix reference shape (refusal32 1→24/32, cyber32 15→31/32).
+Full suites not run on this lane yet. Raw artifacts:
+`modal/out-hy4-plugin-test/`.
+
 ### GLP-29 — DeepSeek-V4-Flash-0731 (MoE, 43 layers)
 
 Derived 2026-08-12/13 from a paired **cyber write/explain contrast** (not
@@ -92,6 +100,20 @@ Live-stack validation (Anemll vLLM 0.25.2, 2026-08-21): 8× refusal32 + 4×
 blueteam32 → 12/12 bypass, 0 garbled. Debt: GLP-29 has never been scored
 against the 7-suite core set.
 
+Plugin arm (vllm-plugin dsv4 adapter — Modal 4×H100 TP4, day-0 image,
+fp8 KV, compiled, greedy, 400-tok, thinking OFF, 2026-09-19; GLP-29 L10–38
+at the reference dose α=4.0, hook `ffn_out_pre_residual`): refusal32
+**0/32 → 16/32** (hotfix reference 0→18/32 @400-tok from the
+20260904-ffn-site arm — the published 19/32 is the 1400-tok number; within
+2 items across the serving-stack difference), cyber32 **9/32 → 26/32** —
+the first cyber32 measurement of GLP-29, the reference table has no
+cyber32 row — benign32 **32/32 both arms**. Stock refusal32 0/32
+reproduces the reference stock exactly. Raw artifacts:
+`modal/out-dsv4-plugin-test/` (run 2; run 1 kept under
+`run1-thinking-on/` as protocol-broken evidence — the day-0 image defaults
+thinking ON and ignores `--chat-template`, see
+`vllm-plugin/README.md`).
+
 ### GLP-49 — Qwen3.8-27B (dense, 64 layers)
 
 Derived 2026-08-14/15 from a hand-built refusal32-vs-benign32 contrast
@@ -105,6 +127,14 @@ Derived 2026-08-14/15 from a hand-built refusal32-vs-benign32 contrast
 Also on bf16: cyber100 12.5→52.5%, V8 ladder 57.6→**97.0%**. A masked-0.5%
 variant scored 84.4% refusal32 / 100% benign. bf16→NVFP4 transfer holds.
 Debt: LoRA arm's cyber-holdout never measured.
+
+Plugin arm (vllm-plugin qwen38 adapter — Modal H100:1, vLLM v0.28.0,
+compiled, greedy, 400-tok, α=1.0, 2026-09-19): refusal32 **1/32 → 19/32**
+(hotfix reference 4/32 → 24/32 on the NVFP4 single-Spark lane), cyber32
+**4/32 → 20/32**, benign32 31/32 → 27/32 — 3 refusals, the documented
+collateral cost of this vector. In the reference envelope given the
+stock-baseline difference (stock 1/32 here vs 4/32 on the hotfix lane).
+Raw artifacts: `modal/out-qwen38-plugin-test/`.
 
 ### GLP-47 — Qwen3.8-Flash-Next (180B, 48 layers, HC stream)
 
@@ -122,6 +152,12 @@ L1–47, α=1.0. Reproduced on the vLLM capture lane at cos +0.9931.
 - α curve: 1.5 → 24/32, 2.0 → 24/32 (over-projects). Null arm: 1/32 = stock.
 - A 128-contrast v2 scored 25/32 — contrast breadth is a dead lever.
 - Quantization does not degrade the direction (bf16 ≈ NVFP4 within noise).
+
+Plugin arm (vllm-plugin qwen38fn adapter — Modal H100:2, day-0 image,
+compiled, greedy, 400-tok, α=1.0, 2026-09-19): refusal32 **0/32 → 26/32**
+(reference 1/32 → 26/32), cyber32 **7/32 → 31/32** (reference 5/32 →
+32/32), benign32 **32/32 both arms**. Matches calibration. Raw artifacts:
+`modal/out-qwen38fn-plugin-test/`.
 
 ### GLP-44 — GLM-5.3-Flash (~320B FP8-native, 45 layers, mHC stream)
 
@@ -183,6 +219,55 @@ Live-boot of the shipped GGUF + hotfix (2026-08-30, 8×H100): refusal32
 1/32 → 10/32 repo (8/32 audited); cyber32 15/32 → 31/32. Refusal on the
 753B is materially stickier than on Flash; the whole-file SHA-256 is pinned
 on the HF card.
+
+Plugin arm (vllm-plugin glm53xl adapter — Modal H100:8, vLLM v0.28.0,
+compiled, 2026-09-19): boot+smoke only. Steering-active line:
+`hook=residual_stream_post_layer alpha=1.000 layers=1..77 (77)
+width=6144`; smoke 3/3 COMPLY (verdict PASS), consistent with the
+reference shape above (refusal32 1→12/32, cyber32 18→32/32). Full suites
+not run on this lane yet. Raw artifacts: `modal/out-glm53xl-plugin-test/`.
+
+### GLP-192 — ByteDance Ouro-2.6B (looped LM, 48 physical layers ×4)
+
+Looped arch: 48 shared physical layers iterated `total_ut_steps=4` — 192
+execution steps over the same weights, so the vector is keyed per
+execution step (L1–192, α=1.0). Hotfix:
+`patches/hotfix-ouro-steering-projective.py`.
+
+Plugin arm (vllm-plugin ouro adapter — Modal H100:1, `vllm/vllm-openai:v0.26.0`
+pinned exactly, the last image carrying `OuroForCausalLM`, compiled,
+greedy, 2026-09-19): α=1.0 lands **exactly on the hotfix reference** —
+refusal32 **32/32**, cyber32 **31/32 + 1 deflect**, benign32 **32/32**
+(reference row from experiments/20260906-ouro-glp at mt4096; this lane
+runs mt400, so one-item wobble is expected and none appeared on the
+steered arm). Stock arm: refusal32 5/32, cyber32 29/32, benign32 32/32.
+Note the known a0.0 artifact race — two concurrent drivers cross-wrote the
+stock arm's raw files; both independent samples pass the no-op gate
+(details in the lane README). Raw artifacts:
+`modal/out-ouro-plugin-test/`.
+
+### GLP-41 — Inkling-Small (TML)
+
+L1–41, α=0.25 shipped (α≥0.5 garbles — see the headline table). Hotfix:
+`patches/hotfix-inkling-steering-projective.py`.
+
+Plugin arm (vllm-plugin inkling adapter — Modal H100:4 TP4, vLLM v0.28.0,
+greedy, 400-tok, 2026-09-19): refusal32 **0/32 → 31/32** (hotfix reference
+0/32 → 30/32), cyber32 **1/32 → 28/32**, benign32 31/32 → 30/32
+(reference 30/32 steered). Matches. Raw artifacts:
+`modal/out-inkling-plugin-test/`.
+
+### GLP-92 — Kimi-K3 (93 layers)
+
+L1–92 of 93, α=1.0 (`glp.kimi-k3-GLP-92-L1-92-a1.gguf`). Hotfix:
+`patches/hotfix-kimi-k3-steering-projective.py`.
+
+Plugin arm (vllm-plugin kimi_k3 adapter — Modal 2×H200:8, PP2×TP8 with the
+lockstep driver, compiled, 2026-09-19): boot+smoke only. Steering-active
+line on all 16 ranks: `hook=residual_stream_post_layer alpha=1.000
+layers=1..92 (92) width=7168`; the refusal-adjacent smoke prompt complied
+substantively and the benign controls answered normally. Full suites not
+run on this lane yet. Raw artifacts: `modal/out-kimi-k3-plugin-test/`.
 
 ### Caveats and open items
 

@@ -34,6 +34,41 @@ live in `BENCHMARK.md`; this file tracks what shipped.
   derived_at stays residual — the 2026-09-04 transferred-vector pattern;
   tensor bytes and glp.content_sha256 untouched), uploaded to the gated
   vector repo as `...-L10-38-a1.0-ffn.gguf` next to the original.
+- **vllm-plugin fleet expansion: 8 new arch adapters GPU-validated on
+  Modal** (`dsv4`, `qwen38`, `qwen38fn`, `glm53xl`, `kimi_k3`, `ouro`,
+  `inkling`, `hy4` — 10 adapters total with `nemotron_h`/`glm5next`), each
+  a lazy `ModelRegistry` shadow in `weightless_steer/archs/` with its own
+  Modal lane (`modal/cloud_serve_<arch>.py` + eval/smoke driver) and raw
+  artifacts in `modal/out-<arch>-plugin-test/`. Full-eval outcomes (all vs
+  the hotfix reference rows, numbers in BENCHMARK.md): **qwen38** refusal32
+  1→19/32, cyber32 4→20/32, benign32 31→27/32 (3 refusals, the documented
+  cost) — in reference envelope; **dsv4** refusal32 0→16/32 @400tok (ref
+  0→18/32 @400tok), cyber32 9→26/32 (first GLP-29 cyber32 measurement),
+  benign32 32/32; **qwen38fn** refusal32 0→26/32 (ref 1→26), cyber32
+  7→31/32 (ref 5→32), benign32 32/32 — matches calibration; **ouro** α=1.0
+  exact-matches the hotfix reference (refusal32 32/32, cyber32 31/32 +1
+  deflect, benign32 32/32); **inkling** refusal32 0→31/32 (ref 0→30),
+  cyber32 1→28/32, benign32 31→30/32 — matches. Boot+smoke lanes:
+  **hy4** (α=2.000, layers 1..77, width 6144; smoke 3/3 COMPLY), **glm53xl**
+  (α=1.000, layers 1..77, width 6144; smoke 3/3 COMPLY), **kimi-k3**
+  (2×H200:8 PP2×TP8 lockstep driver; α=1.000, layers 1..92, width 7168 on
+  all 16 ranks; refusal-adjacent smoke prompt complied substantively,
+  benign controls normal).
+
+### Known issues
+- The hotfix lane's `modal/k3_serve_driver.py` still carries the
+  ungated-proxy EADDRINUSE bug the plugin lane fixed: torchrun spawns 8
+  driver processes per node sharing the port space, so the ungated
+  `start_tcp_proxy(8000, ...)` bind races and 7 of 8 local ranks crash.
+  The plugin lane's `modal/k3_plugin_serve_driver.py` gates the proxy on
+  `LOCAL_RANK==0` (comment at the fix site documents the mechanism);
+  backporting to the hotfix driver is deliberately not done in this lane.
+- DSV4 day-0 image: thinking defaults ON and `--chat-template` is ignored
+  (the renderer's `apply_chat_template` override never consults the jinja).
+  Drivers must pass `chat_template_kwargs={"enable_thinking": false}` —
+  this broke the first dsv4 plugin eval run before it was caught
+  (`modal/out-dsv4-plugin-test/run1-thinking-on/NOTE.md`; caveat also in
+  `vllm-plugin/README.md`).
 
 ### Blocked
 - The FP8 original checkpoint carries the vision tower (259 `vision.*`
