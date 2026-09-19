@@ -40,6 +40,18 @@ Two arms, one deploy each (alpha is a model-init buffer; no runtime override):
     python3 modal/eval_dsv4_plugin.py --base-url <url> --alpha 4.0
     modal app stop weightless-dsv4-plugin-test
 
+Chat rendering (run-1 finding, 2026-09-19): this image serves DSV4 chat
+through vllm/renderers/deepseek_v4.py + vllm/tokenizers/deepseek_v4.py —
+DeepSeek's NATIVE encode_messages, with thinking DEFAULTED ON per request.
+The --chat-template jinja flag is accepted by the renderer but never
+consulted by the tokenizer override, so run 1 served thinking-on and the
+arm was invalid against the reference protocol (every reference lane runs
+thinking off). The fix lives in the eval driver
+(chat_template_kwargs={"enable_thinking": false} per request), NOT in a
+server flag: the jinja (modal/dsv4_chat_template.jinja, the reference
+lane's exact file) is kept for offline-lane parity only and is
+deliberately NOT passed to the server.
+
 First boot runs WITHOUT --enforce-eager on purpose: the adapter is meant to
 serve in the stock compilation mode (the 20260905 lane ran eager because
 its probe was eager-only, not because the model needs it). If output is
@@ -103,8 +115,6 @@ image = (modal.Image.from_registry(IMAGE, add_python="3.12",
                         copy=True)
          .add_local_dir(ROOT / "weightless_runtime",
                         "/opt/weightless-src/weightless_runtime", copy=True)
-         .add_local_file(ROOT / "modal" / "dsv4_chat_template.jinja",
-                         "/work/dsv4_chat_template.jinja", copy=True)
          .add_local_file(ROOT / "modal" / "vllm_logging_config.json",
                          "/work/vllm_logging_config.json", copy=True)
          .add_local_file(ROOT / "modal" / "sitecustomize_dsv4.py",
@@ -287,7 +297,6 @@ def _serve_cmd(model_path: str) -> list:
         "--max-model-len", "32768",          # eval speed; full 1M not needed
         "--gpu-memory-utilization", GMU,
         "--max-num-seqs", "8",
-        "--chat-template", "/work/dsv4_chat_template.jinja",
         "--port", "8000",
     ]
     if KV_DTYPE:

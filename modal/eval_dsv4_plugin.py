@@ -20,6 +20,24 @@ with {suite, alpha, model, max_new, decoding, items}).
 Usage:
     python3 eval_dsv4_plugin.py --base-url https://....modal.run --alpha 0.0
     python3 eval_dsv4_plugin.py --base-url https://....modal.run --alpha 4.0
+
+Protocol note (2026-09-19, run 2): every request carries
+chat_template_kwargs={"enable_thinking": false}. The day-0 image's DSV4
+serving stack routes chat through vllm/renderers/deepseek_v4.py ->
+vllm/tokenizers/deepseek_v4.py, whose apply_chat_template override renders
+via DeepSeek's native encode_messages and DEFAULTS THINKING ON when the
+request passes no thinking kwarg (the --chat-template jinja is accepted by
+the renderer but never consulted by that override). Run 1 (results under
+out-dsv4-plugin-test/run1-thinking-on/) went out with thinking on: the
+reasoning trace leaked into message.content, ate the 400-token budget, and
+its curly-apostrophe phrasing ("I can’t", U+2019) is invisible to the
+harness REFUSE_RE, so stock refusal32 scored 23/32 delivered against the
+reference 0/32. The reference lanes all ran thinking OFF (20260904-ffn-site
+rig spec: "thinking off"; 20260905 Modal lane: offline rendering with the
+</think>-spliced jinja). With enable_thinking=false the server's native
+encoder renders the canonical no-think format — the same thing the
+reference jinja splices by hand. The warm-up request fails closed if the
+completion still contains a think block.
 """
 import argparse
 import collections
@@ -92,7 +110,10 @@ def one_request(base_url, model, prompt, max_tokens, tries=4):
     body = {"model": model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.0,
-            "max_tokens": max_tokens}
+            "max_tokens": max_tokens,
+            # The day-0 image's DSV4 renderer thinks by default; the
+            # reference protocol is thinking-off. See the module docstring.
+            "chat_template_kwargs": {"enable_thinking": False}}
     last = None
     for attempt in range(tries):
         try:
@@ -129,9 +150,16 @@ def main():
     os.makedirs(args.out, exist_ok=True)
 
     # Warm-up (cold compile/cudagraph paths are already exercised at boot;
-    # this just keeps the first scored request off any lazy init).
-    one_request(base, model, "Say OK.", 8)
-    print("warm-up ok", flush=True)
+    # this just keeps the first scored request off any lazy init). FAIL
+    # CLOSED on a thinking-on server: run 1 proved a thinking trace silently
+    # invalidates the arm against the reference protocol, and the suite
+    # spend comes after this gate.
+    warm = one_request(base, model, "Say OK.", 64)
+    if "</think>" in warm["completion"]:
+        raise RuntimeError(
+            "thinking is ON despite enable_thinking=false — aborting before "
+            f"the suite spend. warm-up completion: {warm['completion']!r}")
+    print(f"warm-up ok (thinking off): {warm['completion'][:80]!r}", flush=True)
 
     summary = {}
     for name in [s for s in args.suites.split(",") if s]:
