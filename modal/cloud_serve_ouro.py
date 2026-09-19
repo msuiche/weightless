@@ -293,6 +293,12 @@ def _serve_cmd(model_path: str) -> list:
         PY, "-m", "vllm.entrypoints.openai.api_server",
         "--model", model_path,
         "--served-model-name", SERVED_MODEL,
+        # The snapshot ships configuration_ouro.py (auto_map), so ModelConfig
+        # refuses to load without this even though arch resolution uses the
+        # NATIVE (shadowed) OuroForCausalLM — the reference lane's driver
+        # passed trust_remote_code=True for the same reason
+        # (experiments/20260906-ouro-glp/staging/offline_driver.py).
+        "--trust-remote-code",
         "--tensor-parallel-size", TP,
         "--max-model-len", "8192",           # eval speed; 64k not needed
         "--gpu-memory-utilization", GMU,
@@ -343,7 +349,15 @@ def _model_snapshot_path() -> str:
                        # process. The stderr shim below is the evidence
                        # channel that no logging config can eat.
                        VLLM_CONFIGURE_LOGGING="1",
-                       VLLM_LOGGING_CONFIG_PATH="/work/vllm_logging_config.json"))
+                       VLLM_LOGGING_CONFIG_PATH="/work/vllm_logging_config.json",
+                       # The serve cmd is built INSIDE the container, where
+                       # module-level os.environ.get() re-runs with the
+                       # container's env — deploy-shell overrides only reach
+                       # it through this dict (the glm53 lane's KV_DTYPE
+                       # lesson).
+                       OURO_TP=TP,
+                       OURO_GMU=GMU,
+                       OURO_ENFORCE_EAGER=ENFORCE_EAGER))
 @modal.web_server(port=8000, startup_timeout=3600)
 def serve():
     """vllm serve with the plugin's entry point active.
@@ -429,6 +443,17 @@ def serve():
     proc.terminate()
     vol.commit()
     raise RuntimeError("steering-active line never appeared in boot log")
+
+
+@app.function(image=download_image, volumes={"/data": vol}, timeout=300)
+def tail_log(n: int = 4000):
+    """Read the tail of the on-volume server log (debugging a stuck boot
+    without touching the deployed app)."""
+    import glob
+    for p in sorted(glob.glob("/data/out-ouro-plugin-test/*.log")):
+        txt = open(p, errors="replace").read()
+        print(f"===== {p} ({len(txt)} B) =====", flush=True)
+        print(txt[-n:], flush=True)
 
 
 @app.local_entrypoint()
