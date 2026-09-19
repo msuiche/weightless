@@ -60,6 +60,13 @@ SHADOWED_ARCHS = {
         "weightless_steer.archs.kimi_k3:SteeredKimiLinearForCausalLM",
     "OuroForCausalLM":
         "weightless_steer.archs.ouro:SteeredOuroForCausalLM",
+    # Both inkling entry classes: the multimodal wrapper builds InklingModel
+    # directly (not through the registry), so one shadow does not cover the
+    # other — and Inkling-Small-NVFP4 resolves to the conditional one.
+    "InklingForCausalLM":
+        "weightless_steer.archs.inkling:SteeredInklingForCausalLM",
+    "InklingForConditionalGeneration":
+        "weightless_steer.archs.inkling:SteeredInklingForConditionalGeneration",
 }
 
 

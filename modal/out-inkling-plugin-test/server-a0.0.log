@@ -1,0 +1,238 @@
+
+
+===== boot attempt 08:56:01 alpha=0.0 =====
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForCausalLM -> weightless_steer.archs.inkling:SteeredInklingForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForConditionalGeneration -> weightless_steer.archs.inkling:SteeredInklingForConditionalGeneration
+WEIGHTLESS-SHIM: register() ran (pid 4, /usr/bin/python3.12)
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=Inkling-Small-NVFP4 rev=b6a995344678 alpha_default=0.25
+INFO weightless_steer.container: weightless GLP vector: 41 steered layers, n_embd=4096, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForCausalLM -> weightless_steer.archs.inkling:SteeredInklingForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForConditionalGeneration -> weightless_steer.archs.inkling:SteeredInklingForConditionalGeneration
+WEIGHTLESS-SHIM: register() ran (pid 74, /usr/bin/python3.12)
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=Inkling-Small-NVFP4 rev=b6a995344678 alpha_default=0.25
+INFO weightless_steer.container: weightless GLP vector: 41 steered layers, n_embd=4096, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForCausalLM -> weightless_steer.archs.inkling:SteeredInklingForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForConditionalGeneration -> weightless_steer.archs.inkling:SteeredInklingForConditionalGeneration
+WEIGHTLESS-SHIM: register() ran (pid 75, /usr/bin/python3.12)
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=Inkling-Small-NVFP4 rev=b6a995344678 alpha_default=0.25
+INFO weightless_steer.container: weightless GLP vector: 41 steered layers, n_embd=4096, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/constants.py:299: FutureWarning: The `HF_HUB_ENABLE_HF_TRANSFER` environment variable is deprecated as 'hf_transfer' is not used anymore. Please use `HF_XET_HIGH_PERFORMANCE` instead to enable high performance transfer with Xet. Visit https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfxethighperformance for more details.
+  warnings.warn(
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForCausalLM -> weightless_steer.archs.inkling:SteeredInklingForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForConditionalGeneration -> weightless_steer.archs.inkling:SteeredInklingForConditionalGeneration
+WEIGHTLESS-SHIM: register() ran (pid 104, /usr/bin/python3.12)
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=Inkling-Small-NVFP4 rev=b6a995344678 alpha_default=0.25
+INFO weightless_steer.container: weightless GLP vector: 41 steered layers, n_embd=4096, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForCausalLM -> weightless_steer.archs.inkling:SteeredInklingForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForConditionalGeneration -> weightless_steer.archs.inkling:SteeredInklingForConditionalGeneration
+WEIGHTLESS-SHIM: register() ran (pid 105, /usr/bin/python3.12)
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=Inkling-Small-NVFP4 rev=b6a995344678 alpha_default=0.25
+INFO weightless_steer.container: weightless GLP vector: 41 steered layers, n_embd=4096, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForCausalLM -> weightless_steer.archs.inkling:SteeredInklingForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForConditionalGeneration -> weightless_steer.archs.inkling:SteeredInklingForConditionalGeneration
+WEIGHTLESS-SHIM: register() ran (pid 107, /usr/bin/python3.12)
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=Inkling-Small-NVFP4 rev=b6a995344678 alpha_default=0.25
+INFO weightless_steer.container: weightless GLP vector: 41 steered layers, n_embd=4096, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+INFO weightless_steer.plugin: weightless-steer: shadowed NemotronHForCausalLM -> weightless_steer.archs.nemotron_h:SteeredNemotronHForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed Glm5NextForCausalLM -> weightless_steer.archs.glm5next:SteeredGlm5NextForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForCausalLM -> weightless_steer.archs.inkling:SteeredInklingForCausalLM
+INFO weightless_steer.plugin: weightless-steer: shadowed InklingForConditionalGeneration -> weightless_steer.archs.inkling:SteeredInklingForConditionalGeneration
+WEIGHTLESS-SHIM: register() ran (pid 106, /usr/bin/python3.12)
+INFO weightless_steer.container: weightless GLP vector: mode=project spec_version=1 base_model=Inkling-Small-NVFP4 rev=b6a995344678 alpha_default=0.25
+INFO weightless_steer.container: weightless GLP vector: 41 steered layers, n_embd=4096, rank=1, layers [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=0.000 layers=1..41 (41) width=4096
+(Worker_TP0 pid=104) Loading safetensors checkpoint shards:   0% Completed | 0/10 [00:00<?, ?it/s]
+(Worker_TP0 pid=104) Loading safetensors checkpoint shards:  10% Completed | 1/10 [00:11<01:42, 11.40s/it]
+(Worker_TP0 pid=104) Exception in thread Thread-1 (_report_usage_worker):
+(Worker_TP0 pid=104) Traceback (most recent call last):
+(Worker_TP0 pid=104)   File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+(Worker_TP0 pid=104)     self.run()
+(Worker_TP0 pid=104)   File "/usr/lib/python3.12/threading.py", line 1010, in run
+(Worker_TP0 pid=104)     self._target(*self._args, **self._kwargs)
+(Worker_TP0 pid=104)   File "/usr/local/lib/python3.12/dist-packages/vllm/usage/usage_lib.py", line 172, in _report_usage_worker
+(Worker_TP0 pid=104)     self._report_usage_once(model_architecture, usage_context, extra_kvs)
+(Worker_TP0 pid=104)   File "/usr/local/lib/python3.12/dist-packages/vllm/usage/usage_lib.py", line 216, in _report_usage_once
+(Worker_TP0 pid=104)     info = cpuinfo.get_cpu_info()
+(Worker_TP0 pid=104)            ^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=104)   File "/usr/local/lib/python3.12/dist-packages/cpuinfo/cpuinfo.py", line 2762, in get_cpu_info
+(Worker_TP0 pid=104)     output = json.loads(output, object_hook = _utf_to_str)
+(Worker_TP0 pid=104)              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=104)   File "/usr/lib/python3.12/json/__init__.py", line 359, in loads
+(Worker_TP0 pid=104)     return cls(**kw).decode(s)
+(Worker_TP0 pid=104)            ^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=104)   File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+(Worker_TP0 pid=104)     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+(Worker_TP0 pid=104)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=104)   File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+(Worker_TP0 pid=104)     raise JSONDecodeError("Expecting value", s, err.value) from None
+(Worker_TP0 pid=104) json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+(Worker_TP0 pid=104) Loading safetensors checkpoint shards:  20% Completed | 2/10 [00:23<01:33, 11.70s/it]
+(Worker_TP0 pid=104) Loading safetensors checkpoint shards:  30% Completed | 3/10 [00:34<01:20, 11.55s/it]
+(Worker_TP0 pid=104) Loading safetensors checkpoint shards:  40% Completed | 4/10 [00:46<01:08, 11.46s/it]
+(Worker_TP0 pid=104) Loading safetensors checkpoint shards:  50% Completed | 5/10 [00:58<00:59, 11.93s/it]
+(Worker_TP0 pid=104) Loading safetensors checkpoint shards:  60% Completed | 6/10 [01:08<00:45, 11.26s/it]
+(Worker_TP0 pid=104) Loading safetensors checkpoint shards:  70% Completed | 7/10 [01:17<00:31, 10.41s/it]
+(Worker_TP0 pid=104) Loading safetensors checkpoint shards:  80% Completed | 8/10 [01:30<00:22, 11.32s/it]
+(Worker_TP0 pid=104) Loading safetensors checkpoint shards:  90% Completed | 9/10 [01:39<00:10, 10.66s/it]
+(Worker_TP0 pid=104) Loading safetensors checkpoint shards: 100% Completed | 10/10 [01:42<00:00,  8.10s/it]
+(Worker_TP0 pid=104) Loading safetensors checkpoint shards: 100% Completed | 10/10 [01:42<00:00, 10.22s/it]
+(Worker_TP0 pid=104) 
+(Worker_TP3 pid=107) /usr/local/lib/python3.12/dist-packages/torch/autograd/function.py:625: UserWarning: Accessing the data pointer of FakeTensor is deprecated and will error in PyTorch 2.5. This is almost definitely a bug in your code and will cause undefined behavior with subsystems like torch.compile. Please wrap calls to tensor.data_ptr() in an opaque custom op; If all else fails, you can guard accesses to tensor.data_ptr() on isinstance(tensor, FakeTensor). (Triggered internally at /__w/pytorch/pytorch/c10/core/StorageImpl.cpp:46.)
+(Worker_TP3 pid=107)   return super().apply(*args, **kwargs)  # type: ignore[misc]
+(Worker_TP2 pid=106) /usr/local/lib/python3.12/dist-packages/torch/autograd/function.py:625: UserWarning: Accessing the data pointer of FakeTensor is deprecated and will error in PyTorch 2.5. This is almost definitely a bug in your code and will cause undefined behavior with subsystems like torch.compile. Please wrap calls to tensor.data_ptr() in an opaque custom op; If all else fails, you can guard accesses to tensor.data_ptr() on isinstance(tensor, FakeTensor). (Triggered internally at /__w/pytorch/pytorch/c10/core/StorageImpl.cpp:46.)
+(Worker_TP2 pid=106)   return super().apply(*args, **kwargs)  # type: ignore[misc]
+(Worker_TP0 pid=104) /usr/local/lib/python3.12/dist-packages/torch/autograd/function.py:625: UserWarning: Accessing the data pointer of FakeTensor is deprecated and will error in PyTorch 2.5. This is almost definitely a bug in your code and will cause undefined behavior with subsystems like torch.compile. Please wrap calls to tensor.data_ptr() in an opaque custom op; If all else fails, you can guard accesses to tensor.data_ptr() on isinstance(tensor, FakeTensor). (Triggered internally at /__w/pytorch/pytorch/c10/core/StorageImpl.cpp:46.)
+(Worker_TP0 pid=104) (Worker_TP1 pid=105)   return super().apply(*args, **kwargs)  # type: ignore[misc]
+/usr/local/lib/python3.12/dist-packages/torch/autograd/function.py:625: UserWarning: Accessing the data pointer of FakeTensor is deprecated and will error in PyTorch 2.5. This is almost definitely a bug in your code and will cause undefined behavior with subsystems like torch.compile. Please wrap calls to tensor.data_ptr() in an opaque custom op; If all else fails, you can guard accesses to tensor.data_ptr() on isinstance(tensor, FakeTensor). (Triggered internally at /__w/pytorch/pytorch/c10/core/StorageImpl.cpp:46.)
+(Worker_TP1 pid=105)   return super().apply(*args, **kwargs)  # type: ignore[misc]
+(Worker_TP0 pid=104) 2026-09-19 09:00:27,968 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP1 pid=105) (Worker_TP2 pid=106) (Worker_TP3 pid=107) 2026-09-19 09:00:27,968 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-09-19 09:00:27,968 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+2026-09-19 09:00:27,968 - INFO - autotuner.py:829 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP1 pid=105) (Worker_TP3 pid=107) 2026-09-19 09:00:31,637 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-09-19 09:00:31,637 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP2 pid=106) (Worker_TP0 pid=104) 2026-09-19 09:00:31,639 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-09-19 09:00:31,639 - INFO - autotuner.py:852 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP0 pid=104) 2026-09-19 09:00:31,666 - INFO - autotuner.py:2269 - flashinfer.jit: [Autotuner]: Saved 0 configs to /out/cache/vllm/flashinfer_autotune_cache/0.6.16.post3/90a/c7fb259fc1aafcac391ae8642dee0e8f59382d185d38f655c642d0a2217b6d3f/autotune_configs.json (0 new, 0 from previous config)
+(Worker_TP0 pid=104) Capturing CUDA graphs (PIECEWISE):   0%|          | 0/51 [00:00<?, ?it/s]Capturing CUDA graphs (PIECEWISE):   2%|▏         | 1/51 [00:02<02:24,  2.89s/it]Capturing CUDA graphs (PIECEWISE):   4%|▍         | 2/51 [00:03<01:20,  1.64s/it]Capturing CUDA graphs (PIECEWISE):   6%|▌         | 3/51 [00:04<00:58,  1.22s/it]Capturing CUDA graphs (PIECEWISE):   8%|▊         | 4/51 [00:05<00:48,  1.04s/it]Capturing CUDA graphs (PIECEWISE):  10%|▉         | 5/51 [00:05<00:44,  1.03it/s]Capturing CUDA graphs (PIECEWISE):  12%|█▏        | 6/51 [00:06<00:40,  1.12it/s]Capturing CUDA graphs (PIECEWISE):  14%|█▎        | 7/51 [00:07<00:37,  1.18it/s]Capturing CUDA graphs (PIECEWISE):  16%|█▌        | 8/51 [00:08<00:34,  1.25it/s]Capturing CUDA graphs (PIECEWISE):  18%|█▊        | 9/51 [00:09<00:44,  1.05s/it]Capturing CUDA graphs (PIECEWISE):  20%|█▉        | 10/51 [00:10<00:39,  1.05it/s]Capturing CUDA graphs (PIECEWISE):  22%|██▏       | 11/51 [00:11<00:35,  1.14it/s]Capturing CUDA graphs (PIECEWISE):  24%|██▎       | 12/51 [00:11<00:32,  1.21it/s]Capturing CUDA graphs (PIECEWISE):  25%|██▌       | 13/51 [00:12<00:30,  1.25it/s]Capturing CUDA graphs (PIECEWISE):  27%|██▋       | 14/51 [00:13<00:29,  1.26it/s]Capturing CUDA graphs (PIECEWISE):  29%|██▉       | 15/51 [00:14<00:27,  1.30it/s]Capturing CUDA graphs (PIECEWISE):  31%|███▏      | 16/51 [00:14<00:26,  1.33it/s]Capturing CUDA graphs (PIECEWISE):  33%|███▎      | 17/51 [00:15<00:26,  1.29it/s]Capturing CUDA graphs (PIECEWISE):  35%|███▌      | 18/51 [00:17<00:30,  1.07it/s]Capturing CUDA graphs (PIECEWISE):  37%|███▋      | 19/51 [00:17<00:28,  1.13it/s]Capturing CUDA graphs (PIECEWISE):  39%|███▉      | 20/51 [00:18<00:26,  1.18it/s]Capturing CUDA graphs (PIECEWISE):  41%|████      | 21/51 [00:19<00:24,  1.24it/s]Capturing CUDA graphs (PIECEWISE):  43%|████▎     | 22/51 [00:19<00:22,  1.29it/s]Capturing CUDA graphs (PIECEWISE):  45%|████▌     | 23/51 [00:20<00:21,  1.31it/s]Capturing CUDA graphs (PIECEWISE):  47%|████▋     | 24/51 [00:21<00:20,  1.33it/s]Capturing CUDA graphs (PIECEWISE):  49%|████▉     | 25/51 [00:22<00:19,  1.34it/s]Capturing CUDA graphs (PIECEWISE):  51%|█████     | 26/51 [00:22<00:18,  1.33it/s]Capturing CUDA graphs (PIECEWISE):  53%|█████▎    | 27/51 [00:23<00:17,  1.36it/s]Capturing CUDA graphs (PIECEWISE):  55%|█████▍    | 28/51 [00:24<00:17,  1.35it/s]Capturing CUDA graphs (PIECEWISE):  57%|█████▋    | 29/51 [00:25<00:16,  1.36it/s]Capturing CUDA graphs (PIECEWISE):  59%|█████▉    | 30/51 [00:25<00:15,  1.37it/s]Capturing CUDA graphs (PIECEWISE):  61%|██████    | 31/51 [00:26<00:14,  1.34it/s]Capturing CUDA graphs (PIECEWISE):  63%|██████▎   | 32/51 [00:27<00:14,  1.36it/s]Capturing CUDA graphs (PIECEWISE):  65%|██████▍   | 33/51 [00:28<00:13,  1.35it/s]Capturing CUDA graphs (PIECEWISE):  67%|██████▋   | 34/51 [00:32<00:29,  1.71s/it]Capturing CUDA graphs (PIECEWISE):  69%|██████▊   | 35/51 [00:33<00:26,  1.63s/it]Capturing CUDA graphs (PIECEWISE):  71%|███████   | 36/51 [00:34<00:20,  1.35s/it]Capturing CUDA graphs (PIECEWISE):  73%|███████▎  | 37/51 [00:34<00:16,  1.16s/it]Capturing CUDA graphs (PIECEWISE):  75%|███████▍  | 38/51 [00:35<00:13,  1.03s/it]Capturing CUDA graphs (PIECEWISE):  76%|███████▋  | 39/51 [00:36<00:13,  1.13s/it]Capturing CUDA graphs (PIECEWISE):  78%|███████▊  | 40/51 [00:37<00:11,  1.06s/it]Capturing CUDA graphs (PIECEWISE):  80%|████████  | 41/51 [00:39<00:12,  1.21s/it]Capturing CUDA graphs (PIECEWISE):  82%|████████▏ | 42/51 [00:40<00:11,  1.30s/it]Capturing CUDA graphs (PIECEWISE):  84%|████████▍ | 43/51 [00:41<00:09,  1.17s/it]Capturing CUDA graphs (PIECEWISE):  86%|████████▋ | 44/51 [00:43<00:08,  1.27s/it]Capturing CUDA graphs (PIECEWISE):  88%|████████▊ | 45/51 [00:44<00:06,  1.13s/it]Capturing CUDA graphs (PIECEWISE):  90%|█████████ | 46/51 [00:45<00:06,  1.27s/it]Capturing CUDA graphs (PIECEWISE):  92%|█████████▏| 47/51 [00:47<00:05,  1.35s/it]Capturing CUDA graphs (PIECEWISE):  94%|█████████▍| 48/51 [00:48<00:04,  1.40s/it]Capturing CUDA graphs (PIECEWISE):  96%|█████████▌| 49/51 [00:50<00:03,  1.56s/it]Capturing CUDA graphs (PIECEWISE):  98%|█████████▊| 50/51 [00:52<00:01,  1.67s/it]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 51/51 [00:54<00:00,  1.85s/it]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 51/51 [00:54<00:00,  1.08s/it]
+(Worker_TP0 pid=104) Capturing CUDA graphs (FULL):   0%|          | 0/51 [00:00<?, ?it/s]Capturing CUDA graphs (FULL):   2%|▏         | 1/51 [00:00<00:10,  4.88it/s]Capturing CUDA graphs (FULL):   4%|▍         | 2/51 [00:00<00:10,  4.73it/s]Capturing CUDA graphs (FULL):   6%|▌         | 3/51 [00:00<00:09,  4.90it/s]Capturing CUDA graphs (FULL):   8%|▊         | 4/51 [00:00<00:09,  5.01it/s]Capturing CUDA graphs (FULL):  10%|▉         | 5/51 [00:01<00:09,  4.99it/s]Capturing CUDA graphs (FULL):  12%|█▏        | 6/51 [00:01<00:08,  5.02it/s]Capturing CUDA graphs (FULL):  14%|█▎        | 7/51 [00:01<00:08,  5.08it/s]Capturing CUDA graphs (FULL):  16%|█▌        | 8/51 [00:01<00:08,  4.83it/s]Capturing CUDA graphs (FULL):  18%|█▊        | 9/51 [00:01<00:08,  4.93it/s]Capturing CUDA graphs (FULL):  20%|█▉        | 10/51 [00:02<00:08,  5.01it/s]Capturing CUDA graphs (FULL):  22%|██▏       | 11/51 [00:02<00:07,  5.05it/s]Capturing CUDA graphs (FULL):  24%|██▎       | 12/51 [00:02<00:07,  5.07it/s]Capturing CUDA graphs (FULL):  25%|██▌       | 13/51 [00:02<00:07,  5.07it/s]Capturing CUDA graphs (FULL):  27%|██▋       | 14/51 [00:02<00:07,  5.06it/s]Capturing CUDA graphs (FULL):  29%|██▉       | 15/51 [00:02<00:07,  5.09it/s]Capturing CUDA graphs (FULL):  31%|███▏      | 16/51 [00:03<00:06,  5.10it/s]Capturing CUDA graphs (FULL):  33%|███▎      | 17/51 [00:03<00:06,  5.03it/s]Capturing CUDA graphs (FULL):  35%|███▌      | 18/51 [00:03<00:07,  4.66it/s]Capturing CUDA graphs (FULL):  37%|███▋      | 19/51 [00:03<00:07,  4.56it/s]Capturing CUDA graphs (FULL):  39%|███▉      | 20/51 [00:04<00:06,  4.66it/s]Capturing CUDA graphs (FULL):  41%|████      | 21/51 [00:04<00:06,  4.71it/s]Capturing CUDA graphs (FULL):  43%|████▎     | 22/51 [00:04<00:06,  4.80it/s]Capturing CUDA graphs (FULL):  45%|████▌     | 23/51 [00:04<00:05,  4.83it/s]Capturing CUDA graphs (FULL):  47%|████▋     | 24/51 [00:04<00:05,  4.87it/s]Capturing CUDA graphs (FULL):  49%|████▉     | 25/51 [00:05<00:05,  4.85it/s]Capturing CUDA graphs (FULL):  51%|█████     | 26/51 [00:05<00:05,  4.88it/s]Capturing CUDA graphs (FULL):  53%|█████▎    | 27/51 [00:05<00:05,  4.65it/s]Capturing CUDA graphs (FULL):  55%|█████▍    | 28/51 [00:05<00:05,  4.36it/s]Capturing CUDA graphs (FULL):  57%|█████▋    | 29/51 [00:06<00:04,  4.42it/s]Capturing CUDA graphs (FULL):  59%|█████▉    | 30/51 [00:06<00:04,  4.57it/s]Capturing CUDA graphs (FULL):  61%|██████    | 31/51 [00:06<00:04,  4.66it/s]Capturing CUDA graphs (FULL):  63%|██████▎   | 32/51 [00:06<00:03,  4.77it/s]Capturing CUDA graphs (FULL):  65%|██████▍   | 33/51 [00:06<00:03,  4.79it/s]Capturing CUDA graphs (FULL):  67%|██████▋   | 34/51 [00:07<00:03,  4.95it/s]Capturing CUDA graphs (FULL):  69%|██████▊   | 35/51 [00:07<00:03,  5.07it/s]Capturing CUDA graphs (FULL):  71%|███████   | 36/51 [00:07<00:02,  5.14it/s]Capturing CUDA graphs (FULL):  73%|███████▎  | 37/51 [00:07<00:02,  4.99it/s]Capturing CUDA graphs (FULL):  75%|███████▍  | 38/51 [00:07<00:02,  4.98it/s]Capturing CUDA graphs (FULL):  76%|███████▋  | 39/51 [00:07<00:02,  5.10it/s]Capturing CUDA graphs (FULL):  78%|███████▊  | 40/51 [00:08<00:02,  5.17it/s]Capturing CUDA graphs (FULL):  80%|████████  | 41/51 [00:08<00:01,  5.24it/s]Capturing CUDA graphs (FULL):  82%|████████▏ | 42/51 [00:08<00:01,  5.28it/s]Capturing CUDA graphs (FULL):  84%|████████▍ | 43/51 [00:08<00:01,  5.31it/s]Capturing CUDA graphs (FULL):  86%|████████▋ | 44/51 [00:08<00:01,  5.35it/s]Capturing CUDA graphs (FULL):  88%|████████▊ | 45/51 [00:09<00:01,  5.38it/s]Capturing CUDA graphs (FULL):  90%|█████████ | 46/51 [00:09<00:00,  5.33it/s]Capturing CUDA graphs (FULL):  92%|█████████▏| 47/51 [00:09<00:00,  5.37it/s]Capturing CUDA graphs (FULL):  94%|█████████▍| 48/51 [00:09<00:00,  5.02it/s]Capturing CUDA graphs (FULL):  96%|█████████▌| 49/51 [00:09<00:00,  5.12it/s]Capturing CUDA graphs (FULL):  98%|█████████▊| 50/51 [00:10<00:00,  5.24it/s]Capturing CUDA graphs (FULL): 100%|██████████| 51/51 [00:10<00:00,  5.34it/s]Capturing CUDA graphs (FULL): 100%|██████████| 51/51 [00:10<00:00,  4.97it/s]
+(APIServer pid=4) INFO uvicorn.error: Started server process [4]
+(APIServer pid=4) INFO uvicorn.error: Waiting for application startup.
+(APIServer pid=4) INFO uvicorn.error: Application startup complete.
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:50969 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:23475 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:37433 - "GET /v1/models HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:64365 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:53176 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:20533 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:31817 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:33191 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:39585 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:27778 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:61388 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:52438 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:58644 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:64794 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:25647 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:37651 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:39589 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:27015 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:21963 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:24385 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:53477 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:41515 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:29564 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:65505 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:54004 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:20425 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:27998 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:50200 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:53484 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:50780 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:27092 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:24589 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:28776 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:39084 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:42496 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:41565 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:64757 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:42361 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:45898 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:25780 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:45824 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:54251 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:63211 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:37568 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:27082 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:18604 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:24121 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:51377 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:44301 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:25393 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:24882 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:19108 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:55613 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:35849 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:19371 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:36295 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:41947 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:33293 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:36467 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:32805 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:23833 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:51481 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:22300 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:50563 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:24372 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:16588 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:53897 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:42145 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:57640 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:43228 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:57652 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:53279 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:55561 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:54302 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:23748 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:59209 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:53926 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:21190 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:50353 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:49156 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:34968 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:37168 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:31271 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:36022 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:28936 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:36533 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:56573 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:51745 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:63312 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:17707 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:60548 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:27247 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:62653 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:34676 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:52935 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:33421 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:42457 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:48324 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:24932 - "POST /v1/chat/completions HTTP/1.1" 200
+(APIServer pid=4) INFO uvicorn.access: 172.20.16.49:23990 - "POST /v1/chat/completions HTTP/1.1" 200
