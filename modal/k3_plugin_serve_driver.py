@@ -304,9 +304,15 @@ def run_follower(llm):
     req = ctx.socket(zmq.REQ)
     req.ipv6 = True
     req.connect(f"tcp://[{MASTER}]:{LOCKSTEP_PORT}")
-    start_tcp_proxy(8000, MASTER, 8000)
-    print(f"serve: rank {RANK} proxying :8000 -> [{MASTER}]:8000",
-          flush=True)
+    # Exactly ONE proxy listener per follower node: torchrun spawns 8 driver
+    # processes per node and they share the port space, so an ungated bind
+    # races — 7 of 8 local ranks crash EADDRINUSE and torchrun tears the
+    # whole job down (plugin-lane boots #1/#2, 2026-09-19). The leader
+    # node's :8000 is uvicorn's; only the local-rank-0 follower proxies.
+    if int(os.environ.get("LOCAL_RANK", "0")) == 0:
+        start_tcp_proxy(8000, MASTER, 8000)
+        print(f"serve: rank {RANK} proxying :8000 -> [{MASTER}]:8000",
+              flush=True)
     while True:
         req.send_json({"ready": RANK})
         work = req.recv_json()
