@@ -7,6 +7,11 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 ## 2026-09-19
 
 ### Added
+- `FAQ.md` — collected answers from real user questions: RL-retraining
+  vector maintenance, effective range (requants/merges), GLP vs LoRA vs
+  llama.cpp CVC, projection vs addition, MoE/looped models, hedging
+  directions, α calibration, termination integrity, refusal
+  non-determinism, serving paths, bake scope caveat.
 - Lane 11 (`setup.py serve 11`): **DSV4-Vision-Exp TP=2 serving — 2x DGX
   Spark, Anemll recipe**. Same image and DeepseekV4ForCausalLM arch as lane
   0, but its own env (`recipe/anemll/.env.dsv4vx`, tracked

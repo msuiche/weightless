@@ -172,7 +172,9 @@ are two independent axes. GLP occupies the projective, runtime-native
 quadrant; the baked adapter is its portable shadow for stacks that only
 speak LoRA.
 
-Deeper: [`spec/GLP.md`](spec/GLP.md) (the format contract),
+Deeper: [`FAQ.md`](FAQ.md) (answers to the questions people actually ask —
+vector maintenance under retraining, effective range, MoE/loop coverage,
+dosage, termination), [`spec/GLP.md`](spec/GLP.md) (the format contract),
 [`docs/llama-cpp-compat.md`](docs/llama-cpp-compat.md) (source-verified
 mechanics), [`tools/captain-vector/README.md`](tools/captain-vector/README.md)
 (bake's troubleshooting/interop role).
