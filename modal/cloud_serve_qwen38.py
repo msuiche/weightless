@@ -6,13 +6,13 @@ ModelRegistry through the `vllm.general_plugins` entry point — no
 in-container file patching, unlike the hotfix lane this test is compared
 against (patches/hotfix-qwen38-steering-projective.py, reference numbers in
 recipe/qwen/README.md: refusal32 4/32 stock -> 24/32 steered, benign clean,
-on the GB10 NVFP4 stack). This app boots the STOCK vllm/vllm-openai:0.28.0
+on the GB10 NVFP4 stack). This app boots the STOCK vllm/vllm-openai:v0.28.0
 image with the plugin pip-installed and the published GLP-49 vector, and
 exposes an OpenAI-compatible endpoint for the local eval driver
 (modal/eval_qwen38_plugin.py).
 
 Stack:
-  - Image: vllm/vllm-openai:0.28.0 (vanilla; qwen3_5.py + qwen3_next.py ship
+  - Image: vllm/vllm-openai:v0.28.0 (vanilla; qwen3_5.py + qwen3_next.py ship
     in it — the preflight asserts the adapter's module paths AND the
     vendored qwen3_next_v0280.py anchors in-image before any GPU spend).
   - Model: unsloth/Qwen3.8-27B-NVFP4 (compressed-tensors mixed NVFP4/FP8,
@@ -70,7 +70,7 @@ VOLUME_NAME = "qwen38-plugin-test"
 VECTOR_REPO = "msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49"
 VECTOR_FILE = "Qwen3.8-27B-abliterated-cyber-GLP-49-L10-58-a1.gguf"
 VECTOR_PATH = "/data/vector/" + VECTOR_FILE
-IMAGE = "vllm/vllm-openai:0.28.0"
+IMAGE = "vllm/vllm-openai:v0.28.0"
 ENV = {"HF_HOME": "/data/hf", "HF_HUB_ENABLE_HF_TRANSFER": "1"}
 PY = "/usr/bin/python3.12"
 
