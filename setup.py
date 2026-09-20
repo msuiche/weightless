@@ -2162,8 +2162,14 @@ def configure_serve_clients(io, base, model, values=None, ssh_host=None):
             "test -f ~/.hermes/config.yaml || exit 0; "
             "cp ~/.hermes/config.yaml ~/.hermes/config.yaml.bak-serve 2>/dev/null; "
             f"sed -i 's/^  default: .*/  default: {model}/; "
-            f"s/^  context_length: .*/  context_length: {context_length}/' "
-            "~/.hermes/config.yaml")
+            f"s/^  context_length: .*/  context_length: {context_length}/; "
+            f"s/^    model: .*/    model: {model}/' "
+            "~/.hermes/config.yaml; "
+            f"grep -q '      - {model}' ~/.hermes/config.yaml || "
+            f"sed -i '/^    models:$/a\\      - {model}' ~/.hermes/config.yaml; "
+            "rm -f ~/.hermes/provider_models_cache.json; "
+            "systemctl --user is-active --quiet hermes-gateway "
+            "&& systemctl --user restart hermes-gateway || true")
         if subprocess.call(node_command(values, ssh_host, remote)) == 0:
             io.ok(f"hermes on {ssh_host} set to {model} ({context_length:,} ctx)")
         else:
