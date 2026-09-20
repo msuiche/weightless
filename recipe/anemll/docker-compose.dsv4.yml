@@ -81,6 +81,10 @@ services:
       WEIGHTLESS_STEER_HOOK: "${WEIGHTLESS_STEER_HOOK:-}"
       # Pin HF revision (issue #19). Empty → tip of default branch / refs/main.
       DSPARK_REVISION: "${DSPARK_REVISION:-}"
+      # MoE backend for the expert layers: FP8 lanes want the b12x default;
+      # NVFP4 (swiglu_limit) needs flashinfer_cutlass/trtllm per vLLM's
+      # select_nvfp4_moe_backend gate.
+      MOE_BACKEND: "${MOE_BACKEND:-flashinfer_b12x}"
       DSPARK_ENCODING_FILE: "${DSPARK_ENCODING_FILE:-}"
       # Optional API key for the OpenAI endpoint. Empty = no auth (default).
       VLLM_API_KEY: "${VLLM_API_KEY:-}"
@@ -238,6 +242,7 @@ services:
         python3 /opt/hotfix-dsv4-issue27-partial-prefill-concurrency.py; python3 /opt/hotfix-dsv4-issue43-decode-fairness-and-diag.py; python3 /opt/hotfix-dsv4-issue26-hybrid-swa-min.py; if [ "$${DSPARK_SKIP_SUPPRESS_STOPS_HOTFIX:-0}" != "1" ]; then python3 /opt/hotfix-dsv4-suppress-stops-in-reasoning.py; fi; python3 /opt/hotfix-dsv4-steering-projective.py || exit 1; VLLM_QUANTIZATION_ARGS="";
         if [ "$${DSPARK_ENABLE_ASSISTANT_FINAL_HOTFIX:-0}" = "1" ]; then python3 /opt/hotfix-dsv4-assistant-final-continuation.py || exit 1; fi;
         if [ "$${ENABLE_VLLM_GB10_PATCH:-0}" = "1" ]; then
+          python3 -m pip install --quiet "flashinfer-python==0.6.18.post1" "nvidia-cutlass-dsl[cu13]==4.6.2";
           python3 -m pip install -e /opt/vllm-gb10-hybrid-nvfp4 --no-deps;
           export VLLM_PLUGINS="$${VLLM_PLUGINS:-gb10_hybrid_nvfp4}";
           VLLM_QUANTIZATION_ARGS="--quantization modelopt_gb10_hybrid";
@@ -280,7 +285,7 @@ services:
         --speculative-config "$${SPECULATIVE_CONFIG}"
         --tokenizer-mode deepseek_v4
         --distributed-executor-backend mp
-        --moe-backend flashinfer_b12x
+        --moe-backend $${MOE_BACKEND:-flashinfer_b12x}
         --tool-call-parser deepseek_v4
         --enable-auto-tool-choice
         --reasoning-parser deepseek_v4

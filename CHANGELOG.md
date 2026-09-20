@@ -6,6 +6,31 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 
 ## 2026-09-20
 
+### Added
+- Compose: `MOE_BACKEND` is now env-driven
+  (`--moe-backend ${MOE_BACKEND:-flashinfer_b12x}`, plumbed through the
+  container `environment:` block), so a lane can pick its expert backend
+  without a compose fork. FP8 lanes keep the b12x default.
+
+### Not shipped (measured dead end)
+- **DSV4-Vision-Exp NVFP4 weights do not serve on GB10** (flip attempted
+  and reverted; the FP8 strip lane stays in production). The quant sets
+  `swiglu_limit=10.0`, and every fused-MoE path in the anemll image fails
+  it on SM121, measured: b12x is correctly refused by vLLM's gate (no
+  SwiGLU clamp), flashinfer_trtllm has no SM121 cubins, and
+  flashinfer_cutlass's SM121 kernel lacks the clamp parameter (7-arg init
+  vs 9-arg call) at flashinfer 0.6.15 and 0.6.18 alike, with the whole
+  nvidia-cutlass-dsl[cu13] 4.6.2 family aligned. The `modelopt_gb10_hybrid`
+  plugin only dispatches linear layers (its README: "does not implement
+  new CUDA kernels... not tested on a live GB10") — the fused-MoE experts
+  were never the covered path. The quant was only ever validated on
+  SM100 (B200). Remaining routes: an `--hf-overrides` drop-the-clamp A/B
+  against the FP8 lane (numerics contract, needs measurement), or
+  kernel-author work. The gated retry path
+  (`flashinfer-python==0.6.18.post1` + `nvidia-cutlass-dsl[cu13]==4.6.2`
+  in the GB10 block) stays in the compose under
+  `ENABLE_VLLM_GB10_PATCH=1`.
+
 ### Changed
 - `FAQ.md` — effective-range entry updated with the measured merge
   result (transport-and-merge at ~1% ‖ΔW‖/‖W‖ fully survives; full
