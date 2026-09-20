@@ -13,7 +13,12 @@ live in `BENCHMARK.md`; this file tracks what shipped.
   entry updated with the qa-warn64 measurements (hedging vector cuts QA
   warnings 48% → 33%, residual warnings are neutral-dominated,
   moralizing is cyber-domain-specific, L52-63 carry the hedging
-  effect — don't trim the top of the stack).
+  effect — don't trim the top of the stack). RL-retraining entry gained
+  the full regime mapping (SFT / safety-shaped RL / domain-matched RLVR
+  / unrelated capability RL / LoRA-RL / requant / sparse merge →
+  re-derive vs verify vs survives), plus the two failure modes
+  (baked-file error vs direction rotation) and the cos(d_new, d_old)
+  rotation check.
 
 ## 2026-09-19
 

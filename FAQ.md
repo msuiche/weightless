@@ -148,10 +148,39 @@ Usually no. Split the answer:
   The directions are derived from activations, and they are robust: GLP-49
   survives int4 re-quantization (~12% weight perturbation, 3.6%
   intervention error) — far more displacement than a typical weekly RL
-  run. Capability-focused rollouts (tool use, coding, math) leave the
-  refusal direction alone for months in practice. Alignment-touching
-  rollouts invalidate it (V4 → V4.1 wrote a new refusal skeleton; that
-  direction needed re-derivation).
+  run. Weekly RL on a fixed base — taking Kimi K3 or GLM 5.3 and
+  running capability-focused rollouts on it (tool use, coding, math) —
+  leaves the refusal direction alone for months in practice; the reward
+  would have to target refusal behavior for the direction to move. What
+  invalidates a vector on the *same* base is your own training touching
+  that circuitry: a safety-shaped reward, refusal bonuses, caution
+  penalties. A new checkpoint from the lab is a different case entirely
+  (V4 → V4.1 wrote a new refusal skeleton) — that's a weights change,
+  covered under effective range below.
+
+  The full mapping by training regime (all training moves weights —
+  every gradient step does; what varies is the displacement size and
+  whether the update touches the behavior you steer):
+
+  | regime | displacement | touches refusal/hedging circuitry? | verdict |
+  |---|---|---|---|
+  | SFT / continued pretraining (new knowledge, e.g. cyber corpus) | large, systematic — every weight, no anchor | yes, behavior shifts with the target distribution | **re-derive** (measured: a full fine-tune killed the file) |
+  | RL with safety-shaped reward (refusal bonuses, caution penalties) | small (KL-bounded) but aimed at the steered behavior | yes, by construction | **re-derive** |
+  | RL on the steered domain even with pure capability reward (e.g. RLVR on cyber tasks) | small | plausibly — residual hedging/moralizing is domain-shaped | **run the suite**, expect possible drift |
+  | Capability-only RL on unrelated domains (math, coding, tool use) | small | no, in practice | vector survives; verify with the suite |
+  | LoRA-RL (adapter-only updates) | base untouched | behavior can still drift under the adapter | baked form unaffected structurally; verify with the suite |
+  | re-quantization (int8/int4) | large but noise-like | no — direction barely rotates | survives (measured) |
+  | sparse merge / adapter on the same base revision (~1% ‖ΔW‖/‖W‖) | small | no | survives (measured) |
+
+  Two failure modes sit under the table: **baked-file error** (the PEFT
+  export contains the base weights, so error grows with `d̂ᵀ(W−W′)`) and
+  **direction rotation** (training moves the model's own behavior
+  direction off the stored one; hits every form, hook included). The
+  first scales with displacement, the second with whether the behavior
+  was in the training objective. If you want the rotation number
+  directly: derive the direction on the new weights from a small
+  contrast set and take `cos(d_new, d_old)` — near 1 means the old file
+  still matches.
 - **Cheap maintenance pattern**: after each training run, run the old
   vector against a small refusal suite. If the rate holds, ship as-is.
   If it drifted, re-derive — one captain-vector command, single-digit
@@ -172,8 +201,10 @@ layer span, not the merge. What breaks the file is a *full fine-tune*
 or distill — every weight moved, the refusal direction rotates, and a
 rank-1 projection leaves a residual. Rule of thumb from three external
 data points: adapter or sparse merge on the exact base revision →
-works; full fine-tune → re-derive. Not portable to a different model or
-size; the method transfers, the file does not.
+works; full fine-tune → re-derive. A new checkpoint of the same line
+from the lab counts as a different base too (V4 → V4.1 wrote a new
+refusal skeleton; that direction needed re-derivation). Not portable to
+a different model or size; the method transfers, the file does not.
 
 ## Behavior and dosage
 
