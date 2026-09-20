@@ -4,6 +4,17 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-09-20
+
+### Changed
+- `FAQ.md` — effective-range entry updated with the measured merge
+  result (transport-and-merge at ~1% ‖ΔW‖/‖W‖ fully survives; full
+  fine-tune/distill breaks the file; re-derive there). Disclaimers
+  entry updated with the qa-warn64 measurements (hedging vector cuts QA
+  warnings 48% → 33%, residual warnings are neutral-dominated,
+  moralizing is cyber-domain-specific, L52-63 carry the hedging
+  effect — don't trim the top of the stack).
+
 ## 2026-09-19
 
 ### Added

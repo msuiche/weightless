@@ -162,13 +162,18 @@ Usually no. Split the answer:
 ### What is the vector's effective range? (re-quants, merges, other models)
 
 Valid for the exact base model and its re-quantizations (measured up to
-int4). Weight *merges* partially work: error enters only through how far
-the merge rotated the model's own direction off the stored one, and a
-merge that keeps the base dominant perturbs less than int4 does — but a
-rank-1 vector cannot cancel a rotated component fully, so expect partial
-effect (this is exactly what external testers observed on Qwen+Gemma
-glimmer merges). Not portable to a different model or size; the method
-transfers, the file does not.
+int4). Weight *merges* work when the merge perturbs little: measured on
+a transport-and-merge build (Qwen skeleton + foreign attention/FFN,
+~1% ‖ΔW‖/‖W‖ — inside the envelope int4 already tolerates at 12%), the
+vector **fully survived**, with α-deltas on the merge meeting or
+exceeding the same vector on the true base; the "partial abliteration"
+an external tester saw on that merge traced to the vector's narrower
+layer span, not the merge. What breaks the file is a *full fine-tune*
+or distill — every weight moved, the refusal direction rotates, and a
+rank-1 projection leaves a residual. Rule of thumb from three external
+data points: adapter or sparse merge on the exact base revision →
+works; full fine-tune → re-derive. Not portable to a different model or
+size; the method transfers, the file does not.
 
 ## Behavior and dosage
 
@@ -180,8 +185,17 @@ sits near the decision boundary after the dominant component is removed
 — sampling noise flips the hedge. We ship hedging vectors for exactly
 this (derived from the model's own natural branch points, not
 grammar-pinned capture — pinned capture yields a register axis, a
-measured negative result). Rank-k files can carry both directions in one
-artifact.
+measured negative result). Measured on QA-style prompts: the hedging
+vector cuts the warning rate 48% → 33% and halves CoT hedge markers,
+and the warnings it leaves behind are neutral informational notes, in
+the unsteered base included — the vectors delete warnings, they do not
+re-voice moralizing into something else. Residual moralizing
+concentrates in the cyber domain, where removing the refusal gate alone
+slightly *raises* engaged moralizing (15 → 25 of 256 samples) before
+the hedging vector cuts it back. If you trim layers, keep the top of
+the stack — the hedging direction separates strongest at L52-63, so a
+48-layer cut removes most of the effect. Rank-k files can carry both
+directions in one artifact.
 
 ### What does α do, and what happens if I crank it?
 
