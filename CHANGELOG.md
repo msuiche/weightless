@@ -4,6 +4,32 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-09-21
+
+### Added
+- **Lane 12: DSV4-Vision-Exp VL TP=2** (`recipe/dsv4vl/`) — the
+  vision-capable counterpart of lane 11. Serves the unstripped Vision-Exp
+  snapshot `6821d6ad` through `DeepseekV4ForConditionalGeneration` on
+  `vllm-upstream-vision:k2-topk512` (day-0 vLLM 0.28.1rc1 + PR #54566 with
+  the flashinfer 0.6.18 DSV4 dual-prefill topk 192/256/512 backport from
+  msuiche/flashinfer `sm121-dsv4-prefill-topk512`; locally built, wizard
+  verifies presence instead of pulling). Nospec: the checkpoint's
+  `num_nextn_predict_layers=3` requires k%3==0 and `vl_model.py` drops
+  `mtp.` weights for the vision variant, so no draft head loads.
+- `patches/hotfix-dsv4vl-steering-projective.py` — the GLP steering
+  hotfix for the day-0 tree. Same injected code as the Anemll-lane hotfix
+  (the new `tests/structure/test-dsv4vl-hotfix-structure.py` byte-compares
+  the blocks); the four anchors re-verified against vLLM `5ab628dd1`.
+  Hook-site finding: the day-0 model loop carries the pending FFN write
+  between layers (fold deferred to the next layer's fused post/pre), the
+  same deferred-fold convention as the 0.25.2 tree — so the hook stays
+  `ffn_out_pre_residual` and the served vector is the same `-ffn` GLP-29
+  relabel lane 11 serves. The VL wrapper's
+  `init_vllm_registered_model` construction path is covered (it builds
+  the same `DeepseekV4Model` the hotfix patches).
+- L6 window results (steering A/B α=0.0 vs α=1.0, vision smoke under
+  steering): pending the rig window — appended when measured.
+
 ## 2026-09-20
 
 ### Added

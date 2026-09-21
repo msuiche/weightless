@@ -311,6 +311,39 @@ LANES = [
          start_script="start-deepseek-v4-flash-visionexp-dspark.sh",
          hotfix="hotfix-dsv4-steering-projective.py",
          port=8888),
+    dict(name="DSV4-Vision-Exp VL TP=2 serving — 2x DGX Spark, day-0 VL image (k2-topk512)",
+         # The VISION-capable lane: day-0 vLLM (0.28.1rc1 + PR #54566) with
+         # the flashinfer 0.6.18 dual-prefill topk 192/256/512 backport
+         # (msuiche/flashinfer sm121-dsv4-prefill-topk512; K1-K4 record in
+         # dspark-fork benchmarks/20260920-upstream-vision-*.md). Serves the
+         # UNSTRIPPED Vision-Exp snapshot 6821d6ad through
+         # DeepseekV4ForConditionalGeneration — lane 11 is the text-only
+         # stripped tree on the anemll image; this lane does not replace it.
+         # Nospec: num_nextn_predict_layers=3 (k%3==0) and vl_model.py drops
+         # mtp. weights for the vision variant, so no draft head loads.
+         # Steering: the day-0 tree defers the mHC fold identically to the
+         # 0.25.2 tree (pending FFN write between layers — verified
+         # 2026-09-21 at vLLM 5ab628dd1), so the hook stays
+         # ffn_out_pre_residual and the served vector is the same -ffn
+         # relabel lane 11 uses.
+         example="recipe/dsv4vl/.env.dsv4vl.example",
+         target="recipe/dsv4vl/.env.dsv4vl",
+         steer_key="WEIGHTLESS_STEER_PATH",
+         steer_hook="ffn_out_pre_residual",
+         structure_test="tests/structure/test-dsv4vl-hotfix-structure.py",
+         vector_repo="msuiche/DeepSeek-V4-Flash-Vision-Exp-abliterated-cyber-GLP-29",
+         model_repo="deepseek-ai/DeepSeek-V4-Flash-Vision-Exp",
+         docker_image="vllm-upstream-vision:k2-topk512",
+         local_image=True,
+         image_key="DSV4VL_IMAGE",
+         steer_modes=None,
+         nodes=2,
+         remote_dir="dspark-dsv4vl",
+         recipe_files=[".env.dsv4vl", "docker-compose.dsv4vl.yml",
+                       "start-dsv4-vl-dspark.sh"],
+         start_script="start-dsv4-vl-dspark.sh",
+         hotfix="hotfix-dsv4vl-steering-projective.py",
+         port=8888),
 ]
 PLACEHOLDER_HINTS = {
     "head-ip": ("Head node IP or hostname", ""),
@@ -1073,10 +1106,14 @@ DEPLOY_MAP = {
          ("recipe/anemll/docker-compose.dsv4.yml", "dspark-visionexp/docker-compose.dsv4.yml"),
          ("recipe/anemll/start-deepseek-v4-flash-visionexp-dspark.sh", "dspark-visionexp/start-deepseek-v4-flash-visionexp-dspark.sh"),
          ("patches/hotfix-dsv4-steering-projective.py", "dspark-visionexp/patches/hotfix-dsv4-steering-projective.py")],
+    12: [("recipe/dsv4vl/.env.dsv4vl", "dspark-dsv4vl/.env.dsv4vl"),
+         ("recipe/dsv4vl/docker-compose.dsv4vl.yml", "dspark-dsv4vl/docker-compose.dsv4vl.yml"),
+         ("recipe/dsv4vl/start-dsv4-vl-dspark.sh", "dspark-dsv4vl/start-dsv4-vl-dspark.sh"),
+         ("patches/hotfix-dsv4vl-steering-projective.py", "dspark-dsv4vl/patches/hotfix-dsv4vl-steering-projective.py")],
 }
 CONTAINER_GREP = {0: "deepseek", 1: "qwen38", 2: "qwen38fn", 3: "glm53", 4: "glm5xl",
                   5: "inkling-sm121", 6: "glm53tp2", 7: "nemotron35", 9: "museglimmer",
-                  11: "visionexp"}
+                  11: "visionexp", 12: "vision-vl"}
 
 
 def current_lanes(output):
