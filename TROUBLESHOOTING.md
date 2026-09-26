@@ -98,3 +98,26 @@ Run the dashboard (`python3 weightless.py dash`). Read KV pressure and queue
 depth first. On the big MoE lanes, 17–30 tok/s single-stream is the design
 point, not a regression. Page-cache pressure stalls weight loads on boot —
 the deploy chain drops caches on all nodes before booting.
+
+## Steering on SGLang (`sglang-plugin/`)
+
+First check the boot log: every rank prints
+`weightless GLP steering active (sglang): ...` when steering is on.
+
+- **No line, stock behaviour:** the plugin is not installed where
+  `sglang.launch_server` runs (install `vllm-plugin/` and `sglang-plugin/`
+  there), or `SGLANG_PLUGINS` is set without `weightless_steer`.
+- **`kernel=torch (auto: torch path, because ...)`:** the fused kernel fell
+  back (no Triton or CUDA, or the self-check failed). Steering works, at the
+  torch path's higher cost; `WEIGHTLESS_STEER_KERNEL=triton` makes this a
+  boot error.
+- **`has no SGLang steering adapter` or `is not supported:`:** the served
+  class has no row, or is refused by name with the reason (table in
+  `sglang-plugin/README.md`).
+- **`not validated at TP=`:** that row refuses TP > 1; serve it at TP=1 with
+  `--pp-size` if it does not fit one GPU.
+- **`did not run in this forward` or `should hold the ... stream`:** the
+  SGLang model no longer matches the row (a changed loop or output tuple);
+  run the plugin's tests against that SGLang before serving it.
+- **Steering gone after a weight update:** reloading weights from disk
+  replaces the model and drops the sites; restart the server.

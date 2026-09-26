@@ -4,6 +4,21 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-09-26
+
+### Added
+- **`sglang-plugin/`: GLP steering for SGLang** (dist `weightless-sglang`,
+  `sglang.srt.plugins` entry point, no SGLang source change): the same
+  files, `WEIGHTLESS_STEER_*` variables, loader and gates as `vllm-plugin/`,
+  one module per architecture in `weightless_sglang/archs/`, and a fused
+  Triton kernel self-checked at start-up against a torch path with the same
+  bits.
+- GPU-validated on Qwen3.8-27B (one RTX 5090: α=0 bit-identical to stock,
+  fused kernel 1.3 % decode cost) and GLM-5.3-Flash (3x RTX PRO 6000, PP 3:
+  cyber32 8 → 31/32, benign32 32/32); seven more rows structure-tested on
+  CPU; Ouro, Inkling and DeepSeek-V4.1 refused by name. Design:
+  `docs/sglang-plugin-design.md`, numbers in `BENCHMARK.md`.
+
 ## 2026-09-23
 
 ### Added
