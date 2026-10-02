@@ -289,6 +289,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `patches/hotfix-glm53xl-steering-projective.py` | the same steering for the GLM-5.3 743B lane: patches the overlay's `deepseek_v2.py` copy at staging (the mount is read-only), steers `hidden_states + residual` (decomposed convention, no HC widening) |
 | `patches/hotfix-glm53-exl3-steering-projective.py` | the GLM-5.3-Flash steering for brandonmusic's EXL3/B12X fork image (SM120): the fork's DFlash branch splits the decoder loop in two — the variant patches both (aux loop steers after the aux capture, pre-steer features) |
 | `vllm-plugin/` | the same steering as an installable vLLM plugin (dist `weightless-steer`, `vllm.general_plugins` entry point): one adapter per architecture in `weightless_steer/archs/` shadows the model class in `ModelRegistry` instead of rewriting files in the container — the successor to the hotfix fleet above. Ten adapters today: `nemotron_h.py`, `glm5next.py`, `dsv4.py`, `qwen38.py`, `qwen38fn.py`, `glm53xl.py`, `kimi_k3.py`, `ouro.py`, `inkling.py`, `hy4.py`. glm5next **GPU-validated 2026-09-18** (Modal 4×H100, GLM-5.3-Flash NVFP4, compiled mode — cyber32 31/32 exactly the hotfix reference, benign32 clean, refusal32 2→9/32 vs 1→21/32 hotfix on a stiffer stock baseline; `modal/cloud_serve_glm53.py`); the other eight new adapters **GPU-validated 2026-09-19** on Modal (verification depth varies — full eval for dsv4/qwen38/qwen38fn/ouro/inkling, boot+smoke for hy4/glm53xl/kimi-k3; per-arch numbers in BENCHMARK.md, raw artifacts in `modal/out-<arch>-plugin-test/`). Design: `docs/vllm-plugin-design.md`, offline tests need neither GPU nor vLLM |
+| `sglang-plugin/` | the same steering as an installable SGLang plugin (dist `weightless-sglang`, `sglang.srt.plugins` entry point): an AFTER hook on `ModelRunner.load_model` installs the steering sites before CUDA-graph capture, with no SGLang source change, and reuses the vLLM plugin's loader and gates. One module per architecture in `weightless_sglang/archs/`: Qwen3.8-27B (one RTX 5090) and GLM-5.3-Flash (3x RTX PRO 6000, PP 3) **GPU-validated 2026-09-25/26**, seven more structure-tested on CPU. The edit runs as one fused Triton kernel by default, self-checked at start-up against a torch path that gives the same bits. Design: `docs/sglang-plugin-design.md`; offline tests need neither GPU nor SGLang |
 | `patches/vendor/sparse_attn_indexer_kpool_sm121.py` | vendored SM121 indexer top-k fix (tonyd2wild's DFlash2 repo, provenance header inside): bind-mounted over the in-image file on every glm53 node — without it both published images hard-kill on decode past ~24K context |
 | `patches/reference/glm5next_b12x_exl3.py` | the EXL3 structure test's reference — the model file extracted from the published `verdictai/glm53-flash-exl3-k4` image (OCI layer sha256:7f03081e…) |
 | `patches/reference/deepseek_v2_glm53xl.py` | the 743B structure test's reference — tonyd2wild's kernel-overlay `deepseek_v2.py` (the file his stack actually serves); same anchors as vLLM v0.28.0 |
@@ -335,6 +336,20 @@ steered one layer while reporting 29; coverage dominates this intervention
 reflected, which installs the behaviour rather than removing it. To run
 weaker, subset the layers and leave alpha alone. The 4.0 above is calibrated
 for this checkpoint; do not carry it to another model.
+
+### Steering on SGLang
+
+The same GLP files and variables work on SGLang through `sglang-plugin/`;
+install it next to `vllm-plugin/` (which provides the loader) in the SGLang
+environment:
+
+```sh
+pip install ./vllm-plugin ./sglang-plugin
+WEIGHTLESS_STEER_PATH=<vector.gguf> python -m sglang.launch_server --model-path <model>
+```
+
+Each rank logs `weightless GLP steering active (sglang): ...`; no line means
+SGLang serves stock. Details: `sglang-plugin/README.md`.
 
 ## Steering artifacts (ours)
 

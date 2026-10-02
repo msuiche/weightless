@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "weightless-sglang"
+version = "0.1.0"
+description = "GLP projective activation steering for SGLang, as a general plugin (forward hooks installed before CUDA-graph capture)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+# torch comes with the SGLang install. The GGUF reader and the spec gates are
+# the vLLM plugin's own modules (weightless_steer.core / .container), so the
+# two runtimes share one copy of them: install ../vllm-plugin first.
+dependencies = ["weightless-steer"]
+
+[project.entry-points."sglang.srt.plugins"]
+weightless_steer = "weightless_sglang.plugin:register"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["weightless_sglang*"]

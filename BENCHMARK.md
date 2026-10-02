@@ -1057,3 +1057,50 @@ Mitigation not implemented: lowering `max_num_batched_tokens` would soften
 the starvation at some prefill-throughput cost; disaggregated prefill is
 not an option at TP=2 on two nodes. For now: benchmark on an idle server,
 and expect agent traffic (long prompts) to slow interactive streams.
+
+## SGLang plugin
+
+`sglang-plugin/` on SGLang with no source change, CUDA graphs on, greedy.
+
+**Qwen3.8-27B cost (2026-09-25).** `RadixArk/Qwen3.8-27B-NVFP4` on one RTX 5090,
+SGLang main `2f5c9ac4`, TP=1, GLP-49 (L10-58) and GLP-63 (L1-63) at α=1.0.
+SGLang's `bench_serving` on random token ids: decode at concurrency 1 (512 in,
+256 out) and prefill (8,192 tokens, 1 out); each arm is its own server boot, and
+two stock boots differed by 0.01 % on decode and 0.28 % on prefill.
+
+| arm | decode c1 tok/s | prefill 8,192 tok/s |
+|---|---:|---:|
+| stock | 76.90 | 9,962 |
+| GLP-49, fused Triton kernel (default) | 75.88 (−1.3 %) | 9,931 (−0.3 %) |
+| GLP-49, torch path | 69.47 (−9.7 %) | 8,836 (−11.3 %) |
+| GLP-63, fused Triton kernel (default) | 75.62 (−1.7 %) | 9,901 (−0.6 %) |
+| GLP-63, torch path | 67.61 (−12.1 %) | 8,552 (−14.2 %) |
+
+Both paths give the same bits: on GLP-49 and GLP-63 the fused and torch boots
+produced 64/64 identical greedy sequences (tokens and logprobs) and 0 of 9,446
+teacher-forced positions differed; α=0 against stock on the same set is
+identical too. The torch path pays for several passes over temporary copies of
+every row; the fused kernel does the work in one, which is why it is the default
+(`WEIGHTLESS_STEER_KERNEL=auto`).
+
+**GLM-5.3-Flash (2026-09-26).** `RadixArk/GLM-5.3-Flash-NVFP4` on the production
+SGLang build, pipeline-parallel over three RTX PRO 6000, 1,048,576-token
+context, the GLP-44 file on layers 1-44 at the model card's α=2.0, the fused
+kernel chosen by the start-up self-check on every rank. At α=0 the greedy output
+equals stock on 64/64 prompts, and the prefill KL of 0.051 nats sits under the
+stock-to-stock floor of 0.080. Every quality check passes (GSM8K is judged
+against the stock row, which itself scores 0.924 under the fixed 0.93 bar;
+steered 0.920). Decode is within 5 % of stock at concurrency 1 and 0.2 % at
+concurrency 8, prefill within 0.4 %. On the repository's full-completion scorer,
+cyber32 delivery goes 8/32 → **31/32** and benign32 stays 32/32; the
+answer-after-thinking scorer is not decisive on this model, because its chat
+template always opens a thinking block and the 1,400- and 4,096-token answers
+ended inside it. Graph decode equals eager decode bit for bit on a steered boot
+pair (64/64 greedy continuations, tokens and logprobs). The per-layer edit check
+passes on 40 of 44 layers; on layers 21, 24, 29 and 33 the error (1.5e-2 to
+2.8e-2 of the pre-edit component along the direction) is above the 1e-2 bound
+but 13 to 35 times below the bf16 rounding bound of the 16,384-wide stream, so
+the strict rule fails them and the rounding bound accepts them. Open: one
+steered CUDA-graph boot, run after batched and long-prefill loads, gave greedy
+continuations different from the other three steered boots; the cause is not
+isolated (a determinism question, not a graph-versus-eager one).

@@ -322,7 +322,14 @@ pre-steering features; only token-choice divergence couples through).
 Bake has literally zero runtime cost — the projection is folded into the
 weights — at the price of the scope caveat above.
 
-### Will vLLM or llama.cpp support this upstream?
+On SGLang the edit runs by default as one fused Triton kernel per
+steered layer. A plain torch path gives the same bits and is the
+fallback when the start-up self-check cannot use the kernel
+(`WEIGHTLESS_STEER_KERNEL=auto`). On Qwen3.8-27B (one RTX 5090) the
+fused kernel costs 1.3 % on decode and 0.3 % on prefill, the torch path
+9.7 % and 11.3 % (`BENCHMARK.md`).
+
+### Will vLLM, SGLang or llama.cpp support this upstream?
 
 Not soon, and we are not waiting on it. The vLLM steering proposal
 (vllm#3451) and llama.cpp's CVC are both additive-only — the wrong
@@ -332,3 +339,6 @@ arch adapter module per model family) and `glp.py` for transformers. If
 upstream ever ships a projective mode, the `glp.mode` metadata already
 tells a conformant reader what to do — the format was designed for that
 day.
+
+SGLang needs no upstream change: `sglang-plugin/` installs through
+SGLang's general-plugin entry point, before CUDA-graph capture.

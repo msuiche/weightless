@@ -10,6 +10,10 @@ in-container file rewrites — vLLM's `vllm.general_plugins` entry point
 shadows the model class in the `ModelRegistry` with a steered subclass.
 Design: `../docs/vllm-plugin-design.md`, path (1).
 
+The same GLP files run on SGLang through `../sglang-plugin/`, which imports
+this package's `container` and `core` (install both; vLLM itself is not
+needed there).
+
 ## Install
 
 Into the same environment that runs vLLM:

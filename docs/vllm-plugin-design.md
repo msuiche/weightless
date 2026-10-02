@@ -5,6 +5,9 @@ adapters in `vllm-plugin/`, every one GPU-validated on Modal
 (2026-09-18/19), 223 offline tests. No upstream PR has been opened or is
 proposed here as a first step.
 
+SGLang counterpart: `sglang-plugin/`, with the same loader and gates and no
+SGLang source change; design in `docs/sglang-plugin-design.md`.
+
 Today we serve steered models through `patches/hotfix-*-steering-projective.py`:
 fail-closed boot scripts that rewrite vLLM model files inside the container
 with anchor-matched string replacement. Every lane re-implements the same
