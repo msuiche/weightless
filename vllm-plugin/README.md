@@ -116,15 +116,20 @@ step, with the container-id shift for the published GLP-192 vector),
 post-layer residual stream; upstream defers the residual add, so the
 adapter steers after the pending-residual flush), and `HYV4ForCausalLM`
 (hy4 / Tencent Hy4-preview — the materialized iHC stream at derivation
-width, 4×hidden). glm5next is GPU-validated (2026-09-18, Modal 4×H100,
-RedHatAI NVFP4, compiled mode: cyber32 exactly the hotfix reference at
-31/32, benign32 clean, refusal32 2→9/32 vs the hotfix's 1→21/32 — the
-stack's stock baseline is stiffer; numbers in `../BENCHMARK.md`); the
-other eight new archs are GPU-validated 2026-09-19 on Modal (full eval for
-dsv4/qwen38/qwen38fn/ouro/inkling, boot+smoke for hy4/glm53xl/kimi-k3 —
-numbers in `../BENCHMARK.md`, raw artifacts in
-`../modal/out-<arch>-plugin-test/`). Each additional lane is one module
-under `weightless_steer/archs/`.
+width, 4×hidden). The glm5next lane requires stock vLLM >= 0.30 (glm5next
+landed upstream via [PR #53906](https://github.com/vllm-project/vllm/pull/53906);
+the adapter imports `vllm.models.glm5next.common.model`, falling back to the
+day-0 fork image's `nvidia.model`) — serve it on stock, NOT the day-0 fork:
+the fork's breakable cudagraphs crash deterministically at first inference
+with a modified checkpoint (see `../TROUBLESHOOTING.md`). glm5next is
+GPU-validated (2026-09-18, Modal 4×H100, RedHatAI NVFP4, compiled mode:
+cyber32 exactly the hotfix reference at 31/32, benign32 clean, refusal32
+2→9/32 vs the hotfix's 1→21/32 — the stack's stock baseline is stiffer;
+numbers in `../BENCHMARK.md`); the other eight new archs are GPU-validated
+2026-09-19 on Modal (full eval for dsv4/qwen38/qwen38fn/ouro/inkling,
+boot+smoke for hy4/glm53xl/kimi-k3 — numbers in `../BENCHMARK.md`, raw
+artifacts in `../modal/out-<arch>-plugin-test/`). Each additional lane is
+one module under `weightless_steer/archs/`.
 
 ## Behaviour contract
 

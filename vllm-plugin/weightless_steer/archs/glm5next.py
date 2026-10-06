@@ -1,5 +1,11 @@
 """GLM-5.3 (glm5next) adapter: GLP steering on the materialized mHC stream.
 
+Requires stock vLLM >= 0.30 (glm5next landed upstream via PR #53906) or the
+day-0 glm53-flash fork image; the stock lane's boot verification harness is
+modal/cloud_serve_glm53_stock.py (vllm/vllm-openai:v0.31.0). glm5next is NOT
+in the local ~/spark/vllm checkout's vintage — this adapter cannot run
+against it.
+
 `SteeredGlm5NextModel.forward` is upstream's `Glm5NextModel.forward` copied
 verbatim with one block added in the layer loop, and
 `SteeredGlm5NextDecoderLayer.forward` is upstream's copied verbatim with the
@@ -8,8 +14,13 @@ accepts for path (1): the loop shape and the (hidden_states, residual,
 post, comb) return convention are upstream internals that can change in any
 release, but a break now fails loudly at import or first forward instead of
 silently serving unsteered (the anchor-matched hotfix's failure mode). The
-copies are pinned against patches/reference/glm5next.py by
-tests/test_archs/test_glm5next.py.
+copies are pinned against TWO vendored references by
+tests/test_archs/test_glm5next.py: patches/reference/glm5next.py (the day-0
+fork image's nvidia/model.py) and patches/reference/glm5next_upstream_v0310.py
+(stock v0.31.0 common/model.py) — the two forward bodies are byte-identical
+between fork and upstream, so one copy satisfies both pins; only the module
+path, the MoE router-logit plumbing, an EPLB-aware load_weights, and a JIT
+warmup block drifted, none of which the copies touch.
 
 Replaces patches/hotfix-glm53-steering-projective.py, with the same
 steering semantics so the published GLP-44 vector
@@ -71,11 +82,13 @@ never steered; GLM-5.3-Flash's 45 base layers are all mHC. The 743B
 flagship is a different arch (GlmMoeDsaForCausalLM on deepseek_v2, a plain
 single-stream residual) and is NOT covered by this adapter.
 
-Upstream classes are imported from vllm.models.glm5next.nvidia.model — the
-day-0 image layout the hotfix patches and the vendored reference mirrors.
-Merged upstream main rehomed the same classes to
-vllm.models.glm5next.common.model with identical forward bodies (checked
-2026-09-17); update the import when the serving base moves.
+Upstream classes live at vllm.models.glm5next.common.model in stock vLLM
+>= 0.30 (the merged-upstream layout) and at vllm.models.glm5next.nvidia.model
+in the day-0 glm53-flash fork image the hotfix patches. The import below
+prefers the stock path and falls back to the fork's; both vintages' forward
+bodies are byte-identical (verified 2026-10-06 against v0.31.0), which is
+why one copy serves both. hc_expand/hc_contract come from
+vllm.model_executor.layers.mhc in both.
 """
 from __future__ import annotations
 
@@ -87,11 +100,20 @@ from vllm.models.common.ops.sequence_parallel import (
     sp_reduce_scatter,
     sp_shard,
 )
-from vllm.models.glm5next.nvidia.model import (
-    Glm5NextDecoderLayer,
-    Glm5NextForCausalLM,
-    Glm5NextModel,
-)
+
+try:
+    # Stock vLLM >= 0.30 (PR #53906 merged layout).
+    from vllm.models.glm5next.common.model import (
+        Glm5NextDecoderLayer,
+        Glm5NextForCausalLM,
+        Glm5NextModel,
+    )
+except ImportError:  # day-0 glm53-flash fork image layout
+    from vllm.models.glm5next.nvidia.model import (
+        Glm5NextDecoderLayer,
+        Glm5NextForCausalLM,
+        Glm5NextModel,
+    )
 from vllm.sequence import IntermediateTensors
 
 from .base import SteeredModelMixin, _per_request_enabled
