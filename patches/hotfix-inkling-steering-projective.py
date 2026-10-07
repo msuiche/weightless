@@ -3,7 +3,7 @@
 Inkling architecture (vllm/models/inkling/nvidia/model.py, vLLM v0.28.0).
 
 Same intervention as the other lanes' steering patches (spec in
-weightless/spec/GLP.md), modeled on hotfix-qwen38fn-steering-projective.py:
+weightless/docs/spec/GLP.md), modeled on hotfix-qwen38fn-steering-projective.py:
 
     h <- h - alpha * (h . d_hat) d_hat
 
@@ -334,7 +334,7 @@ MODULE_BLOCK = (
     "# h <- h - alpha * (h . d_hat) d_hat on the materialized post-layer\n"
     "# residual stream [T, hidden] at chosen layers (no hyper-connection\n"
     "# widening on this arch). Same intervention as the other lanes; see\n"
-    "# weightless/spec/GLP.md.\n"
+    "# weightless/docs/spec/GLP.md.\n"
     "#\n"
     "# Steering is inert unless WEIGHTLESS_STEER_PATH is set; capture is\n"
     "# inert unless DSPARK_PROBE_DUMP_DIR is set.\n"

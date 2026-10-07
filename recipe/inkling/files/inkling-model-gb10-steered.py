@@ -64,7 +64,7 @@ logger = init_logger(__name__)
 # h <- h - alpha * (h . d_hat) d_hat on the materialized post-layer
 # residual stream [T, hidden] at chosen layers (no hyper-connection
 # widening on this arch). Same intervention as the other lanes; see
-# weightless/spec/GLP.md.
+# weightless/docs/spec/GLP.md.
 #
 # Steering is inert unless WEIGHTLESS_STEER_PATH is set; capture is
 # inert unless DSPARK_PROBE_DUMP_DIR is set.

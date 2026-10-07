@@ -6,7 +6,7 @@ brandonmusic's EXL3 4bpw stack, vLLM fork on PYTHONPATH at
 
 Variant of hotfix-glm53-steering-projective.py for the fork's
 ``vllm/models/glm5next/nvidia/model.py`` — same GLM-5.3-Flash mHC arch, same
-intervention (spec in weightless/spec/GLP.md):
+intervention (spec in weightless/docs/spec/GLP.md):
 
     h <- h - alpha * (h . d_hat) d_hat
 
@@ -296,7 +296,7 @@ MODULE_BLOCK = (
     "# h <- h - alpha * (h . d_hat) d_hat on the materialized post-layer mHC\n"
     "# stream [T, n, hidden] (flattened HC-outer to n*hidden for the\n"
     "# projection) at chosen layers. Same intervention as the other lanes;\n"
-    "# see weightless/spec/GLP.md.\n"
+    "# see weightless/docs/spec/GLP.md.\n"
     "#\n"
     "# Everything here is inert unless WEIGHTLESS_STEER_PATH is set.\n"
     "# ---------------------------------------------------------------------------\n"

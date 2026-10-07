@@ -3,7 +3,7 @@
 on the day-0 image ``vllm/vllm-openai:qwen38-flash-next``.
 
 Same intervention as the DSV4/Qwen steering patches (spec in
-weightless/spec/GLP.md):
+weightless/docs/spec/GLP.md):
 
     h <- h - alpha * (h . d_hat) d_hat
 
@@ -317,7 +317,7 @@ MODULE_BLOCK = (
     "#\n"
     "# h <- h - alpha * (h . d_hat) d_hat on the materialized post-layer\n"
     "# multi-stream [T, hc_count*hidden] at chosen layers. Same intervention\n"
-    "# as the DSV4/Qwen lanes; see weightless/spec/GLP.md.\n"
+    "# as the DSV4/Qwen lanes; see weightless/docs/spec/GLP.md.\n"
     "#\n"
     "# Everything here is inert unless WEIGHTLESS_STEER_PATH is set.\n"
     "# ---------------------------------------------------------------------------\n"

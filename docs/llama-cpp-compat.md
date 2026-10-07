@@ -3,7 +3,7 @@
 Status: verified against upstream master `b0dcb8192b` (2026-09-11, shallow
 clone at `/tmp/llama.cpp`); runtime smoke on Homebrew build b8920
 (`15fa3c493`), arm64 Mac. The GLP format itself is specified in
-[`../spec/GLP.md`](../spec/GLP.md); this doc is only about what happens when a
+[`spec/GLP.md`](spec/GLP.md); this doc is only about what happens when a
 GLP file meets stock llama.cpp.
 
 ## 1. What llama.cpp's control-vector path actually does
@@ -46,7 +46,7 @@ Everything else about the path, from source:
   slot `N` at offset `(N-1)*n_embd` (`common/common.cpp:2070`) and the
   adapter fills `tensors[il]` from offset `(il-1)*n_embd`
   (`src/llama-adapter.cpp:127`); the two off-by-ones cancel. Measured, not
-  just read: see `spec/GLP.md` §"The layer mapping, stated flatly".
+  just read: see `docs/spec/GLP.md` §"The layer mapping, stated flatly".
 - **Merging.** Multiple `--control-vector*` files are summed elementwise
   (`common/common.cpp:2107-2110`). Meaningful for additive vectors only.
 - **Metadata.** The loader reads tensor names, dtype (must be F32), and shape
@@ -123,7 +123,7 @@ run of this smoke built the synthetic vector at width 256 and the run failed
 loudly with `apply: control vector n_embd does not match model`. Shape is
 checked; semantics are not.
 
-Per the GLP reader-conformance rules (`spec/GLP.md` §Reader conformance), a
+Per the GLP reader-conformance rules (`docs/spec/GLP.md` §Reader conformance), a
 reader that cannot project must fail on `mode=project`. Stock llama.cpp does
 not read the key, so the failure is on us to prevent: **do not hand GLP files
 to stock llama.cpp's `--control-vector`.**
@@ -183,7 +183,7 @@ One honest caveat on semantics: the baked adapter projects each residual
 weight-orthogonalization form — while runtime GLP steering projects the
 *accumulated post-layer residual*. The post-layer residual is a sum with no
 single `W` behind it, so it is not expressible as a rank-1 LoRA
-(`spec/GLP.md` §"Naming"). bake validates the per-writer identity
+(`docs/spec/GLP.md` §"Naming"). bake validates the per-writer identity
 `B(Ax) == h − α(h·d̂)d̂` numerically on the first and last baked matrix
 (`bake-report.json` → `roundtrip`); the writer-vs-stream difference is real
 but is the documented, validated baked form — and it is the only GLP-derived
@@ -192,7 +192,7 @@ artifact stock llama.cpp can serve.
 The runtime-projection path in llama.cpp exists only in the fork
 (`github.com/msuiche/llama.cpp`, currently private): projective branch in
 `apply_to()`, `glp.*` metadata gating, and pinning tests — the change list is
-in `spec/GLP.md` §Implementations.
+in `docs/spec/GLP.md` §Implementations.
 
 ## 5. Verification status
 

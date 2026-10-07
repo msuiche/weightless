@@ -251,4 +251,4 @@ the sites after a weight reload from disk (which replaces the model object).
   repository.
 - This repository: `sglang-plugin/README.md`,
   `vllm-plugin/weightless_steer/core.py` and `archs/base.py` (the shared
-  loader and the vLLM site), `docs/vllm-plugin-design.md`, `spec/GLP.md`.
+  loader and the vLLM site), `docs/vllm-plugin-design.md`, `docs/spec/GLP.md`.

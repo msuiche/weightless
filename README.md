@@ -90,7 +90,7 @@ The model weights are never redistributed — what this repo ships is the
 *intervention*, tested and self-contained:
 
 - **The steering file.** A GLP vector — a spec-conformant control-vector
-  GGUF ([`spec/GLP.md`](spec/GLP.md)) with per-layer
+  GGUF ([`docs/spec/GLP.md`](docs/spec/GLP.md)) with per-layer
   directions, derived by us and published under
   [`msuiche/`](https://huggingface.co/msuiche) (see
   [Steering artifacts](#steering-artifacts-ours)). No model weights inside.
@@ -174,7 +174,7 @@ speak LoRA.
 
 Deeper: [`FAQ.md`](FAQ.md) (answers to the questions people actually ask —
 backdoor auditability, vector maintenance under retraining, effective range,
-MoE/loop coverage, dosage, termination), [`spec/GLP.md`](spec/GLP.md) (the
+MoE/loop coverage, dosage, termination), [`docs/spec/GLP.md`](docs/spec/GLP.md) (the
 format contract),
 [`docs/llama-cpp-compat.md`](docs/llama-cpp-compat.md) (source-verified
 mechanics), [`tools/captain-vector/README.md`](tools/captain-vector/README.md)
@@ -274,7 +274,7 @@ routed experts per MoE layer on top of the 3.0bpw quant. Benchmarks pass,
 but the degradation concentrates in rare behaviour by construction, and the
 control vector would need re-deriving on the pruned circuit. TP=1 DSV4 is a
 smaller, approximated model; we do not serve it. The steering *contract* in
-`spec/GLP.md` remains lane-independent.
+`docs/spec/GLP.md` remains lane-independent.
 
 ## Layout
 
@@ -306,7 +306,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `scripts/` | `dash.py` (below), `dspark-router.py`, `memory-watchdog-gpu.sh`, `probe-refusal.py` |
 | `scripts/dash.py` | live terminal view of any serving lane (stdlib only, ANSI colors on a terminal — brand pink/cyan, KV gauge green→yellow→red; `--no-color`/`NO_COLOR` for plain): `python3 scripts/dash.py <url>` for a live view, `--once` for a scriptable snapshot — prefill/decode tok/s, queue depth, KV pressure, prefix-cache hit rate, TTFT, spec-decode acceptance. Also in the wizard menu ("Watch a lane") |
 | `tests/smoke/` | endpoint smoke tests: endpoint / chat / tool-call / headless omp agent loop — `tests/smoke/README.md` |
-| `spec/GLP.md` | the GLP format spec: the `glp.mode` contract, layer-id mapping, why an additive reader must refuse the file |
+| `docs/spec/GLP.md` | the GLP format spec: the `glp.mode` contract, layer-id mapping, why an additive reader must refuse the file |
 | `CHANGELOG.md` | date-based ship log (no versioned releases yet); steering numbers live in BENCHMARK.md |
 | `BENCHMARK.md` | steering effectiveness (all GLP vectors, all suites, with domain coverage) + the serving run log |
 
@@ -362,7 +362,7 @@ Naming convention: **GLP-n** is a GLP vector touching **n layers** — GLP-29
 below is the DSV4 vector, GLP-49 the Qwen one, GLP-47 the Flash-Next one,
 GLP-44 the GLM-Flash one, GLP-77 the GLM 743B one. All five lanes' vectors are
 published under `msuiche/` on Hugging Face (gated — fetch with an HF token),
-spec-conformant per [`spec/GLP.md`](spec/GLP.md) and
+spec-conformant per [`docs/spec/GLP.md`](docs/spec/GLP.md) and
 verified against their pinned checkpoint revisions.
 
 - [`msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29`](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29)

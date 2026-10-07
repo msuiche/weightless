@@ -59,7 +59,7 @@ The shipping artifact is
 **`Qwen3.8-Flash-Next-abliterated-cyber-GLP-47-L1-47-a1.gguf`** — per-layer
 difference-of-means over the widened hyper-connection stream (10240 =
 4×2560), layers 1–47, α=1.0, spec-conformant per
-[`../../spec/GLP.md`](../../spec/GLP.md). Derived 2026-08-26 (8×H100 BF16
+[`../../docs/spec/GLP.md`](../../docs/spec/GLP.md). Derived 2026-08-26 (8×H100 BF16
 reference) and reproduced on the vLLM lane at cos 0.9931; refusal32 3.1% →
 81.2% at α=1.0 with benign/capability clean. Published at
 [`msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47`](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47)

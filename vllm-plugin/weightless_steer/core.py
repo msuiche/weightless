@@ -1,6 +1,6 @@
 """SteeringCore — the CUDA-graph-safe projective apply, shared by all archs.
 
-Ports the discipline the hotfix fleet converged on (spec/GLP.md, "Apply, in
+Ports the discipline the hotfix fleet converged on (docs/spec/GLP.md, "Apply, in
 graph ops" and the vLLM implementation note):
 
 - The direction stack is a **dense zero-padded tensor indexed by GLOBAL

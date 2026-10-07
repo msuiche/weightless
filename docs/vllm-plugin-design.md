@@ -275,4 +275,4 @@ vllm-plugin/
   [preprint](https://arxiv.org/html/2603.06588v1) (worker-extension hooks),
   [vLLM-Lens](https://www.lesswrong.com/posts/3bs27nZQuEcKhXf7q/vllm-lens-fast-interpretability-tooling-that-scales-to)
   (worker-extension steering per request).
-- GLP container spec: `spec/GLP.md`. Hotfix fleet: `patches/README.md`.
+- GLP container spec: `docs/spec/GLP.md`. Hotfix fleet: `patches/README.md`.

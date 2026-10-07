@@ -3,7 +3,7 @@
 Applies `h ← h − α(h·d̂)d̂` to the residual stream `h` (the running hidden
 state that every decoder layer adds its output to) right after every
 steered decoder layer, with per-layer unit directions `d̂` from a GLP GGUF
-control vector (`../spec/GLP.md`); alpha (`α`) is the strength of the edit.
+control vector (`../docs/spec/GLP.md`); alpha (`α`) is the strength of the edit.
 It is the SGLang counterpart of `../vllm-plugin/`: the same files, the same
 `WEIGHTLESS_STEER_*` variables, the same loader and gates (it imports
 `weightless_steer.container` and `weightless_steer.core`); only the wiring

@@ -377,7 +377,7 @@ live in `BENCHMARK.md`; this file tracks what shipped.
   (`α_{L,j} = alpha_default · dir_scales[j] · layer_scales[L]`),
   `glp.spec_version 2` gate, Gram–Schmidt at write time (loaders validate,
   never re-orthogonalize). Rank-1 artifacts byte-compatible — same
-  `content_sha256` (`spec/GLP.md`, *Rank-k* section).
+  `content_sha256` (`docs/spec/GLP.md`, *Rank-k* section).
 - captain-vector 0.4.0: rank-k across write/validate/inspect/export;
   `bake` generalized from rank-1 to rank-k LoRA (B = stacked basis, r=k).
 - `tools/captain-vector/examples/projection_adapter.py`: runnable

@@ -13,7 +13,7 @@ rest of the basis as ``direction.<N>.<j>`` (j = 1..k-1); such a layer comes
 back as a (k, n_embd) tensor, a single direction as 1-D. Rank > 1 requires
 ``glp.spec_version = 2`` and a verified orthonormal basis — the
 per-direction alphas in ``h -= sum_j alpha_j (h . d_j) d_j`` only commute
-on one (spec/GLP.md, *Rank-k*).
+on one (docs/spec/GLP.md, *Rank-k*).
 
 ``glp.mode`` is enforced, not advisory. llama.cpp ADDS a control vector; we
 PROJECT one out. The same file under the wrong operation produces no error,
@@ -131,7 +131,7 @@ def load_control_vector(
 ) -> tuple[dict, dict[int, torch.Tensor]]:
     """Load a projective GLP control vector into (metadata, {layer: tensor}).
 
-    Enforces the reader-conformance gates of spec/GLP.md that this runtime
+    Enforces the reader-conformance gates of docs/spec/GLP.md that this runtime
     can check: mode is present and "project", hook_point matches `hook`
     exactly, direction.0 is rejected, tensor names resolve to integer layer
     ids, widths are uniform, glp.spec_version is one this reader implements,

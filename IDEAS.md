@@ -116,7 +116,7 @@ gates, and we'll review for hosting under `msuiche/` on Hugging Face.
 
 - Done when: the METHODOLOGY checklist passes end-to-end — null gate,
   dose calibration on the model (never carried), held-out behavioural
-  verify, GGUF spec-conformant per `spec/GLP.md`.
+  verify, GGUF spec-conformant per `docs/spec/GLP.md`.
 
 ---
 

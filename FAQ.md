@@ -1,7 +1,7 @@
 # FAQ — GLP vectors and weightless
 
 Collected from real questions (HF threads, DMs, issues). Short answers
-here; the deep versions live in `spec/GLP.md`, the README's "Streams and
+here; the deep versions live in `docs/spec/GLP.md`, the README's "Streams and
 writers" section, `docs/llama-cpp-compat.md`, and `TROUBLESHOOTING.md`.
 
 ## What GLP is (and is not)

@@ -2,7 +2,7 @@
 
 Applies `h ← h − α(h·d̂)d̂` on the post-layer residual stream of every
 steered decoder layer, with per-layer unit directions `d̂` from a GLP GGUF
-control vector (`../spec/GLP.md`). This is the plugin successor to the
+control vector (`../docs/spec/GLP.md`). This is the plugin successor to the
 `../patches/hotfix-*-steering-projective.py` fleet: same container gates,
 same CUDA-graph discipline (dense zero-padded stack indexed by global
 layer id, tensor alpha buffer, unconditional apply, fail-closed), but no

@@ -4,7 +4,7 @@ arch ``glm_moe_dsa``) on tonyd2wild's GB10 stack (image
 ``vllm-node-tf5-glm52-b12x:probe-modded`` + the ``glm-triton`` kernel overlay
 — see recipe/glm53xl/README.md).
 
-Same intervention as the other lanes (spec in weightless/spec/GLP.md):
+Same intervention as the other lanes (spec in weightless/docs/spec/GLP.md):
 
     h <- h - alpha * (h . d_hat) d_hat
 
@@ -313,7 +313,7 @@ MODULE_BLOCK = (
     "# h <- h - alpha * (h . d_hat) d_hat on the post-layer residual stream\n"
     "# (deepseek_v2's decomposed convention: the stream is hidden_states +\n"
     "# residual) at chosen layers. Same intervention as the other lanes;\n"
-    "# see weightless/spec/GLP.md.\n"
+    "# see weightless/docs/spec/GLP.md.\n"
     "#\n"
     "# Everything here is inert unless WEIGHTLESS_STEER_PATH is set.\n"
     "# ---------------------------------------------------------------------------\n"

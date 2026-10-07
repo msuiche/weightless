@@ -41,7 +41,7 @@ services:
       - ${JIT_CACHE_DIR:-${HOME}/.cache/dsv4vl}:/vllm-cache
       # GLP steering hotfix — patches the installed model.py inside the
       # container at boot; the vector is read from /cache/huggingface via
-      # WEIGHTLESS_STEER_PATH. Spec: weightless/spec/GLP.md.
+      # WEIGHTLESS_STEER_PATH. Spec: weightless/docs/spec/GLP.md.
       - ${WEIGHTLESS_STEERING_HOTFIX:-./patches/hotfix-dsv4vl-steering-projective.py}:/opt/hotfix-dsv4vl-steering-projective.py:ro
 
     environment:

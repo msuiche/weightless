@@ -5,7 +5,7 @@ GLP (Guided Linear Projection) steers a model at inference by projecting
 the residual stream at every listed layer:  h <- h - alpha*(h.d)d  with a
 per-layer unit direction d. This module applies a GLP vector -- a GGUF v3
 container with direction.<N> tensors (N >= 1, applied at layer N) and
-glp.* metadata, spec: spec/GLP.md -- to any loaded transformers model:
+glp.* metadata, spec: docs/spec/GLP.md -- to any loaded transformers model:
 
     import glp
 
@@ -106,7 +106,7 @@ def load_glp(source):
     """Read a GLP vector as (metadata dict, {layer: F32 tensor}).
 
     source is a local path or a HF hub repo id (optionally
-    "repo_id:filename"). All spec/GLP.md reader gates are enforced here
+    "repo_id:filename"). All docs/spec/GLP.md reader gates are enforced here
     (mode, hook_point, direction.0, uniform width, layer-ids cross-check,
     spec_version, rank/orthonormal); direction.N applies at layer N, no
     offset, so the returned dict is keyed by the layer each direction

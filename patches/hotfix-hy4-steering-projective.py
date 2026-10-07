@@ -3,7 +3,7 @@
 
 Port of the DSV4 projective-steering hotfix
 (weightless/patches/hotfix-dsv4-steering-projective.py, spec in
-weightless/spec/GLP.md) to the day-0 vLLM image's hy_v4 tree
+weightless/docs/spec/GLP.md) to the day-0 vLLM image's hy_v4 tree
 (vllm/vllm-openai:hy4-preview).
 
     h <- h - alpha * (h . d_hat) d_hat
