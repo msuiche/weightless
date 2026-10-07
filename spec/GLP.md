@@ -230,7 +230,7 @@ Recognised values:
 
 | value | tensor | readers |
 |---|---|---|
-| `residual_stream_post_layer` | the accumulated residual after the layer's writes are folded in — llama.cpp's `build_cvec()` site, and the vLLM overlay's | vLLM, llama.cpp fork |
+| `residual_stream_post_layer` | the accumulated residual after the layer's writes are folded in — llama.cpp's `build_cvec()` site, and the vLLM overlay's | vLLM, SGLang, llama.cpp fork |
 | `ffn_out_pre_residual` | the FFN/MoE write alone, before the residual (on DSpark, hyper-connection) fold | ds4 |
 | `attn_out_pre_residual` | the attention write alone, before the same fold | ds4 |
 
@@ -376,6 +376,17 @@ baked in as a graph constant (alpha=1/2/4 produced byte-identical output);
 `alpha=0` traces a graph *without* the op and then caches it; a dict lookup
 becomes a `KeyError` from a stale AOT artifact. All three failure modes look like
 "steering does nothing" rather than an error.
+
+**SGLang (this repo):** `sglang-plugin/` (package `weightless_sglang`). It reads
+the file with the vLLM plugin's `weightless_steer.container` and applies the
+same gates through `weightless_steer.core`, so the reader rules above are shared
+code, not a copy. It serves `residual_stream_post_layer` on every architecture
+row except DeepSeek-V4, which accepts only `ffn_out_pre_residual` (the FFN write
+before the mHC fold) and refuses a residual-site file. The steering sites are
+installed before CUDA-graph capture and read the direction stack and alpha from
+GPU buffers, for the same reason as the note above. Enabled with the same
+`WEIGHTLESS_STEER_PATH`, `WEIGHTLESS_STEER_ALPHA`, `WEIGHTLESS_STEER_LAYERS`.
+Design: `docs/sglang-plugin-design.md`.
 
 **llama.cpp fork** — `github.com/msuiche/llama.cpp` (currently private), on top of the existing
 control vector path:
