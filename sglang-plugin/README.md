@@ -204,6 +204,15 @@ published GLP files), `WEIGHTLESS_TEST_CONFIG_DIR` (a folder of
 checkpoint's config.json each), and `WEIGHTLESS_TEST_SGLANG_TREES` (more
 SGLang package folders for the structure tests, os.pathsep separated). The
 tests that run SGLang's own code need SGLang in the environment. Every skip
-names what is missing. The suite has 365 tests; on SGLang main with every
-optional variable set, only the 6 CUDA-only cases skip on a CPU host, and
-with none set 87 skip.
+names what is missing. The suite has 365 tests; on SGLang upstream main at
+`2f5c9ac43d76` (2026-09-25, the reference checkout of
+`../docs/sglang-plugin-design.md`) with every optional variable set, only
+the 6 CUDA-only cases skip on a CPU host, and with none set 87 skip.
+
+That commit is the one validated SGLang. The structure tests pin what each
+row relies on in SGLang's model files, and upstream moves fast: SGLang
+0.5.21 (2026-10-01, six days after the pin) already fails 11 of them
+(`srt/layers/communicator.py` moved, `DeepseekV2DecoderLayer` dropped the
+`residual` return). A newer SGLang is not supported until the rows are
+re-pinned against it and the suite is green again; serving one anyway fails
+closed at boot rather than steering the wrong tensor.
