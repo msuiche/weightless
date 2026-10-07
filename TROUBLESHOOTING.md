@@ -39,6 +39,16 @@ Symptom → likely cause, in the order to check:
 3. **Node has no 192.168.100.x fabric address / peers ping DOWN** — the far
    Spark is off or wedged (NO-CARRIER class). Physical check: power LED,
    power brick, QSFP cable. No restart policy fixes a dead peer.
+4. **`/v1/models` returns 200 but every completion hangs** — the engine core
+   is dead and the API frontend is answering from cache (a 303/timeout after
+   ~150 s on Modal is this). Check engine logs for the crash. Seen
+   2026-10-06: glm5next day-0 fork image, `breakable_cudagraph.py:412`
+   "Input tensor addresses changed between capture and replay (expected 3,
+   got 2)" at first inference — deterministic with a modified checkpoint
+   (baked LoRA merge), base checkpoint fine, bake proven bit-exact. The
+   fork's breakable-graph path is value-sensitive; do not retry-loop it.
+   Fix: serve glm5next with stock vLLM ≥0.30 (upstream since PR #53906,
+   verified 0.31.0) — no breakable path. See recipe/glm53 README.
 
 ## Spark wedges (silent freeze)
 

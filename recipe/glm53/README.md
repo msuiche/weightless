@@ -59,6 +59,15 @@ and receipt). We reference, we do not fork.
     post-load in every v9 boot) — do not use it; v8 is the stable ceiling.
   - The start script refuses any image tag without `sm121` in it, and checks
     the image ID is identical on all four nodes.
+  - **x86/H200 (cloud) is different:** glm5next is in stock vLLM upstream
+    since v0.30 ([PR #53906](https://github.com/vllm-project/vllm/pull/53906)),
+    so on sm90 use stock `vllm>=0.30` (verified 0.31.0, 2026-10-06) — NOT the
+    day-0 fork. The fork forces FULL_AND_PIECEWISE+breakable cudagraphs and
+    crashes deterministically at first inference with a *value-sensitive*
+    replay assert (`breakable_cudagraph.py:412`, "expected 3 input addresses,
+    got 2") the moment the checkpoint is modified (baked-LoRA merge); the
+    unmodified base serves fine, which makes it nasty to diagnose. The sm121
+    patch stack above remains required on GB10 — stock has no sm121 path.
 
 ## Serve flags (theirs, hardware-validated)
 
@@ -184,7 +193,7 @@ per-layer-loop regression; layers=0 means unsteered).
 The shipping artifact is
 **`GLM-5.3-Flash-abliterated-cyber-GLP-44-L1-44-a2.gguf`** — per-layer
 difference-of-means over the mHC stream (16384 = 4×4096), layers 1–44,
-α=2.0, spec-conformant per [`../../spec/GLP.md`](../../spec/GLP.md).
+α=2.0, spec-conformant per [`../../docs/spec/GLP.md`](../../docs/spec/GLP.md).
 Published at
 [`msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44`](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44)
 (gated — fetch with an HF token), at the **root of the HF cache on ALL FOUR
