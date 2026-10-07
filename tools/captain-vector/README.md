@@ -30,6 +30,28 @@ python3 ../../weightless.py export some.gguf --out v.safetensors
                                         # glp.*/general.* provenance in __metadata__
 ```
 
+`audit` answers the supply-chain question about a file you did not derive —
+could this vector hide a backdoor the way a poisoned checkpoint can? — from
+the file alone, in the same stdlib-only lane:
+
+```sh
+python3 ../../weightless.py audit some.gguf [--json] [--expect-sha256 HEX]
+```
+
+A backdoored checkpoint hides its delta inside gigabytes of edited weights;
+a GLP file leaves the weights stock (hash-verifiable against the vendor) and
+*is* the complete delta. The audit proves the file stays inside that
+contract: every byte is accounted for (direction tensors and declared
+metadata — trailing or hidden bytes fail), every tensor is a finite fp32
+`direction.N` of unit norm, the mechanism is the unconditional,
+input-independent `h ← h − α(h·d̂)d̂` (so there is no conditional a trigger
+phrase could fire), the effective α stays in the published band, and the
+content hash recomputes from the tensor bytes. It ends with what it cannot
+prove — semantic intent, and the base model's own integrity — because
+claiming otherwise would be the lie. Exit 1 on any FAIL; WARNs list things
+worth a human's eyes (unknown metadata keys, URLs stashed in inert fields,
+out-of-band alphas, sign-flipped or spiky directions).
+
 `bake` is the one command that produces something other than a view of the
 GGUF. Treat it as a **troubleshooting and interop option, not a serving
 path**: reach for it to validate that a direction lands at all (attach the

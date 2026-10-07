@@ -4,6 +4,28 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-10-07
+
+### Added
+- **`captain-vector audit`: supply-chain audit of a GLP file, from the file
+  alone** (stdlib-only, `weightless.py audit f.gguf [--json]
+  [--expect-sha256 HEX]`, captain-vector 0.5.0). The poisoned-checkpoint
+  answer for the format: the weights stay stock and hash-verifiable, and the
+  vector is the complete delta — so the audit proves it, byte by byte. FAILs
+  on unaccounted/trailing bytes, non-`direction.N` tensors, non-finite
+  values, a recomputed `glp.content_sha256` mismatch, or a publisher-hash
+  mismatch; WARNs on unknown metadata keys, URLs in inert fields,
+  out-of-band or negative alphas, and sign-flipped or spiky directions. The
+  verdict states in writing what the audit cannot prove (semantic intent,
+  base-model integrity). FAQ: "Can a GLP file hide a backdoor?"
+
+### Changed
+- `sglang-plugin/README.md` names the validated SGLang pin (`2f5c9ac43d76`)
+  and the re-pin policy: upstream 0.5.21 already fails 11 structure-pin
+  tests, and a newer SGLang is unsupported until the rows go green against
+  it. (Post-merge follow-up on PR #4; the GLM-5.3-Flash steered-boot
+  nondeterminism it disclosed is tracked as issue #5.)
+
 ## 2026-10-04
 
 ### Added

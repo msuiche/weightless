@@ -18,6 +18,35 @@ Checkpoints force every consumer to re-download the world; vectors ride
 on whatever copy of the base you already have, including your
 quantization of choice.
 
+### Can a GLP file hide a backdoor?
+
+No — the mechanism has no room for one. The poisoned-checkpoint attacks
+that circulate on Hugging Face (backdoored fine-tunes and abliterated
+builds that pass every benchmark, then fire on a trigger phrase, a date,
+or a customer name) hide inside gigabytes of edited weights, and no
+scanner enumerates that space. A GLP file inverts the problem: the
+weights stay stock — hash-verifiable against the vendor's repo — and
+the vector file *is* the complete delta, a few hundred KB you can
+account for byte by byte.
+
+What the file can express is one edit per steered layer,
+`h ← h − α(h·d̂)d̂` with fixed directions and a fixed α. That edit runs
+unconditionally, identically on every token of every prompt: there is
+no conditional to trigger on, no code to execute (GGUF is data, parsed
+by a bounds-checked reader), and no state between calls. An
+input-conditional backdoor does not fit in the format.
+
+`captain-vector audit` (stdlib-only, runs where the file is received)
+proves the constraint holds for a given file: every byte accounted for
+(direction tensors and declared metadata, no trailing or hidden
+payload), only `direction.N` tensors of finite fp32, unit norms, α in
+the published band, provenance and content hashes recomputed, plus a
+`--expect-sha256` pin against the publisher's announced hash. What the
+audit cannot prove is *semantic intent* — which behaviour the
+directions remove. That takes a behavioural eval, or a re-derivation
+against the hash-verified stock base; the report says so in writing
+rather than implying otherwise.
+
 ### How is GLP different from LoRA?
 
 Different object. LoRA is a *trained* additive weight delta

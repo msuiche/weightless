@@ -19,6 +19,7 @@ Usage:
   captain_vector.py --model <path> --harmful h.json --harmless b.json --out v.gguf
   captain_vector.py inspect v.gguf [--json] [--topk N]   (stdlib only)
   captain_vector.py export v.gguf --out v.safetensors    (stdlib only)
+  captain_vector.py audit v.gguf [--expect-sha256 HEX]   (stdlib only)
   captain_vector.py bake v.gguf --base <model> --out <dir>   (troubleshooting; needs torch)
 
 See README.md for the full parameter reference and the design rationale.
@@ -30,6 +31,7 @@ import datetime
 import hashlib
 import itertools
 import json
+import math
 import os
 import random
 import re
@@ -51,7 +53,7 @@ _no_grad = torch.no_grad if torch is not None else lambda: (lambda f: f)
 # gguf package), because that is where a bad file hurts. The torch import
 # above stays mandatory for derivation itself.
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 # Internal --hook names to the GLP.md hook-point strings. An unknown hook must
 # fail loud here rather than ship a file whose hook_point lies about where the
@@ -720,14 +722,20 @@ _GGUF_T_SZ = {0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1,
               10: 8, 11: 8, 12: 8}
 
 
-def _read_gguf(path):
+def _read_gguf(path, want_layout=False):
     """Minimal GGUF v3 reader: (metadata dict, [(name, dims, dtype, bytes)]).
 
     Every read is bounds-checked and every string must be valid UTF-8: this
-    reader is shared by validate/inspect/export and both apply lanes, and a
-    malformed file must fail here with a ValueError each caller already
+    reader is shared by validate/inspect/export/audit and both apply lanes, and
+    a malformed file must fail here with a ValueError each caller already
     handles -- not crash with struct.error/KeyError halfway through, and
     never hand a consumer a tensor payload shorter than the shape declares.
+
+    With ``want_layout`` the return is (meta, tensors, layout), where layout
+    is {"size", "data_base", "spans"}: the file size, the offset of the
+    tensor-data region, and one (offset, nbytes, name) per tensor whose dtype
+    this reader decodes. audit uses it to prove every byte of the file is
+    accounted for.
     """
     import struct
     d = open(path, "rb").read()
@@ -810,6 +818,16 @@ def _read_gguf(path):
         else:
             raw = b""
         tensors.append((name, dims, dtype, raw))
+    if want_layout:
+        spans = []
+        for name, dims, dtype, toff in infos:
+            n = 1
+            for x in dims:
+                n *= x
+            sz = {0: 4, 1: 2}.get(dtype)
+            if sz is not None:
+                spans.append((base + toff, sz * n, name))
+        return meta, tensors, {"size": len(d), "data_base": base, "spans": spans}
     return meta, tensors
 
 
@@ -1175,6 +1193,368 @@ def export_safetensors(gguf_path, out_path):
 
 
 # ---------------------------------------------------------------------------
+# audit -- supply-chain review of a shipped file, from the file alone
+# ---------------------------------------------------------------------------
+# The threat model is the poisoned-checkpoint one: a backdoored fine-tune or
+# abliterated build that passes every benchmark and waits for a trigger
+# phrase ("bonsoir, Elliot"), a date, or a customer name. There, the delta
+# hides inside gigabytes of weights and nobody enumerates it. A GLP file
+# inverts that: the weights stay stock (hash-verifiable against the vendor)
+# and the file IS the whole delta -- small enough to account for byte by
+# byte, and constrained by the contract to one unconditional edit per layer:
+#
+#     h <- h - alpha (h.d) d
+#
+# That edit is input-INDEPENDENT: it runs identically on every token of every
+# prompt. An input-conditional behaviour -- fire on a trigger, sleep until a
+# date -- has no encoding here; there is no conditional in the mechanism, no
+# code in the file, and no state between calls. audit_gguf proves for one
+# file that (1) every byte is accounted for: direction tensors and declared
+# metadata, nothing hidden; (2) the mechanism is the constrained one; (3) the
+# payload is sane floats, not a denial of service. What it cannot prove is
+# semantic intent -- WHICH behaviour the directions remove. That takes a
+# behavioural eval or a re-derivation against a hash-verified stock base, and
+# the report says so rather than implying otherwise.
+
+# Metadata keys outside these prefixes are listed for human review. Metadata
+# is inert (no reader executes it), so this is a WARN, not a FAIL.
+_AUDIT_KV_PREFIXES = ("general.", "glp.", "controlvector.")
+
+# String values matching this are inert but worth a human's eyes: a URL or a
+# shell fragment in a metadata field is a place a publisher can stash a
+# pointer, exactly like the staged-payload URLs of the poisoned-checkpoint
+# write-ups. Keys whose name says they hold a URL are exempt.
+_AUDIT_URLISH = re.compile(
+    r"https?://|\b(?:curl|wget|nc|ncat|powershell)\b\s|/bin/(?:ba|z)?sh\b|"
+    r"\brm\s+-[a-z]*[rf]", re.I)
+
+# Every vector we publish stays within |alpha| <= 4 (the model cards give the
+# per-file safe range). Beyond that the projection reflects and amplifies,
+# which degrades rather than steers; a negative alpha ADDS the feature.
+_AUDIT_ALPHA_BAND = 4.0
+
+
+def audit_gguf(path, expect_sha256=None):
+    """Security audit of a control-vector GGUF, from the file alone.
+
+    Stdlib-only, like validate/inspect/export: it runs where a file is
+    received, before the file goes anywhere near a server. Returns a report
+    dict; report["verdict"]["fails"] > 0 means refuse the file. FAILs break
+    the audit's core claims (unaccounted bytes, non-direction payloads, NaN,
+    a hash mismatch); WARNs are things a human should read (unknown metadata
+    keys, out-of-band alphas, heuristic anomalies in the directions).
+    """
+    checks = []
+
+    def add(ok, name, detail="", warn=False, note=False):
+        level = ("note" if note else "PASS" if ok else "WARN" if warn else "FAIL")
+        checks.append({"level": level, "check": name, "detail": detail})
+        return ok
+
+    try:
+        meta, tensors, layout = _read_gguf(path, want_layout=True)
+    except (ValueError, OSError) as e:
+        add(False, "parse", str(e))
+        return {"file": os.path.basename(path), "path": path, "checks": checks,
+                "stats": {},
+                "verdict": {"ok": False, "fails": 1, "warns": 0,
+                            "statements": ["the file does not parse as a "
+                                           "bounds-checked GGUF v3; refuse it"]}}
+
+    # -- identity -------------------------------------------------------------
+    with open(path, "rb") as f:
+        sha = hashlib.sha256(f.read()).hexdigest()
+    if expect_sha256:
+        add(sha == expect_sha256.lower(), "publisher hash",
+            f"sha256 {sha}" if sha == expect_sha256.lower() else
+            f"sha256 {sha} != publisher-announced {expect_sha256.lower()}")
+    n_dir = sum(1 for t in tensors if _parse_direction_name(t[0]))
+    identity = {"sha256": sha, "bytes": layout["size"],
+                "tensors": len(tensors), "direction_tensors": n_dir,
+                "metadata_keys": len(meta)}
+
+    # -- every byte accounted for --------------------------------------------
+    spans = sorted(layout["spans"])
+    covered_end = layout["data_base"]
+    gaps, overlap = [], False
+    for off, nb, name in spans:
+        if off < covered_end:
+            overlap = True
+        elif off > covered_end:
+            gaps.append((covered_end, off - covered_end))
+        covered_end = max(covered_end, off + nb)
+    trailing = layout["size"] - covered_end
+    unknown_dtype = [t[0] for t in tensors
+                     if t[2] not in (0, 1)]  # payload size unknowable here
+    if unknown_dtype:
+        add(True, "byte accounting",
+            f"skipped: {len(unknown_dtype)} tensor(s) have a dtype this reader "
+            f"does not decode (they FAIL the dtype check below)", note=True)
+    else:
+        add(not overlap, "tensor payloads do not overlap",
+            "two tensors alias the same bytes" if overlap else "")
+        add(trailing == 0, "no trailing bytes",
+            f"{layout['size']} bytes, all in the header, metadata and "
+            f"tensor payloads" if trailing == 0 else
+            f"{trailing} byte(s) after the last tensor payload: the file "
+            f"carries bytes no reader is told about -- a covert channel")
+        for goff, gn in gaps:
+            add(True, "payload gap", f"{gn} unused byte(s) at offset {goff}",
+                note=True)
+
+    # -- tensor inventory: nothing but direction.N[.j] ------------------------
+    widths, nonfinite = [], []
+    grouped = {}
+    for name, dims, dtype, raw in tensors:
+        pj = _parse_direction_name(name)
+        if pj is None:
+            add(False, "tensor inventory",
+                f"unexpected tensor {name!r}: a GLP file carries direction.N "
+                f"tensors and nothing else")
+            continue
+        add(dtype == 0, f"{name}: dtype",
+            "F32" if dtype == 0 else
+            f"dtype {dtype}, not F32 -- the contract is fp32 directions")
+        add(len(dims) == 1, f"{name}: shape", f"{dims}" if len(dims) != 1 else "")
+        if dtype == 0 and dims:
+            vals = _tensor_floats(dims, dtype, raw)
+            if vals is None or len(vals) != dims[0]:
+                add(False, f"{name}: payload", "payload shorter than the shape")
+                continue
+            grouped.setdefault(pj[0], {})[pj[1]] = vals
+            widths.append(dims[0])
+            bad = sum(1 for x in vals if not math.isfinite(x))
+            if bad:
+                nonfinite.append((name, bad))
+    for name, bad in nonfinite:
+        add(False, f"{name}: finite",
+            f"{bad} NaN/Inf value(s): steering with it poisons every forward "
+            f"-- a denial of service, and a loud one")
+    if widths:
+        add(len(set(widths)) == 1, "uniform width",
+            f"all directions {widths[0]} wide" if len(set(widths)) == 1 else
+            f"widths differ: {sorted(set(widths))}")
+    layer_ids = sorted(grouped)
+    add(bool(layer_ids), "direction tensors",
+        f"{len(layer_ids)} steered layers" if layer_ids else
+        "none: a GLP file steers at least one layer")
+
+    # -- the mechanism is the constrained one ---------------------------------
+    mode = meta.get("glp.mode")
+    if mode is None:
+        legacy = True
+        add(False, "glp.mode",
+            "absent: a legacy additive llama.cpp control vector. The edit is "
+            "still unconditional and input-independent (h <- h + a*d), but it "
+            "is outside the GLP contract; the provenance gates below relax to "
+            "warnings", warn=True)
+    else:
+        legacy = False
+        if mode == "project":
+            add(True, "glp.mode",
+                "project: subtractive projection, the GLP contract")
+        elif mode == "add":
+            add(True, "glp.mode",
+                "add: additive, still unconditional and input-independent but "
+                "outside the GLP contract -- know why you are serving it",
+                warn=True)
+        else:
+            add(False, "glp.mode",
+                f"{mode!r}: unrecognised, a conformant reader must refuse")
+    ver = meta.get("glp.spec_version", 1)
+    add(ver in (1, 2), "glp.spec_version", f"{ver}")
+    hook = meta.get("glp.hook_point")
+    if hook is not None:
+        add(hook in GLP_HOOKS.values(), "glp.hook_point", hook)
+    rank = int(meta.get("glp.rank", 1) or 1)
+    if rank == 1:
+        add(True, "rank", "1: one fixed direction per layer")
+    else:
+        add(bool(meta.get("glp.orthonormal") is True), "rank-k basis",
+            f"rank {rank}, orthonormal declared" if meta.get("glp.orthonormal")
+            is True else
+            f"rank {rank} without glp.orthonormal: per-direction alphas only "
+            f"commute on an orthonormal basis")
+        if meta.get("glp.orthonormal") is True:
+            worst = 0.0
+            for L, js in grouped.items():
+                for a, b in itertools.combinations(sorted(js), 2):
+                    c = abs(sum(x * y for x, y in zip(js[a], js[b])))
+                    worst = max(worst, c)
+            add(worst <= 1e-3, "rank-k basis orthonormal",
+                f"max |cos| {worst:.2e}")
+    if mode == "project":
+        try:
+            alphas, _ = glp_alphas(meta, layer_ids)
+            flat = [a for L in layer_ids for a in alphas[L]]
+            if flat:
+                lo, hi = min(flat), max(flat)
+                add(all(math.isfinite(a) for a in flat), "alphas finite",
+                    f"effective alpha range [{lo:+.3f}, {hi:+.3f}]")
+                add(lo >= 0, "alphas non-negative",
+                    f"effective alpha range [{lo:+.3f}, {hi:+.3f}]" if lo >= 0
+                    else f"effective alpha goes negative ({lo:+.3f}): that "
+                         f"ADDS the feature rather than removing it",
+                    warn=True)
+                add(hi <= _AUDIT_ALPHA_BAND, "alphas in the published band",
+                    f"max effective alpha {hi:+.3f} (published vectors stay "
+                    f"within +/-{_AUDIT_ALPHA_BAND:g})" if hi <= _AUDIT_ALPHA_BAND
+                    else f"max effective alpha {hi:+.3f} exceeds the published "
+                         f"band (+/-{_AUDIT_ALPHA_BAND:g}): the projection "
+                         f"reflects and amplifies; check the model card",
+                    warn=True)
+        except (ValueError, TypeError) as e:
+            add(False, "alpha keys", str(e))
+
+    # -- metadata hygiene -------------------------------------------------------
+    for k in sorted(meta):
+        if not k.startswith(_AUDIT_KV_PREFIXES):
+            add(False, f"metadata key {k!r}",
+                "outside the known namespaces (general./glp./controlvector.); "
+                "inert, listed for review", warn=True)
+    for k in sorted(meta):
+        v = meta[k]
+        if (isinstance(v, str) and "url" not in k.lower()
+                and _AUDIT_URLISH.search(v)):
+            add(False, f"metadata value {k!r}",
+                f"contains a URL or shell fragment (inert data, never "
+                f"executed): {v[:80]!r}", warn=True)
+
+    # -- provenance -------------------------------------------------------------
+    prov_fail = not legacy
+    for k in ("general.base_model.0.name", "general.base_model.0.organization",
+              "general.base_model.0.version", "general.base_model.0.repo_url"):
+        if k in meta:
+            add(True, k, str(meta[k])[:70])
+        else:
+            add(False, k, "MISSING" if prov_fail else
+                "absent (legacy file): pair this vector with a hash-verified "
+                "base by hand", warn=legacy)
+    pin = str(meta.get("general.base_model.0.version", ""))
+    if pin:
+        add(bool(re.fullmatch(r"[0-9a-f]{40}", pin)),
+            "base commit pin", f"{pin[:12]}… is a full sha" if len(pin) == 40
+            else f"{pin!r} is not a full commit sha -- a mutable ref is not a pin",
+            warn=True)
+    if "glp.content_sha256" in meta:
+        import struct as _struct
+        h = hashlib.sha256()
+        for L in layer_ids:
+            for j in sorted(grouped[L]):
+                h.update(_struct.pack(f"<{len(grouped[L][j])}f", *grouped[L][j]))
+        actual = h.hexdigest()
+        add(actual == meta["glp.content_sha256"], "glp.content_sha256",
+            "recomputes from the tensor bytes"
+            if actual == meta["glp.content_sha256"] else
+            f"declared {str(meta['glp.content_sha256'])[:16]}… != tensor bytes "
+            f"{actual[:16]}…")
+
+    # -- statistical profile (heuristics, WARN only) ---------------------------
+    stats = {}
+    norms = []
+    for L in layer_ids:
+        for j in sorted(grouped[L]):
+            norms.append(sum(x * x for x in grouped[L][j]) ** 0.5)
+    if norms:
+        lo, hi = min(norms), max(norms)
+        add(all(abs(x - 1.0) <= 1e-3 for x in norms), "unit directions",
+            f"norms in [{lo:.4f}, {hi:.4f}]"
+            if all(abs(x - 1.0) <= 1e-3 for x in norms) else
+            f"norms span [{lo:.4f}, {hi:.4f}]; the contract is unit vectors",
+            warn=True)
+        stats["norm_min"], stats["norm_max"] = lo, hi
+    d0 = [grouped[L][0] for L in layer_ids if 0 in grouped[L]]
+    cos = [sum(x * y for x, y in zip(a, b)) for a, b in zip(d0, d0[1:])]
+    if cos:
+        stats["cos_prev_min"] = min(cos)
+        stats["cos_prev_median"] = statistics.median(cos)
+        add(min(cos) >= 0.0, "adjacent-layer alignment",
+            f"cos(direction.L, direction.L+1) in [{min(cos):+.3f}, "
+            f"{max(cos):+.3f}], median {statistics.median(cos):+.3f}: smooth "
+            f"across depth, the signature of a measured feature"
+            if min(cos) >= 0.0 else
+            f"adjacent-layer cosine goes negative ({min(cos):+.3f}): the "
+            f"stack flips sign across depth -- atypical for a measured "
+            f"direction, worth a human look", warn=True)
+    conc = []
+    if layer_ids and len(grouped[layer_ids[0]][0]) >= 64:
+        for L in layer_ids:
+            vals = grouped[L][0]
+            tot = sum(x * x for x in vals) or 1.0
+            top = sum(sorted((x * x for x in vals), reverse=True)[:10])
+            conc.append((top / tot, L))
+    if conc:
+        worst = max(conc)
+        stats["top10_mass_max"] = worst[0]
+        add(worst[0] <= 0.5, "directions are diffuse",
+            f"largest top-10-coordinate mass {worst[0]:.2f} (layer "
+            f"{worst[1]}): a measured direction spreads its mass"
+            if worst[0] <= 0.5 else
+            f"layer {worst[1]} keeps {worst[0]:.2f} of its mass in 10 "
+            f"coordinates: spiky directions are atypical for a measured "
+            f"feature, worth a human look", warn=True)
+
+    # -- verdict -----------------------------------------------------------------
+    fails = sum(1 for c in checks if c["level"] == "FAIL")
+    warns = sum(1 for c in checks if c["level"] == "WARN")
+    stmts = []
+    if not fails:
+        stmts.append(
+            f"every byte is accounted for: {n_dir} direction tensors and "
+            f"{len(meta)} metadata keys over {layout['size']} bytes, nothing "
+            f"hidden -- this file IS the complete behavioural delta, and the "
+            f"base model stays stock (pin: {pin[:12] or 'none'}…)")
+        if mode == "project":
+            stmts.append(
+                "the mechanism is h <- h - alpha*(h.d)d per layer, applied "
+                "unconditionally and identically to every token of every "
+                "prompt: it cannot fire on a trigger phrase, a date, or a "
+                "name -- an input-conditional backdoor does not fit in this "
+                "format")
+        stmts.append(
+            "what this audit cannot prove: (1) semantic intent -- WHICH "
+            "behaviour the directions remove; answer that with a behavioural "
+            "eval, or re-derive the vector against a hash-verified stock "
+            "base. (2) the base model itself -- verify its weights against "
+            "the vendor's published hashes separately")
+    else:
+        stmts.append("refuse this file: the checks above break the audit's "
+                     "core claims")
+    return {"file": os.path.basename(path), "path": path,
+            "identity": identity, "checks": checks, "stats": stats,
+            "verdict": {"ok": not fails, "fails": fails, "warns": warns,
+                        "statements": stmts}}
+
+
+def format_audit(rep):
+    """Render an audit_gguf report as text."""
+    out = [f"  {rep['file']}"]
+    if "identity" in rep:
+        i = rep["identity"]
+        out.append(f"  sha256 {i['sha256']}")
+        out.append(f"  {i['bytes']} bytes, {i['direction_tensors']} direction "
+                   f"tensors ({i['tensors']} total), {i['metadata_keys']} "
+                   f"metadata keys")
+    for c in rep["checks"]:
+        if c["level"] == "PASS":
+            continue
+        out.append(f"  [{c['level']:4s}] {c['check']}"
+                   + (f" -- {c['detail']}" if c["detail"] else ""))
+    s = rep.get("stats") or {}
+    if s:
+        out.append("  stats: " + ", ".join(
+            f"{k}={v:+.4f}" if isinstance(v, float) else f"{k}={v}"
+            for k, v in s.items()))
+    v = rep["verdict"]
+    out.append("")
+    for st in v["statements"]:
+        out.append(f"  {st}")
+    out.append(f"\n  verdict: {'AUDITABLE' if v['ok'] else 'REFUSE'} "
+               f"({v['fails']} FAIL, {v['warns']} WARN)")
+    return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------
 # bake -- fold a shipped vector into a rank-k PEFT/LoRA adapter (needs torch)
 # ---------------------------------------------------------------------------
 # inspect/export stay stdlib-only because they run where files are served;
@@ -1531,7 +1911,7 @@ def _bake_cmd(argv):
 
 
 def _file_cmd(cmd, argv):
-    """Dispatch the stdlib-only file subcommands (inspect, export)."""
+    """Dispatch the stdlib-only file subcommands (inspect, export, audit)."""
     p = argparse.ArgumentParser(prog=f"captain-vector {cmd}")
     p.add_argument("file", help="control-vector GGUF")
     if cmd == "inspect":
@@ -1539,6 +1919,12 @@ def _file_cmd(cmd, argv):
                        help="machine-readable report instead of text")
         p.add_argument("--topk", type=int, default=5, metavar="N",
                        help="top-N magnitude dimensions per layer (0 skips)")
+    elif cmd == "audit":
+        p.add_argument("--json", action="store_true",
+                       help="machine-readable report instead of text")
+        p.add_argument("--expect-sha256", default="", metavar="HEX",
+                       help="the publisher-announced file hash; a mismatch "
+                            "fails the audit")
     else:
         p.add_argument("--out", required=True, metavar="PATH.safetensors")
     a = p.parse_args(argv)
@@ -1546,6 +1932,10 @@ def _file_cmd(cmd, argv):
         if cmd == "inspect":
             rep = inspect_gguf(a.file, topk=a.topk)
             print(json.dumps(rep, indent=2) if a.json else format_inspect(rep))
+        elif cmd == "audit":
+            rep = audit_gguf(a.file, expect_sha256=a.expect_sha256 or None)
+            print(json.dumps(rep, indent=2) if a.json else format_audit(rep))
+            return 1 if rep["verdict"]["fails"] else 0
         else:
             names = export_safetensors(a.file, a.out)
             print(f"  wrote {a.out}: {len(names)} direction tensors "
@@ -1608,7 +1998,7 @@ def main():
     # than the derivation flags below; dispatch before argparse sees them.
     # bake joins them here (it also takes a GGUF, not derivation flags) but is
     # NOT stdlib-only -- it needs torch and safetensors for the base weights.
-    if len(sys.argv) > 1 and sys.argv[1] in ("inspect", "export"):
+    if len(sys.argv) > 1 and sys.argv[1] in ("inspect", "export", "audit"):
         sys.exit(_file_cmd(sys.argv[1], sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "bake":
         sys.exit(_bake_cmd(sys.argv[2:]))
