@@ -17,8 +17,8 @@ Stack:
     ~198 GB on the glm53-flash volume, staged by the fork lane's
     ensure_weights; arch = Glm5NextForConditionalGeneration).
   - Shape: H100:4 single container, TP4 (~50 GiB weights/rank), marlin MoE
-    backend, fp8 KV — identical serve flags to the fork lane so the a0/a2
-    numbers are comparable to modal/out-glm53-plugin-test/.
+    backend, bf16 KV (stock 0.31's sparse-MLA sm90 fa3 path rejects the
+    uint8 indexer kpool under fp8 KV — fork-lane fp8 KV does not port).
   - Vector: msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44 (gated,
     hf-token secret), GLM-5.3-Flash-abliterated-cyber-GLP-44-L1-44-a2.gguf.
   - LoRA arm: --enable-lora with a generated random-init rank-8 LoRA on
@@ -28,21 +28,28 @@ Stack:
     are needed for LoRA; this arm proves the mechanics before a real RL
     artifact exists.
 
-Arms (one deploy each; alpha is a model-init buffer):
+Arms (one deploy/run each; alpha is a model-init buffer):
     modal run cloud_serve_glm53_stock.py::preflight    # CPU gates, incl.
                                                        # the plugin test
                                                        # suite in-image
-    modal run cloud_serve_glm53_stock.py::ensure_lora  # CPU, ~130 MB
-    GLM53_ARM=stock modal deploy cloud_serve_glm53_stock.py
-    python3 modal/probe_glm53_stock.py parity --base-url <url> --tag stock
-    modal app stop weightless-glm53-stock031
-    GLM53_ARM=a0 modal deploy cloud_serve_glm53_stock.py     # + probe a0
-    GLM53_ARM=a2  modal deploy cloud_serve_glm53_stock.py    # + eval driver
-    GLM53_ARM=lora modal deploy cloud_serve_glm53_stock.py   # + probe lora
+    modal run cloud_serve_glm53_stock.py::ensure_lora  # CPU, ~21 MB
+    GLM53_ARM=a2   modal run cloud_serve_glm53_stock.py::eval_arm  # dose
+    GLM53_ARM=lora modal run cloud_serve_glm53_stock.py::eval_arm  # LoRA
+    GLM53_ARM=stock modal deploy cloud_serve_glm53_stock.py        # endpoint
+
+NOTE 2026-10-06: the web_server endpoint mode (serve()) is degraded on
+current Modal — the container is recycled minutes after serve() returns at
+the boot marker, before/while eval traffic flows (observed: five boot loops
+in a row, SIGTERM right after "Application startup complete" + one 200).
+eval_arm sidesteps the routing layer entirely: vllm runs as a subprocess of
+the GPU function and requests go over localhost, so one `modal run` = one
+boot + one eval, no endpoint. serve() is kept for endpoint parity with the
+other lanes but do not run long evals through it until this is understood.
 
 Boot evidence: same sitecustomize shim discipline as the fork lane
-(WEIGHTLESS-SHIM stderr markers in every serve-stack process); the stock
-arm instead gates on uvicorn's "Application startup complete" line.
+(WEIGHTLESS-SHIM stderr markers in every serve-stack process); eval_arm
+fails closed on the steering-active line missing before it serves a single
+request.
 
 Cost discipline: max_containers=1, scaledown_window=180, stop the app
 between arms. Expected spend: 4 boots x ~25 min x 4 H100.
@@ -72,7 +79,13 @@ LORA_NAME = "smoke-lora"
 ARM = os.environ.get("GLM53_ARM", "stock")   # stock | a0 | a2 | lora
 GPU = os.environ.get("GLM53_GPU", "H100:4")
 TP = os.environ.get("GLM53_TP", "4")
-KV_DTYPE = os.environ.get("GLM53_KV_DTYPE", "fp8_e4m3")
+# Stock 0.31, fp8 KV REJECTED: the sparse-MLA (indexer) sm90 path stores its
+# kpool as uint8 under fp8 KV and flashinfer's fa3 backend refuses uint8 at
+# cudagraph capture (flashinfer_mla_sparse_sm90.py, "MLA kv_data_type
+# torch.uint8 is not supported by the fa3 backend"). The day-0 fork shipped
+# a patched sparse path that tolerated it. bf16 KV costs ~3 GB here (11 MLA
+# layers share a 576-float compressed cache), so the flag is simply dropped.
+KV_DTYPE = os.environ.get("GLM53_KV_DTYPE", "")
 ENFORCE_EAGER = os.environ.get("GLM53_ENFORCE_EAGER", "")
 GMU = os.environ.get("GLM53_GMU", "0.92")
 ALPHA = {"a0": "0.0", "a2": "2.0", "lora": "0.0"}.get(ARM)
@@ -119,6 +132,16 @@ image = (modal.Image.from_registry(IMAGE, add_python="3.12",
                          "/work/vllm_logging_config.json", copy=True)
          .add_local_file(ROOT / "modal" / "sitecustomize.py",
                          "/opt/weightless-shim/sitecustomize.py", copy=True)
+         # Eval suites for the in-container eval_arm (read-only data).
+         .add_local_file(SPARK / "refusal-research" / "suites" / "contrasts"
+                         / "refusal32-suite.json",
+                         "/work/suites/refusal32-suite.json", copy=True)
+         .add_local_file(SPARK / "refusal-research" / "suites" / "core"
+                         / "cyber32-suite.json",
+                         "/work/suites/cyber32-suite.json", copy=True)
+         .add_local_file(SPARK / "refusal-research" / "suites" / "core"
+                         / "benign32-suite.json",
+                         "/work/suites/benign32-suite.json", copy=True)
          .run_commands(
              _PY_DISCOVER,
              # rm -rf: a stale setuptools build/ tree next to the sources
@@ -384,7 +407,7 @@ def _serve_cmd(model_path: str) -> list:
     # The container re-reads the arm switches from its own env (the deploy
     # shell's values reach this function body only through the function env
     # dict below — learned the hard way on the fork lane).
-    kv_dtype = os.environ.get("GLM53_KV_DTYPE", "fp8_e4m3")
+    kv_dtype = os.environ.get("GLM53_KV_DTYPE", "")
     gmu = os.environ.get("GLM53_GMU", "0.92")
     cmd = [
         vllm_py, "-m", "vllm.entrypoints.openai.api_server",
@@ -437,6 +460,193 @@ _serve_env = dict(ENV, HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1",
 if ALPHA is not None:
     _serve_env["WEIGHTLESS_STEER_PATH"] = VECTOR_PATH
     _serve_env["WEIGHTLESS_STEER_ALPHA"] = ALPHA
+
+
+SUITES = {
+    "cyber32": "/work/suites/cyber32-suite.json",
+    "refusal32": "/work/suites/refusal32-suite.json",
+    "benign32": "/work/suites/benign32-suite.json",
+}
+
+
+@app.function(image=image, volumes={"/data": vol}, gpu=GPU,
+              timeout=4 * 3600, env=_serve_env)
+def eval_arm():
+    """One boot + one eval, entirely in-container: no endpoint lifecycle.
+
+    serve() (web_server deploy) is degraded on current Modal — the container
+    is recycled minutes after the function returns at the boot marker, so an
+    external eval driver loses the server mid-run (2026-10-06: five boot
+    loops, SIGTERM right after "Application startup complete"). Here vllm is
+    a subprocess of the GPU function and requests go over localhost; the
+    function stays alive for the whole eval. Steered arms fail closed: the
+    steering-active line must appear before the first request is sent.
+
+    Arm contents (results land in /data/out-glm53-stock031/ and print to
+    stdout; scoring happens locally with the repo harness):
+      a2   — cyber32 + refusal32 + benign32 (the dose run)
+      lora — the 12-prompt probe set as base AND as smoke-lora (divergence),
+             plus cyber32 + refusal32 as the base model: with LoRA modules
+             loaded but inactive the base path must stay numerically
+             identical to the a0 arm (cross-checked locally against
+             probe-a0.json), so this doubles as the a0 suite read without a
+             third boot.
+      a0   — cyber32 + refusal32 (standalone behavioral-parity read)
+      stock — the 12-prompt probe set + cyber32 + refusal32
+    """
+    import concurrent.futures as cf
+    import json
+    import signal
+    import subprocess
+    import time
+    import urllib.request
+
+    arm = os.environ.get("GLM53_ARM", "stock")
+
+    def load_suite(path):
+        d = json.load(open(path))
+        rows = d if isinstance(d, list) else (d.get("results")
+                                              or d.get("items"))
+        return [r["prompt"] if isinstance(r, dict) else r for r in rows]
+
+    cyber = load_suite(SUITES["cyber32"])
+    refusal = load_suite(SUITES["refusal32"])
+    benign = load_suite(SUITES["benign32"])
+    probes = cyber[:8] + benign[:4]          # == probe_glm53_stock.PROMPTS
+
+    if arm == "a2":
+        plan = [("cyber32", cyber, SERVED_MODEL, "cyber32-a2.0.json"),
+                ("refusal32", refusal, SERVED_MODEL, "refusal32-a2.0.json"),
+                ("benign32", benign, SERVED_MODEL, "benign32-a2.0.json")]
+    elif arm == "lora":
+        plan = [("probe", probes, SERVED_MODEL, "probe-lora-base.json"),
+                ("probe", probes, LORA_NAME, "probe-lora-smoke.json"),
+                ("cyber32", cyber, SERVED_MODEL, "cyber32-a0.0.json"),
+                ("refusal32", refusal, SERVED_MODEL, "refusal32-a0.0.json")]
+    elif arm == "a0":
+        plan = [("cyber32", cyber, SERVED_MODEL, "cyber32-a0.0.json"),
+                ("refusal32", refusal, SERVED_MODEL, "refusal32-a0.0.json")]
+    else:
+        plan = [("probe", probes, SERVED_MODEL, "probe-stock-inc.json"),
+                ("cyber32", cyber, SERVED_MODEL, "cyber32-stock.json"),
+                ("refusal32", refusal, SERVED_MODEL, "refusal32-stock.json")]
+
+    model_path = _model_snapshot_path()
+    cmd = _serve_cmd(model_path)
+    log_dir = "/data/out-glm53-stock031"
+    os.makedirs(log_dir, exist_ok=True)
+    stamp = time.strftime("%m%d-%H%M%S")
+    log_path = f"{log_dir}/eval-{arm}-{stamp}.log"
+    logf = open(log_path, "a")
+    logf.write(f"===== eval_arm {arm} {stamp} =====\n")
+    logf.flush()
+    print("+", " ".join(cmd), flush=True)
+    print(f"eval_arm: arm={arm} gpu={GPU} -> {log_path}", flush=True)
+    proc = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT,
+                            env=dict(os.environ, PYTHONUNBUFFERED="1",
+                                     PYTHONPATH="/opt/weightless-shim:"
+                                     + os.environ.get("PYTHONPATH", "")))
+
+    def _cleanup():
+        proc.terminate()
+        try:
+            proc.wait(120)
+        except Exception:
+            proc.kill()
+        logf.close()
+        vol.commit()
+
+    def _sigterm(signum, frame):
+        _cleanup()
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _sigterm)
+
+    def post_chat(model, prompt, max_tokens, timeout=900):
+        body = {"model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0, "max_tokens": max_tokens}
+        req = urllib.request.Request(
+            "http://127.0.0.1:8000/v1/chat/completions",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            resp = json.load(r)
+        ch = resp["choices"][0]
+        usage = resp.get("usage") or {}
+        return {"completion": ch["message"].get("content") or "",
+                "finish_reason": ch.get("finish_reason"),
+                "completion_tokens": usage.get("completion_tokens")}
+
+    # Readiness: port answers AND (steered arms) the steering line is in the
+    # log. The shim marker lands at worker spawn; the plugin's own
+    # "weightless GLP steering active" lands at model init — either proves
+    # the steered class booted; NEITHER by the deadline = fail closed.
+    steered = arm in ("a0", "a2", "lora")
+    t0 = time.time()
+    printed_marker = False
+    models = []
+    while True:
+        if proc.poll() is not None:
+            _cleanup()
+            raise RuntimeError(f"vllm died rc={proc.returncode}; "
+                               f"log {log_path}")
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:8000/v1/models",
+                                        timeout=10) as r:
+                models = [m["id"] for m in json.load(r)["data"]]
+            ok = True
+            if steered:
+                txt = open(log_path, errors="replace").read()
+                hits = [l for l in txt.splitlines()
+                        if "weightless GLP steering active" in l
+                        or "WEIGHTLESS-SHIM: steering core loaded" in l]
+                ok = bool(hits)
+                if ok and not printed_marker:
+                    print("STEERING-LINE:", hits[0], flush=True)
+                    printed_marker = True
+            if ok:
+                break
+        except Exception:
+            pass
+        if time.time() - t0 > 75 * 60:
+            _cleanup()
+            raise RuntimeError("never ready (port or steering line); "
+                               f"log {log_path}")
+        time.sleep(20)
+    print(f"ready after {time.time() - t0:.0f}s: models={models}",
+          flush=True)
+    if arm == "lora":
+        assert SERVED_MODEL in models and LORA_NAME in models, models
+        print(f"LORA OK: both models listed: {models}", flush=True)
+
+    post_chat(SERVED_MODEL, "Say OK.", 8)
+    print("warm-up ok", flush=True)
+
+    alpha = os.environ.get("WEIGHTLESS_STEER_ALPHA", "")
+    for suite_name, prompts, model, out_name in plan:
+        items = [None] * len(prompts)
+        t1 = time.time()
+        with cf.ThreadPoolExecutor(4) as ex:
+            futs = {ex.submit(post_chat, model, p, 400): i
+                    for i, p in enumerate(prompts)}
+            for fut in cf.as_completed(futs):
+                i = futs[fut]
+                r = fut.result()
+                items[i] = {"i": i, "prompt": prompts[i], **r}
+                print(f"  [{out_name}] #{i}: {r['completion_tokens']} tok, "
+                      f"fr={r['finish_reason']}", flush=True)
+        rec = {"suite": suite_name, "alpha": float(alpha or 0.0),
+               "model": model, "max_new": 400, "decoding": "greedy",
+               "items": items}
+        out_path = f"{log_dir}/{out_name}"
+        json.dump(rec, open(out_path, "w"), indent=1)
+        vol.commit()
+        print(f"{out_name}: {len(items)} completions in "
+              f"{time.time() - t1:.0f}s -> {out_path}", flush=True)
+
+    _cleanup()
+    print(f"EVAL_ARM {arm} DONE", flush=True)
 
 
 @app.function(image=image, volumes={"/data": vol}, gpu=GPU,
