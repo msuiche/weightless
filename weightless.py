@@ -10,6 +10,8 @@
     python3 weightless.py inspect f.gguf  metadata + per-layer stats of a GLP GGUF
     python3 weightless.py export f.gguf --out v.safetensors
                                           direction tensors as .safetensors
+    python3 weightless.py audit f.gguf    supply-chain audit: prove the file is
+                                          the complete delta, nothing hidden
     python3 weightless.py bake f.gguf --base <model> --out <dir>
                                           fold the vector into a PEFT LoRA adapter
 
@@ -40,6 +42,8 @@ COMMANDS = {
                 "metadata and per-layer stats of a control-vector GGUF [--json] [--topk N]"),
     "export": ([PY, os.path.join(HERE, "tools", "captain-vector", "captain_vector.py"), "export"],
                "export direction tensors as .safetensors (--out required)"),
+    "audit": ([PY, os.path.join(HERE, "tools", "captain-vector", "captain_vector.py"), "audit"],
+              "supply-chain audit of a control-vector GGUF [--json] [--expect-sha256 HEX]"),
     "bake": ([PY, os.path.join(HERE, "tools", "captain-vector", "captain_vector.py"), "bake"],
              "bake a GGUF vector into a rank-1 PEFT LoRA adapter (--base/--out required)"),
 }

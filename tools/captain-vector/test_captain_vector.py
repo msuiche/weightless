@@ -51,6 +51,23 @@ def _gguf(path, kvs, tensors, dtype=0):
     blob += b"\0" * pad + data
     open(path, "wb").write(blob)
 
+def _gguf_named(path, kvs, tensors, dtype=0):
+    """Like _gguf but takes an ordered list of (name, floats): fixtures that
+    need a tensor named something other than direction.N."""
+    blob = b"GGUF" + struct.pack("<IQQ", 3, len(tensors), len(kvs)) + b"".join(kvs)
+    infos, data = b"", b""
+    off = 0
+    for name, vals in tensors:
+        infos += struct.pack("<Q", len(name)) + name.encode()
+        infos += struct.pack("<I", 1) + struct.pack("<Q", len(vals))
+        infos += struct.pack("<I", dtype) + struct.pack("<Q", off)
+        data += struct.pack(f"<{len(vals)}f", *vals)
+        off += 4 * len(vals)
+    blob += infos
+    pad = (32 - len(blob) % 32) % 32
+    blob += b"\0" * pad + data
+    open(path, "wb").write(blob)
+
 _GOOD_KVS = [
     _kv_str("general.architecture", "controlvector"),
     _kv_str("glp.mode", "project"), _kv_u32("glp.spec_version", 1),
@@ -353,6 +370,147 @@ with tempfile.TemporaryDirectory() as t:
     check("malformed: validate on a missing path fails cleanly (was a "
           "traceback)",
           cv.validate_gguf(os.path.join(t, "missing.gguf"), out=quiet) == 1)
+
+    # --- audit: the supply-chain question, from the file alone --------------
+    # The claim under test: a GLP file is small enough to account for byte by
+    # byte, and the contract constrains it to one unconditional, input-
+    # independent edit per layer -- so a poisoned-checkpoint-style backdoor
+    # (fire on a trigger phrase) has no encoding. audit proves the constraint
+    # holds for one file and refuses files that break it.
+    arep = cv.audit_gguf(good)
+    check("audit: conformant file is auditable",
+          arep["verdict"]["ok"] and arep["verdict"]["fails"] == 0)
+    check("audit: identity records the file hash and the tensor count",
+          arep["identity"]["sha256"] ==
+          hashlib.sha256(open(good, "rb").read()).hexdigest()
+          and arep["identity"]["direction_tensors"] == 2)
+    check("audit: report is JSON-serializable",
+          json.loads(json.dumps(arep))["verdict"]["ok"] is True)
+    txt = cv.format_audit(arep)
+    check("audit: text carries the verdict and the mechanism statement",
+          "AUDITABLE" in txt and "input-conditional backdoor does not fit"
+          in txt)
+
+    # every byte accounted for: trailing junk is a covert channel
+    trail = os.path.join(t, "trail.gguf")
+    open(trail, "wb").write(raw + b"\0" * 64)
+    arep = cv.audit_gguf(trail)
+    check("audit: trailing bytes fail",
+          not arep["verdict"]["ok"]
+          and any(c["check"] == "no trailing bytes" and c["level"] == "FAIL"
+                  for c in arep["checks"]))
+
+    # a tensor that is not direction.N has no place in the format
+    extra = os.path.join(t, "extra.gguf")
+    _gguf_named(extra, _GOOD_KVS, [("direction.1", _u1), ("payload", _u2)])
+    arep = cv.audit_gguf(extra)
+    check("audit: a non-direction tensor fails",
+          not arep["verdict"]["ok"]
+          and any(c["check"] == "tensor inventory" and c["level"] == "FAIL"
+                  for c in arep["checks"]))
+
+    # a NaN direction poisons every forward: a loud denial of service
+    nanf = os.path.join(t, "nan.gguf")
+    _gguf(nanf, _GOOD_KVS, {1: [float("nan"), 0.0, 0.0, 0.0], 2: _u2})
+    arep = cv.audit_gguf(nanf)
+    check("audit: non-finite values fail",
+          not arep["verdict"]["ok"]
+          and any(c["check"].endswith(": finite") and c["level"] == "FAIL"
+                  for c in arep["checks"]))
+
+    # the publisher's hash pins the artifact; a mismatch means another file
+    good_sha = hashlib.sha256(open(good, "rb").read()).hexdigest()
+    check("audit: matching --expect-sha256 passes",
+          cv.audit_gguf(good, expect_sha256=good_sha)["verdict"]["ok"])
+    arep = cv.audit_gguf(good, expect_sha256="0" * 64)
+    check("audit: a publisher-hash mismatch fails",
+          not arep["verdict"]["ok"]
+          and any(c["check"] == "publisher hash" and c["level"] == "FAIL"
+                  for c in arep["checks"]))
+
+    # a declared content hash that does not recompute is a lie about the file
+    arep = cv.audit_gguf(bad_sha)
+    check("audit: content_sha256 mismatch fails",
+          not arep["verdict"]["ok"]
+          and any(c["check"] == "glp.content_sha256" and c["level"] == "FAIL"
+                  for c in arep["checks"]))
+
+    # metadata is inert, but unknown keys and stashed URLs get listed
+    unk = os.path.join(t, "unk.gguf")
+    _gguf(unk, _GOOD_KVS + [_kv_str("acme.note", "hello")], {1: _u1, 2: _u2})
+    arep = cv.audit_gguf(unk)
+    check("audit: unknown metadata key warns, does not fail",
+          arep["verdict"]["ok"] and arep["verdict"]["warns"] > 0
+          and any("acme.note" in c["check"] and c["level"] == "WARN"
+                  for c in arep["checks"]))
+    urlf = os.path.join(t, "url.gguf")
+    _gguf(urlf, [b for b in _GOOD_KVS if b"glp.method" not in b]
+          + [_kv_str("glp.method", "see https://evil.example/payload")],
+          {1: _u1, 2: _u2})
+    arep = cv.audit_gguf(urlf)
+    check("audit: a URL in a non-url metadata value warns",
+          any("glp.method" in c["check"] and c["level"] == "WARN"
+              for c in arep["checks"]) and arep["verdict"]["ok"])
+
+    # alpha outside the published band degrades rather than steers; negative
+    # alpha ADDS the feature
+    big_a = os.path.join(t, "big_alpha.gguf")
+    _gguf(big_a, [b for b in _GOOD_KVS if b"glp.alpha_default" not in b]
+          + [struct.pack("<Q", len("glp.alpha_default")) + b"glp.alpha_default"
+             + struct.pack("<If", 6, 32.0)], {1: _u1, 2: _u2})
+    arep = cv.audit_gguf(big_a)
+    check("audit: alpha beyond the published band warns",
+          arep["verdict"]["ok"]
+          and any(c["check"] == "alphas in the published band"
+                  and c["level"] == "WARN" for c in arep["checks"]))
+    neg_a = os.path.join(t, "neg_alpha.gguf")
+    _gguf(neg_a, [b for b in _GOOD_KVS if b"glp.alpha_default" not in b]
+          + [struct.pack("<Q", len("glp.alpha_default")) + b"glp.alpha_default"
+             + struct.pack("<If", 6, -1.0)], {1: _u1, 2: _u2})
+    arep = cv.audit_gguf(neg_a)
+    check("audit: negative alpha warns",
+          any(c["check"] == "alphas non-negative" and c["level"] == "WARN"
+              for c in arep["checks"]))
+
+    # a legacy additive llama.cpp vector: outside the contract (warn), but
+    # its mechanism is still input-independent, so it is auditable
+    legacy = os.path.join(t, "legacy.gguf")
+    _gguf(legacy, [_kv_str("general.architecture", "controlvector")],
+          {1: _u1, 2: _u2})
+    arep = cv.audit_gguf(legacy)
+    check("audit: legacy file warns on mode and provenance but does not fail",
+          arep["verdict"]["ok"] and arep["verdict"]["warns"] >= 2
+          and any(c["check"] == "glp.mode" and c["level"] == "WARN"
+                  for c in arep["checks"]))
+
+    # a file with no direction tensors is not a control vector
+    arep = cv.audit_gguf(empty)
+    check("audit: no direction tensors fails", not arep["verdict"]["ok"])
+
+    # a non-GGUF path fails closed AND renders (was a KeyError in format)
+    arep = cv.audit_gguf(not_gguf)
+    check("audit: non-GGUF fails closed and renders",
+          not arep["verdict"]["ok"] and "REFUSE" in cv.format_audit(arep))
+
+    # the CLI exit code follows the verdict
+    import contextlib, io
+    with contextlib.redirect_stdout(io.StringIO()):
+        rc_ok = cv._file_cmd("audit", [good])
+        rc_bad = cv._file_cmd("audit", [trail])
+    check("audit: CLI exit code follows the verdict",
+          rc_ok == 0 and rc_bad == 1)
+
+    # a rank-2 file with a verified orthonormal basis stays auditable
+    arep = cv.audit_gguf(r2)
+    check("audit: conformant rank-2 file is auditable",
+          arep["verdict"]["ok"]
+          and any(c["check"] == "rank-k basis orthonormal"
+                  and c["level"] == "PASS" for c in arep["checks"]))
+    arep = cv.audit_gguf(r2non)
+    check("audit: a false orthonormal claim fails",
+          not arep["verdict"]["ok"]
+          and any(c["check"] == "rank-k basis orthonormal"
+                  and c["level"] == "FAIL" for c in arep["checks"]))
 
 # --- everything below needs torch -------------------------------------------
 try:

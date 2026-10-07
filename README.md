@@ -173,8 +173,9 @@ quadrant; the baked adapter is its portable shadow for stacks that only
 speak LoRA.
 
 Deeper: [`FAQ.md`](FAQ.md) (answers to the questions people actually ask —
-vector maintenance under retraining, effective range, MoE/loop coverage,
-dosage, termination), [`spec/GLP.md`](spec/GLP.md) (the format contract),
+backdoor auditability, vector maintenance under retraining, effective range,
+MoE/loop coverage, dosage, termination), [`spec/GLP.md`](spec/GLP.md) (the
+format contract),
 [`docs/llama-cpp-compat.md`](docs/llama-cpp-compat.md) (source-verified
 mechanics), [`tools/captain-vector/README.md`](tools/captain-vector/README.md)
 (bake's troubleshooting/interop role).
@@ -279,7 +280,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 
 | path | what it is |
 |---|---|
-| `weightless.py` | single front-door CLI: `weightless.py` (wizard), `weightless.py dash`, `weightless.py test` — dispatches to the scripts below |
+| `weightless.py` | single front-door CLI: `weightless.py` (wizard), `weightless.py dash`, `weightless.py test`, `weightless.py validate|inspect|audit f.gguf` — dispatches to the scripts below |
 | `setup.py` | full-chain setup wizard (TUI or prompts, stdlib-only): lane pick → env file → steering validation → ssh deploy → omp provider + tests, plus a diagnose chain (DNS → TCP → HTTP → remote docker/GPU status, optional boot) |
 | `recipe/anemll/` | **live**: compose / start script / `.env.dsv4.example` for the MiaAI 2x clone, plus rebuild notes |
 | `recipe/qwen/` | Qwen TP=1 lane: serve script + `.env.qwen.example`; `STEER_MODE=gguf\|lora`, both hardware-validated |
