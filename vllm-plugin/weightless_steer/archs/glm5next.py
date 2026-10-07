@@ -1,8 +1,10 @@
 """GLM-5.3 (glm5next) adapter: GLP steering on the materialized mHC stream.
 
 Requires stock vLLM >= 0.30 (glm5next landed upstream via PR #53906) or the
-day-0 glm53-flash fork image; the stock lane's boot verification harness is
-modal/cloud_serve_glm53_stock.py (vllm/vllm-openai:v0.31.0). glm5next is NOT
+day-0 glm53-flash fork image; verified against stock v0.31.0 (Modal H100:4,
+2026-10-06, modal/cloud_serve_glm53_stock.py — α=2.0 dose cyber32 31/32,
+refusal32 8/32, benign32 clean; α=0 suite-level-equivalent but not
+byte-identical to stock, see README). glm5next is NOT
 in the local ~/spark/vllm checkout's vintage — this adapter cannot run
 against it.
 

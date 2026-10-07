@@ -156,3 +156,15 @@ vLLM.
 
 - Done when: vLLM has a merged extension point that makes our
   ModelRegistry shadowing unnecessary.
+
+### 11. Bit-exact α=0 for the mHC (glm5next) plugin lane [offline research]
+
+The glm5next adapter de-fuses upstream's inter-layer `MHCFusedPostPreOp`
+(materialize `hc_post`, standalone `hc_pre` next layer), so α=0 serving is
+behaviorally equivalent but NOT byte-identical to stock: measured
+2026-10-06 on stock vLLM 0.31.0, 0/12 greedy 400-token probes
+byte-identical, first divergence at tokens ~5–63, suite-level equivalence
+holds (numbers in `vllm-plugin/README.md`). A fusion-preserving steering
+site — or an upstream split/fused kernel-equivalence guarantee — would make
+α=0 bit-exact. Parked; acceptance standard today is suite-level
+equivalence.

@@ -122,10 +122,36 @@ the adapter imports `vllm.models.glm5next.common.model`, falling back to the
 day-0 fork image's `nvidia.model`) — serve it on stock, NOT the day-0 fork:
 the fork's breakable cudagraphs crash deterministically at first inference
 with a modified checkpoint (see `../TROUBLESHOOTING.md`). glm5next is
-GPU-validated (2026-09-18, Modal 4×H100, RedHatAI NVFP4, compiled mode:
-cyber32 exactly the hotfix reference at 31/32, benign32 clean, refusal32
-2→9/32 vs the hotfix's 1→21/32 — the stack's stock baseline is stiffer;
-numbers in `../BENCHMARK.md`); the other eight new archs are GPU-validated
+GPU-validated on BOTH bases (Modal 4×H100, RedHatAI NVFP4 checkpoint):
+
+- **Stock vLLM 0.31.0** (`vllm/vllm-openai:v0.31.0`, 2026-10-06,
+  `../modal/cloud_serve_glm53_stock.py`, raw artifacts in
+  `../modal/out-glm53-stock031/`): TP4, marlin MoE, **bf16 KV — fp8_e4m3 KV
+  does not port** (stock's sparse-MLA sm90 fa3 path rejects the uint8
+  indexer kpool at cudagraph capture; the fork patched around it). Boot
+  banner `weightless GLP steering active: hook=residual_stream_post_layer
+  alpha=2.000 layers=1..44 (44) width=16384`; the env-unset arm's boot log
+  has zero weightless lines. Dose at α=2.0: cyber32 **31/32** (exactly the
+  fork-lane plugin reference), refusal32 8/32 (fork: 9/32), benign32 32/32
+  clean. **α=0 is NOT byte-identical to stock** — 0/12 greedy 400-token
+  probes, first divergence at tokens ~5–63, identical semantics — because
+  the adapter de-fuses upstream's inter-layer `MHCFusedPostPreOp`
+  (documented-equivalent math, different rounding, amplified over 45
+  layers; measured under concurrency-4 probing, which adds its own
+  batching variance). Suite/probe-level equivalence holds: cyber32 5/32
+  and refusal32 2/32 at α=0 (fork-lane α=0: 3/32 and 2/32; read on the
+  `--enable-lora` arm's base side), and 1/8 delivered on the shared
+  cyber-probe subset for both stock and α=0. Bit-exact α=0 is parked as a
+  possible redesign (`../IDEAS.md` #11). LoRA smoke on the same image
+  (`--enable-lora`, random-init rank-8 `o_proj` adapter — nothing trained):
+  the stock wrapper inherits `SupportsLoRA` from Glm4v, the adapter loads
+  and lists as `smoke-lora`, and 12/12 probes diverge from base coherently.
+- Day-0 fork image (2026-09-18, compiled mode): cyber32 exactly the
+  hotfix reference at 31/32, benign32 clean, refusal32 2→9/32 vs the
+  hotfix's 1→21/32 — the stack's stock baseline is stiffer; numbers in
+  `../BENCHMARK.md`.
+
+The other eight new archs are GPU-validated
 2026-09-19 on Modal (full eval for dsv4/qwen38/qwen38fn/ouro/inkling,
 boot+smoke for hy4/glm53xl/kimi-k3 — numbers in `../BENCHMARK.md`, raw
 artifacts in `../modal/out-<arch>-plugin-test/`). Each additional lane is
