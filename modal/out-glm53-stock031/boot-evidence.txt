@@ -1,0 +1,16 @@
+### stock arm (server-stock.log, attempt 19:18:59 = bf16 KV boot)
+INFO vllm.entrypoints.launchers.launcher: vLLM server version 0.31.0, serving model /data/hf/hub/models--RedHatAI--GLM-5.3-Flash-NVFP4/snapshots/c245560b6d7e62c329cd3042343b358a4279affd
+weightless lines in stock boot log: 0
+
+### a0 arm (server-a0.log)
+WEIGHTLESS-SHIM: register() ran (pid 4, /usr/bin/python3.12)
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=0.000 layers=1..44 (44) width=16384
+
+### a2 arm (eval-a2-1006-234155.log, in-container eval)
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=2.000 layers=1..44 (44) width=16384
+INFO weightless_steer.core: weightless GLP steering active: hook=residual_stream_post_layer alpha=2.000 layers=1..44 (44) width=16384
+
+### lora arm (eval-lora-1006-235632.log)
+WEIGHTLESS-SHIM: steering core loaded: hook=residual_stream_post_layer alpha=0.000 layers=1..44 (44) width=16384
+INFO vllm.entrypoints.serve.utils.api_utils: non-default args: {'lora_modules': [LoRAModulePath(name='smoke-lora', path='/data/lora/smoke-o_proj-r8', base_model_name='glm53-flash', is_3d_lora_weight=False)], 'chat_templa
+INFO vllm.entrypoints.serve.utils.api_utils: non-default args: {'lora_modules': [LoRAModulePath(name='smoke-lora', path='/data/lora/smoke-o_proj-r8', base_model_name='glm53-flash', is_3d_lora_weight=False)], 'chat_template': '/work/chat_template_mm.jinja', 'default_chat_template_kwargs': {'enable_thinking': False}, 'model': '/data/hf/hub/models--RedHatAI--GLM-5.3-Flash-NVFP4/snapshots/c245560b6d7e

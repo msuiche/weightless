@@ -15,8 +15,11 @@ Two layers of verification, both GPU-free:
   layer's terminal contract), buffer wiring at the widened stream width,
   global-layer indexing, and the contract-after-steering on the final
   layer.
-- Structural: the adapter's copied forward loops are pinned against the
-  vendored upstream reference (patches/reference/glm5next.py), so upstream
+- Structural: the adapter's copied forward loops are pinned against BOTH
+  vendored upstream references — patches/reference/glm5next.py (the day-0
+  fork image's nvidia/model.py) and
+  patches/reference/glm5next_upstream_v0310.py (stock v0.31.0's
+  common/model.py; the two forward bodies are byte-identical) — so upstream
   drift in our copies is caught here rather than at serve time.
 """
 import importlib
@@ -41,6 +44,14 @@ from glpfiles import good_meta, good_tensors, write_gguf  # noqa: E402
 
 REFERENCE = (_HERE.parents[3] / "patches" / "reference"
              / "glm5next.py")
+REFERENCE_UPSTREAM = (_HERE.parents[3] / "patches" / "reference"
+                      / "glm5next_upstream_v0310.py")
+
+# The adapter imports the stock upstream module first (vLLM >= 0.30) and
+# falls back to the day-0 fork image's module; the stubs exercise whichever
+# path is named.
+STOCK_MODULE = "vllm.models.glm5next.common.model"
+FORK_MODULE = "vllm.models.glm5next.nvidia.model"
 
 HIDDEN = 8
 N_STREAMS = 3
@@ -268,14 +279,27 @@ def _vllm_config(mhc=True):
     )
 
 
-def _import_adapter():
-    """Install vllm stubs in sys.modules and import the adapter fresh."""
-    stubs = {}
-    glm = types.ModuleType("vllm.models.glm5next.nvidia.model")
+def _glm_stub(module_name):
+    glm = types.ModuleType(module_name)
     glm.Glm5NextDecoderLayer = FakeGlm5NextDecoderLayer
     glm.Glm5NextModel = FakeGlm5NextModel
     glm.Glm5NextForCausalLM = FakeGlm5NextForCausalLM
-    stubs["vllm.models.glm5next.nvidia.model"] = glm
+    return glm
+
+
+def _import_adapter(stock=True):
+    """Install vllm stubs in sys.modules and import the adapter fresh.
+
+    `stock=True` stubs the stock upstream module (common.model, vLLM >=
+    0.30); `stock=False` poisons it (None in sys.modules -> ImportError) and
+    stubs the day-0 fork's nvidia.model instead, exercising the fallback.
+    """
+    stubs = {}
+    if stock:
+        stubs[STOCK_MODULE] = _glm_stub(STOCK_MODULE)
+    else:
+        stubs[STOCK_MODULE] = None
+        stubs[FORK_MODULE] = _glm_stub(FORK_MODULE)
     distributed = types.ModuleType("vllm.distributed")
     distributed.get_pp_group = lambda: _PPGroup
     stubs["vllm.distributed"] = distributed
@@ -349,7 +373,8 @@ class SteeredForwardTests(unittest.TestCase):
 
     def _unimport(self):
         sys.modules.pop("weightless_steer.archs.glm5next", None)
-        for name in ("vllm.models.glm5next.nvidia.model",
+        for name in (STOCK_MODULE,
+                     FORK_MODULE,
                      "vllm.distributed",
                      "vllm.model_executor.layers.mhc",
                      "vllm.models.common.ops.sequence_parallel",
@@ -482,6 +507,24 @@ class SteeredForwardTests(unittest.TestCase):
         self.assertEqual(out.shape, (4, HIDDEN))
         self.assertTrue(torch.allclose(out, want, atol=1e-4),
                         f"max err {(out - want).abs().max()}")
+
+    def test_fork_module_fallback(self):
+        """Day-0 fork image layout: nvidia.model, no common.model.
+
+        The poisoned sys.modules entry makes the stock import raise
+        ImportError even where a real vLLM is installed, so the fallback is
+        exercised deterministically in both environments.
+        """
+        self.adapter = _import_adapter(stock=False)
+        self.assertIs(self.adapter.Glm5NextModel, FakeGlm5NextModel)
+        self.write_vector((1,), alpha="2.0")
+        model = self.build(WEIGHTLESS_STEER_PATH=self.path)
+        embed = torch.randn(5, HIDDEN)
+        positions = torch.arange(5)
+        with torch.no_grad():
+            out = model(None, positions, inputs_embeds=embed)
+        want = manual_forward(embed, self.file_dirs((1,)), alpha=2.0)
+        self.assertTrue(torch.allclose(out, want, atol=1e-4))
 
     def test_per_request_forward_end_to_end(self):
         """Two requests, two alphas, through the real adapter forward."""
@@ -721,6 +764,26 @@ class StructureTests(unittest.TestCase):
         self.assertNotIn(self.LAYER_LAST_ANCHOR, adapter_src)
         self.assertIn("        return x, residual, post, comb\n",
                       adapter_src)
+
+    def test_copied_loops_match_stock_upstream_reference(self):
+        """Same pin against stock v0.31.0 (common/model.py).
+
+        The stock-lane serving base; its two copied forward bodies are
+        byte-identical to the fork reference's (verified at vendoring,
+        2026-10-06), so the same anchors must all hold. A future upstream
+        release that drifts fails here first (the vendored file is then
+        re-pinned deliberately), not at boot.
+        """
+        upstream_src = REFERENCE_UPSTREAM.read_text()
+        self.assertIn(self.LOOP_ANCHOR, upstream_src)
+        self.assertIn(self.LAYER_PRE_ANCHOR, upstream_src)
+        self.assertIn(self.LAYER_LAST_ANCHOR, upstream_src)
+        # The module the adapter imports first must be where these classes
+        # live in the vendored stock tree (the package __init__ re-exports
+        # from common.model).
+        self.assertIn("class Glm5NextModel", upstream_src)
+        self.assertIn("class Glm5NextDecoderLayer", upstream_src)
+        self.assertIn("class Glm5NextForCausalLM", upstream_src)
 
 
 if __name__ == "__main__":
