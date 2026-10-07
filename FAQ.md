@@ -36,6 +36,32 @@ no conditional to trigger on, no code to execute (GGUF is data, parsed
 by a bounds-checked reader), and no state between calls. An
 input-conditional backdoor does not fit in the format.
 
+It helps to see what a trigger costs an attacker in weights. A backdoor
+is an if-statement, and an if-statement needs two parts: a *detector*
+that recognises the trigger pattern, and a *payload circuit* that emits
+the attacker-chosen output. Training supplies both, because gradient
+descent can install any input→output mapping — a LoRA's `ΔW = BA`
+factorises the trick literally: A's rows are learned probes that light
+up on the trigger, B's columns map that detection onto boosted payload
+tokens, and the layers cooperate because they were optimised together.
+GLP has neither part. Its delta is `−α(h·d̂)d̂`: the "detector" is the
+projection onto one fixed direction, the "response" is subtraction of
+that same direction, and the magnitude is whatever component the stream
+already carried. It can attenuate or reflect a feature the model
+already has; it cannot spell out a URL, emit a tool call, or wake up on
+a date. LoRA edits the program, so a LoRA can carry a trigger; GLP
+edits what flows through the program, and the edit is the same on every
+packet.
+
+One caveat, stated so the strong claim survives scrutiny: the edit's
+*magnitude* scales with how much of d̂ the stream holds at a given
+token, so any GLP vector — ours included — bites hardest exactly where
+its feature lives (the refusal direction bites when the model is about
+to refuse). A malicious publisher could ship a vector that subtracts a
+feature other than the advertised one. That is an always-on tilt, not a
+sleeper: the direction is a single visible object, and re-deriving the
+vector from the stock base and comparing cosines settles what it is.
+
 `captain-vector audit` (stdlib-only, runs where the file is received)
 proves the constraint holds for a given file: every byte accounted for
 (direction tensors and declared metadata, no trailing or hidden
