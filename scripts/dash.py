@@ -28,6 +28,7 @@ import argparse
 import math
 import os
 import re
+import shutil
 import sys
 import time
 import urllib.request
@@ -103,14 +104,124 @@ def spark(vals: deque, width: int = HIST) -> str:
     return "".join(SPARK[min(7, int(x / peak * 7.999))] for x in v)
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def clip(line: str, width: int | None) -> str:
+    """ANSI-aware truncate to a terminal width; no-op when width is falsy.
+    Appends a reset when a colored line was cut so the terminal can't bleed."""
+    if not width or width <= 0 or len(ANSI.sub("", line)) <= width:
+        return line
+    out, n, i = [], 0, 0
+    for mch in ANSI.finditer(line):
+        seg = line[i:mch.start()]
+        take = seg[:width - n]
+        out.append(take)
+        n += len(take)
+        out.append(mch.group(0))
+        i = mch.end()
+        if n >= width:
+            break
+    if n < width:
+        out.append(line[i:i + (width - n)])
+    codes = ANSI.findall("".join(out))
+    if not codes or codes[-1] != "\033[0m":
+        out.append("\033[0m")
+    return "".join(out)
+
+
+def human(n: float) -> str:
+    """16_964_612 -> '17.0M', 3_023 -> '3.0k', 604 -> '604'."""
+    a = abs(n)
+    for scale, suf in ((1e9, "B"), (1e6, "M"), (1e3, "k")):
+        if a >= scale:
+            return f"{n / scale:.1f}{suf}"
+    return f"{n:.0f}"
+
+
+def fmt_rate(n: float) -> str:
+    return human(n) if n >= 1000 else f"{n:.1f}"
+
+
+def fmt_dur(seconds: float) -> str:
+    m = int(seconds // 60)
+    return f"{m}m" if m < 60 else f"{m // 60}h{m % 60:02d}m"
+
+
+PROMPT_TOK = "vllm:prompt_tokens_total"
+GEN_TOK = "vllm:generation_tokens_total"
+DRAFT_TOK = "vllm:spec_decode_num_draft_tokens_total"
+ACC_TOK = "vllm:spec_decode_num_accepted_tokens_total"
+
+
+class RateWindow:
+    """Sliding-window rate over a monotonic counter. Single-interval deltas
+    spike (a 2s window with one big prefill batch reads as 100k tok/s);
+    dividing the counter delta over the whole window span tracks the real
+    trend. A counter that goes backwards (server restart) resets the window."""
+
+    def __init__(self, span: float = 30.0) -> None:
+        self.span = span
+        self.samples: deque = deque()
+
+    def add(self, t: float, value: float) -> None:
+        if self.samples and value < self.samples[-1][1]:
+            self.samples.clear()
+        self.samples.append((t, value))
+        while len(self.samples) > 2 and self.samples[0][0] < t - self.span:
+            self.samples.popleft()
+
+    def rate(self) -> float:
+        if len(self.samples) < 2:
+            return 0.0
+        (t0, v0), (t1, v1) = self.samples[0], self.samples[-1]
+        if t1 <= t0:
+            return 0.0
+        return max(0.0, (v1 - v0) / (t1 - t0))
+
+
+def fetch_json(base: str, path: str, timeout: float) -> dict:
+    import json
+    with urllib.request.urlopen(base.rstrip("/") + path, timeout=timeout) as r:
+        return json.loads(r.read().decode())
+
+
+def lane_info(base: str, timeout: float) -> dict:
+    """Context for the header: served model id, context length, engine
+    version. Best-effort — a lane without /v1 or /version just shows less."""
+    info = {}
+    try:
+        data = fetch_json(base, "/v1/models", timeout).get("data") or []
+        if data:
+            if data[0].get("id"):
+                info["model"] = data[0]["id"]
+            if data[0].get("max_model_len"):
+                info["ctx"] = int(data[0]["max_model_len"])
+    except Exception:
+        pass
+    try:
+        ver = fetch_json(base, "/version", timeout).get("version")
+        if ver:
+            info["version"] = ver
+    except Exception:
+        pass
+    return info
+
+
 def render(target: str, m: dict, prev: dict | None, dt: float,
-           hist_pre: deque, hist_dec: deque, up_s: float, c: dict) -> str:
+           hist_pre: deque, hist_dec: deque, up_s: float, c: dict,
+           info: dict | None = None, width: int | None = None,
+           wins: dict | None = None, avgs: tuple | None = None) -> str:
     def rate(name: str) -> float:
         if prev is None or dt <= 0:
             return 0.0
         return max(0.0, (g(m, name) - g(prev, name)) / dt)
 
-    pre, dec = rate("vllm:prompt_tokens_total"), rate("vllm:generation_tokens_total")
+    def stable(name: str) -> float:
+        w = wins.get(name) if wins else None
+        return w.rate() if w is not None else rate(name)
+
+    pre, dec = stable(PROMPT_TOK), stable(GEN_TOK)
     hist_pre.append(pre)
     hist_dec.append(dec)
 
@@ -132,9 +243,8 @@ def render(target: str, m: dict, prev: dict | None, dt: float,
     ttft_win = max(0.0, ((ttft_s - g(prev, "vllm:time_to_first_token_seconds_sum")) /
                          max(1e-9, ttft_c - g(prev, "vllm:time_to_first_token_seconds_count")))) if prev else 0.0
 
-    drafts = rate("vllm:spec_decode_num_draft_tokens_total")
-    accepted = rate("vllm:spec_decode_num_accepted_tokens_total")
-    d_tot, a_tot = g(m, "vllm:spec_decode_num_draft_tokens_total"), g(m, "vllm:spec_decode_num_accepted_tokens_total")
+    drafts, accepted = stable(DRAFT_TOK), stable(ACC_TOK)
+    d_tot, a_tot = g(m, DRAFT_TOK), g(m, ACC_TOK)
     acc_rate = (a_tot / d_tot * 100) if d_tot else 0.0
     per_pos = []
     for k, v in m.items():
@@ -146,25 +256,44 @@ def render(target: str, m: dict, prev: dict | None, dt: float,
     per_pos.sort(key=lambda t: t[0])
     pos_pct = " ".join(f"{int(v / max(1, per_pos[0][1]) * 100)}" for _, v in per_pos) if per_pos else ""
 
+    spark_w = max(10, width - 46) if width else HIST
+
     L = []
     L.append(f"{c['pink']}{c['b']}weightless{c['r']} {c['cyan']}{c['b']}dash{c['r']}"
-             f" {c['d']}— {target}  ·  up {int(up_s // 60)}m  ·  {time.strftime('%H:%M:%S')}{c['r']}")
+             f" {c['d']}— {target} · up {fmt_dur(up_s)} · {time.strftime('%H:%M:%S')}{c['r']}")
+    if info:
+        bits = []
+        if info.get("model"):
+            bits.append(str(info["model"]))
+        if info.get("ctx"):
+            bits.append(f"ctx {human(info['ctx'])}")
+        if info.get("version"):
+            bits.append(f"vllm {info['version']}")
+        if bits:
+            L.append(f"  {c['d']}lane{c['r']}  " + f"{c['d']} · {c['r']}".join(bits))
     L.append("")
-    L.append(f"  {c['cyan']}prefill{c['r']} {c['b']}{pre:7.0f}{c['r']} tok/s  {c['cyan']}{spark(hist_pre)}{c['r']}")
-    L.append(f"  {c['pink']}decode {c['r']} {c['b']}{dec:7.1f}{c['r']} tok/s  {c['pink']}{spark(hist_dec)}{c['r']}")
+    avg_pre = f"  {c['d']}avg {fmt_rate(avgs[0])}{c['r']}" if avgs else ""
+    avg_dec = f"  {c['d']}avg {fmt_rate(avgs[1])}{c['r']}" if avgs else ""
+    L.append(f"  {c['cyan']}prefill{c['r']} {c['b']}{fmt_rate(pre):>7}{c['r']} tok/s{avg_pre}"
+             f"  {c['cyan']}{spark(hist_pre, spark_w)}{c['r']}")
+    L.append(f"  {c['pink']}decode {c['r']} {c['b']}{fmt_rate(dec):>7}{c['r']} tok/s{avg_dec}"
+             f"  {c['pink']}{spark(hist_dec, spark_w)}{c['r']}")
     L.append("")
     if waiting > 0:
         wait_txt = f"{c['yellow']}{int(waiting)}{c['r']}  {c['red']}← QUEUED (raise MAX_NUM_SEQS){c['r']}"
     else:
         wait_txt = f"{int(waiting)}"
-    L.append(f"  {c['d']}requests{c['r']}   running {int(running)}  waiting {wait_txt}")
+    per_req = f"  {c['d']}decode {fmt_rate(dec / running)} tok/s/req{c['r']}" if running > 0 else ""
+    L.append(f"  {c['d']}requests{c['r']}   running {int(running)}  waiting {wait_txt}{per_req}")
     L.append(f"  {c['d']}kv cache{c['r']}   {gauge(c, kv)} used    {c['d']}prefix hit{c['r']} {c['green']}{hit_rate:.0f}%{c['r']}")
     L.append(f"  {c['d']}ttft{c['r']}       {ttft_win:.1f}s recent   {c['d']}{ttft_avg:.1f}s lifetime (incl. queue wait){c['r']}")
     if d_tot:
         L.append(f"  {c['d']}spec dec{c['r']}   accept {c['green']}{acc_rate:.0f}%{c['r']}   draft {drafts:.1f} → accepted {accepted:.1f} tok/s   {c['d']}per-pos {pos_pct}{c['r']}")
     L.append("")
     L.append(f"  {c['d']}done {sum(done.values())}  ({', '.join(f'{k} {v}' for k, v in sorted(done.items()))})"
-             f"   prompt {int(g(m, 'vllm:prompt_tokens_total')):,} tok   gen {int(g(m, 'vllm:generation_tokens_total')):,} tok{c['r']}")
+             f"   prompt {human(g(m, PROMPT_TOK))} tok   gen {human(g(m, GEN_TOK))} tok{c['r']}")
+    if width:
+        L = [clip(line, width) for line in L]
     return "\n".join(L)
 
 
@@ -197,7 +326,7 @@ def metrics_base(value):
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Live terminal view of a vLLM lane.", allow_abbrev=False)
     ap.add_argument("url", nargs="?", type=metrics_base, default="http://spark-4687.local:8888",
-                    help="lane base URL (default: %(default)s — DSV4 on the rig)")
+                    help="lane base URL (default: %(default)s — the rig's serving lane)")
     ap.add_argument("--once", action="store_true", help="print one snapshot and exit")
     ap.add_argument("--interval", type=positive_seconds, default=2.0, help="refresh seconds (default: %(default)s)")
     ap.add_argument("--timeout", type=positive_seconds, default=5.0, help="request timeout seconds (default: %(default)s)")
@@ -210,6 +339,8 @@ def main(argv=None) -> int:
     c = palette(color)
 
     hist_pre, hist_dec = deque(maxlen=HIST), deque(maxlen=HIST)
+    wins = {name: RateWindow() for name in (PROMPT_TOK, GEN_TOK, DRAFT_TOK, ACC_TOK)}
+    first, info, info_t = None, {}, 0.0
     prev, prev_t, t0 = None, 0.0, time.monotonic()
     while True:
         try:
@@ -224,7 +355,20 @@ def main(argv=None) -> int:
             time.sleep(args.interval)
             continue
         now = time.monotonic()
-        out = render(args.url, m, prev, now - prev_t, hist_pre, hist_dec, now - t0, c)
+        for name, w in wins.items():
+            w.add(now, g(m, name))
+        if now - info_t > 300:
+            info, info_t = lane_info(args.url, args.timeout), now
+        if first is None:
+            first, first_t = m, now
+        elapsed = now - first_t
+        avgs = None
+        if elapsed > 1.0:
+            avgs = (max(0.0, (g(m, PROMPT_TOK) - g(first, PROMPT_TOK)) / elapsed),
+                    max(0.0, (g(m, GEN_TOK) - g(first, GEN_TOK)) / elapsed))
+        width = shutil.get_terminal_size().columns if terminal else None
+        out = render(args.url, m, prev, now - prev_t, hist_pre, hist_dec, now - t0, c,
+                     info=info, width=width, wins=wins, avgs=avgs)
         if args.once:
             print(out)
             return 0
