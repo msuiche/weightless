@@ -51,13 +51,13 @@ providers:
           supportsToolChoice: false
           requiresReasoningContentForToolCalls: true
           requiresAssistantContentForToolCalls: true
-      - id: glm53-flash
-        name: GLM-5.3-Flash NVFP4 GLP-44 (2x DGX Spark TP=2, :8080)
-        baseUrl: http://localhost:8080/v1
+      - id: glm53-flash-tp4
+        name: GLM-5.3-Flash NVFP4 GLP-44 (4x DGX Spark TP=4, :8000 router)
+        baseUrl: http://localhost:8000/v1
         reasoning: true
         input: [text]
-        contextWindow: 131072
-        maxTokens: 16384
+        contextWindow: 1048576
+        maxTokens: 32768
         compat:
           supportsDeveloperRole: false
           supportsReasoningEffort: false
