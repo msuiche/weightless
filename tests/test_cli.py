@@ -151,7 +151,9 @@ class DashboardTests(unittest.TestCase):
                         self.assertIn("running 3", result.stdout)
                     else:
                         self.assertIn("503", result.stderr)
-            self.assertEqual(paths, ["/metrics", "/metrics", "/offline/metrics"])
+            self.assertEqual(paths, ["/metrics", "/v1/models", "/version",
+                                     "/metrics", "/v1/models", "/version",
+                                     "/offline/metrics"])
         finally:
             server.shutdown()
             server.server_close()

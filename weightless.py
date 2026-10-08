@@ -5,6 +5,7 @@
     python3 weightless.py setup           same wizard: lane → env → deploy → clients
     python3 weightless.py serve <lane>    switch the rig to a lane, non-interactive
     python3 weightless.py dash [url]      live lane metrics (scripts/dash.py)
+    python3 weightless.py task            token/time usage of the active omp session
     python3 weightless.py test            endpoint smoke suite (tests/smoke/run.sh)
     python3 weightless.py validate f.gguf GLP spec check on a control-vector GGUF
     python3 weightless.py inspect f.gguf  metadata + per-layer stats of a GLP GGUF
@@ -34,6 +35,8 @@ COMMANDS = {
               "switch the rig to a lane, non-interactive: serve <name|#> [--skip-assets] [--skip-wait] (cloud lanes: Modal deploy)"),
     "dash": ([PY, os.path.join(HERE, "scripts", "dash.py")],
              "live metrics for a serving lane (prefill/decode, queue, KV, spec decode)"),
+    "task": ([PY, os.path.join(HERE, "scripts", "task.py")],
+             "token/time usage of an omp agent session (active task, or --all)"),
     "test": (["bash", os.path.join(HERE, "tests", "smoke", "run.sh")],
              "endpoint smoke suite against the configured base URL"),
     "validate": ([PY, os.path.join(HERE, "tools", "captain-vector", "captain_vector.py"), "--validate"],
