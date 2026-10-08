@@ -234,5 +234,15 @@ class RenderContextTests(unittest.TestCase):
         self.assertTrue(out.endswith("\033[0m") or "\033[0m" in out)
 
 
+    def test_token_totals_with_session_deltas(self):
+        m = {"vllm:prompt_tokens_total": 1_500_000.0, "vllm:generation_tokens_total": 5_000.0}
+        out = dash.render("http://lane", m, None, 1.0, deque(), deque(), 0.0,
+                          dash.palette(False), session=(1_000_000.0, 2_000.0))
+        self.assertIn("prompt 1.5M", out)
+        self.assertIn("gen 5.0k", out)
+        self.assertIn("+500.0k prompt", out)
+        self.assertIn("+3.0k gen", out)
+
+
 if __name__ == "__main__":
     unittest.main()

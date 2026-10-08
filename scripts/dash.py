@@ -211,7 +211,8 @@ def lane_info(base: str, timeout: float) -> dict:
 def render(target: str, m: dict, prev: dict | None, dt: float,
            hist_pre: deque, hist_dec: deque, up_s: float, c: dict,
            info: dict | None = None, width: int | None = None,
-           wins: dict | None = None, avgs: tuple | None = None) -> str:
+           wins: dict | None = None, avgs: tuple | None = None,
+           session: tuple | None = None) -> str:
     def rate(name: str) -> float:
         if prev is None or dt <= 0:
             return 0.0
@@ -290,8 +291,13 @@ def render(target: str, m: dict, prev: dict | None, dt: float,
     if d_tot:
         L.append(f"  {c['d']}spec dec{c['r']}   accept {c['green']}{acc_rate:.0f}%{c['r']}   draft {drafts:.1f} → accepted {accepted:.1f} tok/s   {c['d']}per-pos {pos_pct}{c['r']}")
     L.append("")
-    L.append(f"  {c['d']}done {sum(done.values())}  ({', '.join(f'{k} {v}' for k, v in sorted(done.items()))})"
-             f"   prompt {human(g(m, PROMPT_TOK))} tok   gen {human(g(m, GEN_TOK))} tok{c['r']}")
+    L.append(f"  {c['d']}done {sum(done.values())}  ({', '.join(f'{k} {v}' for k, v in sorted(done.items()))}){c['r']}")
+    if session is not None:
+        sess = (f"   {c['d']}this dash: +{human(max(0.0, g(m, PROMPT_TOK) - session[0]))} prompt"
+                f"   +{human(max(0.0, g(m, GEN_TOK) - session[1]))} gen{c['r']}")
+    else:
+        sess = ""
+    L.append(f"  {c['d']}tokens{c['r']}    prompt {human(g(m, PROMPT_TOK))}   gen {human(g(m, GEN_TOK))}{sess}")
     if width:
         L = [clip(line, width) for line in L]
     return "\n".join(L)
@@ -368,7 +374,8 @@ def main(argv=None) -> int:
                     max(0.0, (g(m, GEN_TOK) - g(first, GEN_TOK)) / elapsed))
         width = shutil.get_terminal_size().columns if terminal else None
         out = render(args.url, m, prev, now - prev_t, hist_pre, hist_dec, now - t0, c,
-                     info=info, width=width, wins=wins, avgs=avgs)
+                     info=info, width=width, wins=wins, avgs=avgs,
+                     session=(g(first, PROMPT_TOK), g(first, GEN_TOK)))
         if args.once:
             print(out)
             return 0
