@@ -8,10 +8,10 @@ percentiles, request lifecycle, preemptions and speculative-decode
 acceptance. Works against any vLLM endpoint, local or remote.
 
 Usage:
-    python3 scripts/dash.py [url]                 live view (2s refresh)
+    python3 scripts/dash.py [url]                 live view (5s refresh)
     python3 scripts/dash.py [url] --once          one snapshot, for scripts
     python3 scripts/dash.py [url] --once --json   machine-readable snapshot
-    python3 scripts/dash.py [url] --interval 5    slower refresh
+    python3 scripts/dash.py [url] --interval 2    faster refresh
     python3 scripts/dash.py [url] --window 60     longer rate window (default 30s)
     python3 scripts/dash.py [url] --no-color      plain output (also: NO_COLOR=1)
 
@@ -754,7 +754,7 @@ def main(argv=None) -> int:
     ap.add_argument("--once", action="store_true",
                     help="print one snapshot and exit (two samples --interval apart, so rates are real)")
     ap.add_argument("--json", action="store_true", help="with --once: print the snapshot as JSON")
-    ap.add_argument("--interval", type=positive_seconds, default=2.0, help="refresh seconds (default: %(default)s)")
+    ap.add_argument("--interval", type=positive_seconds, default=5.0, help="refresh seconds (default: %(default)s)")
     ap.add_argument("--window", type=positive_seconds, default=WINDOW,
                     help="seconds behind every headline rate (default: %(default)s)")
     ap.add_argument("--timeout", type=positive_seconds, default=5.0, help="request timeout seconds (default: %(default)s)")

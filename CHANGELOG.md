@@ -31,6 +31,8 @@ live in `BENCHMARK.md`; this file tracks what shipped.
   real (they were always 0), and `--json` emits the snapshot for scripts.
   A server restart resets the session baseline. Queued hint says `KV full`
   when that is the reason rather than always `raise MAX_NUM_SEQS`.
+  Default refresh is 5s (was 2s): one `/metrics` GET per poll against the
+  API server, and 5s keeps 6 points in the 30s window.
 
 ## 2026-10-12
 
