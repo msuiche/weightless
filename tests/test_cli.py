@@ -143,7 +143,8 @@ class DashboardTests(unittest.TestCase):
             for suffix, code in [("/v1", 0), ("/metrics", 0), ("/offline", 1)]:
                 with self.subTest(suffix=suffix):
                     result = subprocess.run(
-                        [sys.executable, str(ROOT / "weightless.py"), "dash", base + suffix, "--once"],
+                        [sys.executable, str(ROOT / "weightless.py"), "dash", base + suffix,
+                         "--once", "--interval", "0.1"],
                         capture_output=True, text=True, timeout=10)
                     self.assertEqual(result.returncode, code, result.stderr)
                     self.assertNotIn("\x1b", result.stdout + result.stderr)
@@ -151,8 +152,9 @@ class DashboardTests(unittest.TestCase):
                         self.assertIn("running 3", result.stdout)
                     else:
                         self.assertIn("503", result.stderr)
-            self.assertEqual(paths, ["/metrics", "/v1/models", "/version",
-                                     "/metrics", "/v1/models", "/version",
+            # --once samples twice so its rates are real; a failed first sample stops there.
+            self.assertEqual(paths, ["/metrics", "/metrics", "/v1/models", "/version",
+                                     "/metrics", "/metrics", "/v1/models", "/version",
                                      "/offline/metrics"])
         finally:
             server.shutdown()
@@ -171,9 +173,11 @@ class DashboardTests(unittest.TestCase):
 
     def test_snapshot_normalizes_endpoint_and_passes_timeout(self):
         with patch.object(dash, "fetch", return_value="vllm:num_requests_running 2") as fetch, \
+             patch.object(dash.time, "sleep"), \
              contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(dash.main(["http://localhost:8888/v1/", "--once", "--timeout", "3"]), 0)
-        fetch.assert_called_once_with("http://localhost:8888", timeout=3)
+        self.assertEqual(fetch.call_count, 2)
+        fetch.assert_called_with("http://localhost:8888", timeout=3)
         self.assertIn("running 2", output.getvalue())
         self.assertNotIn("\x1b", output.getvalue())
 
