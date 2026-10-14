@@ -49,11 +49,14 @@ arguments prints help. `serve` rejects unknown flags before deployment;
 omit its lane argument to list available lanes.
 
 For scripts, `python3 weightless.py dash <url> --once --timeout 5` prints a
-snapshot and exits nonzero if the endpoint fails or returns no vLLM metrics.
-Dashboard URLs may include `/v1` or `/metrics`. Refresh intervals and request
-timeouts must be positive and finite. Redirected dashboard output contains no
-terminal control sequences; `NO_COLOR` disables colors in both prompts and the
-dashboard.
+snapshot (two samples `--interval` apart, so its rates are real) and exits
+nonzero if the endpoint fails or returns no vLLM metrics; `--json` prints the
+same numbers as one JSON object. Dashboard URLs may include `/v1` or
+`/metrics`. Refresh intervals, rate windows and request timeouts must be
+positive and finite. Redirected dashboard output contains no terminal control
+sequences; `NO_COLOR` disables colors in both prompts and the dashboard. In
+the live view `q` quits, `p` pauses, `r` resets the session counters and `w`
+cycles the rate window (10 / 30 / 60 / 300s).
 
 **Swapping lanes is the wizard, not ssh.** Pick `Serve <model>` for the lane
 you want: the wizard regenerates the env, re-validates it (multi-node fabric
@@ -304,7 +307,7 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 | `recipe/` (top level) | retired v027 stack: Dockerfiles + compose |
 | `tests/structure/` | structural guard tests for the steering patches (`test-*-structure.py`, incl. `test-steering-structure.py` for the retired v027 overlay) |
 | `scripts/` | `dash.py` (below), `dspark-router.py`, `memory-watchdog-gpu.sh`, `probe-refusal.py` |
-| `scripts/dash.py` | live terminal view of any serving lane (stdlib only, ANSI colors on a terminal — brand pink/cyan, KV gauge green→yellow→red; `--no-color`/`NO_COLOR` for plain): `python3 scripts/dash.py <url>` for a live view, `--once` for a scriptable snapshot — prefill/decode tok/s (windowed rates, fresh-vs-cached prefill split, per-request `stream` speed), queue depth, KV pressure, request lifecycle phases, engine busy %, TTFT, spec-decode acceptance. Also in the wizard menu ("Watch a lane") |
+| `scripts/dash.py` | live terminal view of any serving lane (stdlib only, ANSI colors on a terminal — brand pink/cyan, KV gauge green→yellow→red; `--no-color`/`NO_COLOR` for plain): `python3 scripts/dash.py <url>` for a live view, `--once` / `--json` for a scriptable snapshot — prefill/decode tok/s (computed-vs-admitted prefill, windowed headline + instant `now` + `peak`, per-request `stream` speed), engine steps/s and tokens/step, preemptions, queue depth, KV pressure against the lane's KV capacity, TTFT p50/p90, request lifecycle phases, mean prompt/output length, spec-decode acceptance rate and length. Summed across the `engine` label (data-parallel lanes report the whole lane); keys `q`/`p`/`r`/`w` in the live view. Also in the wizard menu ("Watch a lane") |
 | `scripts/lane_watchdog.py` | container-level self-healing for the rig: cron probe of the current lane's `/v1/models` every 5 min; three dead checks relaunch the lane via its start script (never `docker start` — RoCE GIDs re-resolve at launch). Boot-grace and switch-lock suppression; `--install` arms cron + the `@reboot` hook (`scripts/lane-autostart.sh`). A successful `serve` re-arms it on the head |
 | `tests/smoke/` | endpoint smoke tests: endpoint / chat / tool-call / headless omp agent loop — `tests/smoke/README.md` |
 | `docs/spec/GLP.md` | the GLP format spec: the `glp.mode` contract, layer-id mapping, why an additive reader must refuse the file |

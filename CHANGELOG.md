@@ -4,6 +4,36 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-10-13
+
+### Changed
+- **dash: honest throughput, a real TUI, more of what vLLM exposes**
+  (`scripts/dash.py`). The prefill headline is now tokens the engine actually
+  computed (`prefix_cache_queries − prefix_cache_hits`) with the
+  cache-inclusive `prompt_tokens_total` rate shown as `admitted … · cached N%`
+  — on a warm cache the old headline read above what the hardware can do.
+  Every counter is read twice: the windowed headline plus an instant `now`
+  and a `peak`, and the sparkline plots the instant signal instead of the
+  30s average (which rendered every burst as a slow ramp). Series are summed
+  across vLLM's `engine` label, so data-parallel lanes no longer report
+  engine 0 only; per-position acceptance follows vLLM's convention (÷ drafts).
+  New: engine `steps/s` and `tok/step` from the iteration histogram,
+  preemptions (red when climbing), KV usage against the lane's capacity from
+  `cache_config_info`, TTFT p50/p90 from the histogram buckets, e2e latency,
+  mean prompt/output length per finished request, spec-decode acceptance
+  length, windowed prefix-hit and accept rates (lifetime kept alongside).
+  Absent metrics render as `—` instead of a confident 0; older metric names
+  (`gpu_cache_usage_perc`, `time_per_output_token_seconds`) are accepted.
+  Live view uses the alternate screen with flicker-free redraw and keys
+  (`q` quit, `p` pause, `r` reset session, `w` cycle window), keeps the last
+  good frame with an error banner when a poll fails, and `--window` sets the
+  rate window. `--once` takes two samples `--interval` apart so its rates are
+  real (they were always 0), and `--json` emits the snapshot for scripts.
+  A server restart resets the session baseline. Queued hint says `KV full`
+  when that is the reason rather than always `raise MAX_NUM_SEQS`.
+  Default refresh is 5s (was 2s): one `/metrics` GET per poll against the
+  API server, and 5s keeps 6 points in the 30s window.
+
 ## 2026-10-12
 
 ### Added
