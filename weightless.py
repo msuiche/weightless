@@ -34,7 +34,8 @@ COMMANDS = {
     "serve": ([PY, os.path.join(HERE, "setup.py"), "serve"],
               "switch the rig to a lane, non-interactive: serve <name|#> [--skip-assets] [--skip-wait] (cloud lanes: Modal deploy)"),
     "dash": ([PY, os.path.join(HERE, "scripts", "dash.py")],
-             "live metrics for a serving lane (prefill/decode, queue, KV, spec decode)"),
+             "live metrics for a serving lane (prefill/decode, queue, KV, spec decode); "
+             "--bench runs an active, counter-isolated benchmark"),
     "task": ([PY, os.path.join(HERE, "scripts", "task.py")],
              "token/time usage of an omp agent session (active task, or --all)"),
     "test": (["bash", os.path.join(HERE, "tests", "smoke", "run.sh")],

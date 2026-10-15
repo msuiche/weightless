@@ -12,8 +12,12 @@ import importlib.util
 import io
 import json
 import math
+import os
 from pathlib import Path
+import tempfile
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -211,7 +215,8 @@ class LaneTests(unittest.TestCase):
     def test_unknown_metrics_are_none_not_zero(self):
         s = lane_for({"vllm:num_requests_running": 1.0}).snapshot()
         for key in ("kv_pct", "ttft_p50", "ttft_life", "queue_s", "steps_per_s", "preempt_total",
-                    "stream_per_req", "busy", "accept_pct", "cached_pct", "req_prompt_tok"):
+                    "stream_per_req", "busy", "accept_pct", "cached_pct", "req_prompt_tok",
+                    "ms_per_step"):
             self.assertIsNone(s[key], key)
         self.assertFalse(s["warm"])
 
@@ -240,6 +245,19 @@ class LaneTests(unittest.TestCase):
         self.assertAlmostEqual(s["accept_pct"], 60.0)
         self.assertAlmostEqual(s["accept_len"], 2.5)             # 1 + 60/40, vLLM's convention
         self.assertEqual(s["per_pos_pct"], [75.0, 50.0])          # summed over engines, normalised by drafts
+
+    def test_ms_per_step_from_decode_seconds_and_drafts(self):
+        prev = {"vllm:request_decode_time_seconds_sum": 0.0,
+                "vllm:spec_decode_num_drafts_total": 0.0}
+        m = {"vllm:request_decode_time_seconds_sum": 2.0,
+             "vllm:spec_decode_num_drafts_total": 200.0}
+        s = lane_for(m, prev).snapshot()
+        self.assertAlmostEqual(s["ms_per_step"], 10.0)  # 2s decode ÷ 200 steps
+
+    def test_ms_per_step_none_without_drafts(self):
+        prev = {"vllm:request_decode_time_seconds_sum": 0.0}
+        m = {"vllm:request_decode_time_seconds_sum": 2.0}
+        self.assertIsNone(lane_for(m, prev).snapshot()["ms_per_step"])
 
     def test_kv_capacity_from_cache_config(self):
         m = {"vllm:kv_cache_usage_perc": 0.5,
@@ -530,6 +548,274 @@ class FormatTests(unittest.TestCase):
     def test_fmt_dur(self):
         self.assertEqual(dash.fmt_dur(65), "1m")
         self.assertEqual(dash.fmt_dur(3_720), "1h02m")
+
+
+class SpecStepRenderTests(unittest.TestCase):
+    def test_step_ms_shown_in_spec_row(self):
+        prev = {"vllm:request_decode_time_seconds_sum": 0.0,
+                "vllm:spec_decode_num_drafts_total": 0.0,
+                "vllm:spec_decode_num_draft_tokens_total": 0.0,
+                "vllm:spec_decode_num_accepted_tokens_total": 0.0}
+        m = {"vllm:request_decode_time_seconds_sum": 2.0,
+             "vllm:spec_decode_num_drafts_total": 200.0,
+             "vllm:spec_decode_num_draft_tokens_total": 400.0,
+             "vllm:spec_decode_num_accepted_tokens_total": 200.0}
+        out = render_for(m, prev)
+        self.assertIn("step 10.0ms", out)   # 2s decode ÷ 200 steps
+
+
+class BaselineTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        env = patch.dict(os.environ, {"WEIGHTLESS_DASH_BASELINES":
+                                      os.path.join(self.tmp.name, "baselines.json")})
+        env.start()
+        self.addCleanup(env.stop)
+        self.info = {"model": "fake/model", "ctx": 8192, "version": "0.0.0-fake"}
+
+    def test_save_and_load_roundtrip(self):
+        dash.save_baseline(self.info, {"source": "t", "decode_tps": 50.0, "prefill_tps": None})
+        base = dash.load_baseline(self.info)
+        self.assertEqual(base["decode_tps"], 50.0)
+        self.assertNotIn("prefill_tps", base)           # Nones are dropped
+        self.assertEqual(base["key"], "fake/model|8192|0.0.0-fake")
+
+    def test_key_requires_a_model_id(self):
+        self.assertIsNone(dash.load_baseline({}))
+        with self.assertRaises(RuntimeError):
+            dash.save_baseline({}, {"decode_tps": 1.0})
+
+    def test_nothing_to_bless_is_an_error(self):
+        with self.assertRaises(RuntimeError):
+            dash.save_baseline(self.info, {"decode_tps": None})
+
+    def test_corrupt_store_reads_as_empty(self):
+        with open(os.environ["WEIGHTLESS_DASH_BASELINES"], "w") as f:
+            f.write("{not json")
+        self.assertEqual(dash.load_baselines(), {})
+        self.assertIsNone(dash.load_baseline(self.info))
+
+    def test_render_shows_ratio_against_baseline(self):
+        prev = {"vllm:generation_tokens_total": 0.0}
+        m = {"vllm:generation_tokens_total": 150.0}
+        out = render_for(m, prev, baseline={"decode_tps": 200.0})
+        self.assertIn("base 0.75×", out)
+
+    def test_render_without_baseline_shows_no_ratio(self):
+        prev = {"vllm:generation_tokens_total": 0.0}
+        out = render_for({"vllm:generation_tokens_total": 150.0}, prev)
+        self.assertNotIn("×", out)
+
+    def test_once_save_baseline(self):
+        payloads = iter(["vllm:generation_tokens_total 0\n",
+                         "vllm:generation_tokens_total 100\n"])
+        with patch.object(dash, "fetch", side_effect=lambda *a, **k: next(payloads)), \
+             patch.object(dash, "lane_info", return_value=dict(self.info)), \
+             patch.object(dash.time, "sleep"), \
+             contextlib.redirect_stdout(io.StringIO()), \
+             contextlib.redirect_stderr(io.StringIO()) as errors:
+            rc = dash.main(["--once", "--save-baseline", "--interval", "0.5"])
+        self.assertEqual(rc, 0)
+        self.assertIn("baseline saved", errors.getvalue())
+        self.assertGreater(dash.load_baseline(self.info)["decode_tps"], 0)
+
+
+class FakeLane:
+    """A minimal vLLM lookalike for bench tests: /metrics, /v1/models,
+    /version and /v1/chat/completions whose request counters move
+    synchronously with each completion, so trials isolate exactly."""
+
+    COUNTERS = ("prompt", "gen", "finished", "ttft", "queue", "prefill",
+                "decode", "e2e", "draft_tok", "acc_tok", "drafts")
+
+    def __init__(self, running=0.0, contaminate=False):
+        self.running = running
+        self.contaminate = contaminate   # pretend another client shares the lane
+        self.lock = threading.Lock()
+        self.c = {name: 0.0 for name in self.COUNTERS}
+
+    def metrics_text(self):
+        with self.lock:
+            c = dict(self.c)
+        hist = "".join(f"vllm:request_{name}_time_seconds_sum {c[key]}\n"
+                       f"vllm:request_{name}_time_seconds_count {c['finished']}\n"
+                       for name, key in (("queue", "queue"), ("prefill", "prefill"),
+                                         ("decode", "decode")))
+        return (
+            f"vllm:num_requests_running {self.running}\n"
+            "vllm:num_requests_waiting 0\n"
+            f"vllm:prompt_tokens_total {c['prompt']}\n"
+            f"vllm:generation_tokens_total {c['gen']}\n"
+            f"vllm:request_generation_tokens_count {c['finished']}\n"
+            f"vllm:request_generation_tokens_sum {c['gen']}\n"
+            f'vllm:request_success_total{{finished_reason="stop"}} {c["finished"]}\n'
+            f"vllm:time_to_first_token_seconds_sum {c['ttft']}\n"
+            f"vllm:time_to_first_token_seconds_count {c['finished']}\n"
+            f"{hist}"
+            f"vllm:e2e_request_latency_seconds_sum {c['e2e']}\n"
+            f"vllm:e2e_request_latency_seconds_count {c['finished']}\n"
+            f"vllm:spec_decode_num_draft_tokens_total {c['draft_tok']}\n"
+            f"vllm:spec_decode_num_accepted_tokens_total {c['acc_tok']}\n"
+            f"vllm:spec_decode_num_drafts_total {c['drafts']}\n"
+        )
+
+    def complete(self, body):
+        max_tokens = int(body.get("max_tokens") or 16)
+        prompt = max(1, sum(len(m.get("content", ""))
+                            for m in body.get("messages", [])) // 4)
+        with self.lock:
+            self.c["prompt"] += prompt
+            self.c["gen"] += max_tokens
+            self.c["finished"] += 2 if self.contaminate else 1
+            self.c["ttft"] += 0.05
+            self.c["queue"] += 0.01
+            self.c["prefill"] += prompt / 100_000.0
+            self.c["decode"] += max_tokens / 100.0
+            self.c["e2e"] += 0.06 + prompt / 100_000.0 + max_tokens / 100.0
+            self.c["draft_tok"] += max_tokens * 2
+            self.c["acc_tok"] += max_tokens
+            self.c["drafts"] += max_tokens / 2
+        return {"prompt_tokens": prompt, "completion_tokens": max_tokens,
+                "total_tokens": prompt + max_tokens}
+
+    def __enter__(self):
+        lane = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def _send(self, body, ctype="application/json", code=200):
+                data = body.encode()
+                self.send_response(code)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_GET(self):
+                if self.path == "/metrics":
+                    self._send(lane.metrics_text(), "text/plain")
+                elif self.path == "/v1/models":
+                    self._send(json.dumps({"data": [{"id": "fake/model",
+                                                     "max_model_len": 8192}]}))
+                elif self.path == "/version":
+                    self._send(json.dumps({"version": "0.0.0-fake"}))
+                else:
+                    self._send("{}", code=404)
+
+            def do_POST(self):
+                if self.path != "/v1/chat/completions":
+                    self._send("{}", code=404)
+                    return
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                usage = lane.complete(body)
+                self._send(json.dumps({
+                    "choices": [{"index": 0, "finish_reason": "length",
+                                 "message": {"role": "assistant", "content": "ok"}}],
+                    "usage": usage}))
+
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        return self
+
+    def __exit__(self, *exc):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+class BenchTests(unittest.TestCase):
+    """--bench against a fake lane: the run must isolate every trial in the
+    request counters, and any violation — busy lane, other traffic, an
+    existing report — must fail loudly, never measure anyway."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        env = patch.dict(os.environ, {"WEIGHTLESS_DASH_BASELINES":
+                                      os.path.join(self.tmp.name, "baselines.json")})
+        env.start()
+        self.addCleanup(env.stop)
+        self.info = {"model": "fake/model", "ctx": 8192, "version": "0.0.0-fake"}
+
+    def run_bench(self, *args):
+        with contextlib.redirect_stdout(io.StringIO()) as out, \
+             contextlib.redirect_stderr(io.StringIO()) as err:
+            rc = dash.main(list(args))
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_complete_run_isolates_every_trial(self):
+        out_path = os.path.join(self.tmp.name, "run1.json")
+        with FakeLane() as lane:
+            rc, _, _ = self.run_bench(lane.url, "--bench", "--wave", "3", "--out", out_path)
+        self.assertEqual(rc, 0)
+        with open(out_path) as f:
+            report = json.load(f)
+        self.assertEqual(report["status"], "complete")
+        self.assertEqual(report["warmup"]["label"], "excluded_warmup")
+        self.assertEqual([r["label"] for r in report["cases"]],
+                         ["short", "medium", "long", "prefill"])
+        for row in report["cases"]:
+            self.assertAlmostEqual(row["decode_tps"], 100.0)
+            self.assertAlmostEqual(row["accept_pct"], 50.0)
+            self.assertAlmostEqual(row["ms_per_step"], 20.0)
+        self.assertEqual(report["wave"]["n"], 3)
+        self.assertGreater(report["wave"]["aggregate_tps"], 0)
+        self.assertEqual(report["summary"]["decode_tps"], 100.0)
+        self.assertEqual(report["script_sha256"], dash.script_sha256())
+        self.assertNotIn("vs_baseline", report)
+
+    def test_save_baseline_then_ratio_in_later_report(self):
+        out1 = os.path.join(self.tmp.name, "run1.json")
+        out2 = os.path.join(self.tmp.name, "run2.json")
+        with FakeLane() as lane:
+            rc1, _, _ = self.run_bench(lane.url, "--bench", "--wave", "2",
+                                       "--out", out1, "--save-baseline")
+            rc2, _, _ = self.run_bench(lane.url, "--bench", "--wave", "2", "--out", out2)
+        self.assertEqual((rc1, rc2), (0, 0))
+        base = dash.load_baseline(self.info)
+        self.assertEqual(base["source"], "bench")
+        self.assertEqual(base["decode_tps"], 100.0)
+        with open(out2) as f:
+            report = json.load(f)
+        self.assertEqual(report["vs_baseline"]["decode_tps"], 1.0)
+
+    def test_refuses_to_overwrite_a_report(self):
+        out_path = os.path.join(self.tmp.name, "run1.json")
+        with open(out_path, "w") as f:
+            f.write("{}")
+        with FakeLane() as lane:
+            rc, _, err = self.run_bench(lane.url, "--bench", "--out", out_path)
+        self.assertEqual(rc, 2)
+        self.assertIn("overwrite", err)
+
+    def test_busy_lane_fails_loudly(self):
+        out_path = os.path.join(self.tmp.name, "run.json")
+        with FakeLane(running=5.0) as lane:
+            rc, _, err = self.run_bench(lane.url, "--bench", "--idle-timeout", "0.2",
+                                        "--out", out_path)
+        self.assertEqual(rc, 2)
+        self.assertIn("lane busy", err)
+        with open(out_path) as f:
+            self.assertEqual(json.load(f)["status"], "failed")
+
+    def test_other_traffic_breaks_isolation_and_fails(self):
+        out_path = os.path.join(self.tmp.name, "run.json")
+        with FakeLane(contaminate=True) as lane:
+            rc, _, err = self.run_bench(lane.url, "--bench", "--out", out_path)
+        self.assertEqual(rc, 2)
+        self.assertIn("isolate the trial", err)
+        with open(out_path) as f:
+            report = json.load(f)
+        self.assertEqual(report["status"], "failed")
+        self.assertIn("isolate the trial", report["error"])
+
+    def test_out_without_bench_is_rejected(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                dash.main(["--out", "x.json"])
 
 
 if __name__ == "__main__":

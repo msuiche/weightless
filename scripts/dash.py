@@ -14,6 +14,13 @@ Usage:
     python3 scripts/dash.py [url] --interval 2    faster refresh
     python3 scripts/dash.py [url] --window 60     longer rate window (default 30s)
     python3 scripts/dash.py [url] --no-color      plain output (also: NO_COLOR=1)
+    python3 scripts/dash.py [url] --bench --out run1.json
+                                                  active benchmark: warmup, 4 serial
+                                                  cases + a concurrency wave, each
+                                                  trial isolated by request counters
+    python3 scripts/dash.py [url] --bench --save-baseline
+                                                  bless the results as this lane's
+                                                  baseline (shown as base N.NNx ratios)
 
 Keys in the live view:  q quit · p pause · r reset session counters ·
 w cycle the rate window (10 / 30 / 60 / 300s).
@@ -27,6 +34,13 @@ How the numbers are made
     prompt_tokens_total counts, cache hits included. Series are summed
     across the `engine` label, so data-parallel lanes report the whole
     lane. `--once` takes two samples --interval apart so its rates are real.
+    `ms/step` in the spec-decode row is decode-phase wall time per forward
+    step (decode seconds delta ÷ drafts delta) — the number that decides how
+    much speculative decoding actually buys. --bench replays fixed prompts
+    with cache-busting nonces, waits for an idle lane, and asserts every
+    trial is exactly isolated in the request counters — other traffic fails
+    the run loudly instead of silently skewing it. Baselines live in
+    ~/.cache/weightless/dash/baselines.json keyed by model|ctx|version.
 
 Colors are on when stdout is a terminal: pink/cyan brand accents (the
 setup.py palette), green → yellow → red as KV pressure climbs, yellow on
@@ -42,16 +56,20 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
 import re
 import shutil
+import statistics
 import sys
+import threading
 import time
 import urllib.parse
 import urllib.request
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 
 SPARK = "▁▂▃▄▅▆▇█"
 HIST = 60                 # sparkline samples kept (one per poll)
@@ -434,6 +452,11 @@ class Lane:
                           else (a_tot / d_tot * 100) if d_tot > 0 else None,
             "accept_len": (1 + acc_tok / drafts) if drafts > 0
                           else (1 + a_tot / n_tot) if n_tot > 0 else None,
+            # Decode-phase wall time per forward step. drafts (short window)
+            # and decode seconds (long window) both scale with concurrency,
+            # so the ratio is a per-step time regardless of load.
+            "ms_per_step": (1000 * w[DEC_T + "_sum"].rate() / drafts)
+                           if drafts > 0 and w[DEC_T + "_sum"].rate() > 0 else None,
             "draft_rate": drafts_tok,
             "accepted_rate": acc_tok,
             "per_pos_pct": [v / norm * 100 for _, v in per_pos] if norm > 0 else [],
@@ -549,9 +572,18 @@ def lane_info(base: str, timeout: float) -> dict:
     return info
 
 
+def ratio_txt(c: dict, current: float | None, base: float | None) -> str:
+    """`base 0.94×` suffix — green ≥ 0.97, yellow ≥ 0.90, red below."""
+    if not base or current is None or current <= 0:
+        return ""
+    ratio = current / base
+    col = c["green"] if ratio >= 0.97 else c["yellow"] if ratio >= 0.90 else c["red"]
+    return f"  {c['d']}base {col}{ratio:.2f}×{c['r']}"
+
+
 def render(target: str, s: dict, c: dict, info: dict | None = None,
            width: int | None = None, error: str | None = None,
-           paused: bool = False) -> str:
+           paused: bool = False, baseline: dict | None = None) -> str:
     d, r, b = c["d"], c["r"], c["b"]
     win = f"{s['window_s']:.0f}s"
     L = []
@@ -586,9 +618,11 @@ def render(target: str, s: dict, c: dict, info: dict | None = None,
     if s["prefill_admitted"] is not None:
         pre_extra = (f"  {d}admitted {fmt_rate(s['prefill_admitted'])}"
                      f" · cached {fmt_pct(s['cached_pct'])}{r}")
+    pre_extra += ratio_txt(c, s["prefill"], (baseline or {}).get("prefill_tps"))
     dec_extra = ""
     if s["stream_per_req"] is not None:
         dec_extra = f"  {d}stream {fmt_rate(s['stream_per_req'])}/req{r}"
+    dec_extra += ratio_txt(c, s["decode"], (baseline or {}).get("decode_tps"))
     row("prefill", c["cyan"], s["prefill"], s["prefill_now"], s["prefill_peak"],
         s["avg_prefill"], pre_extra, s.get("_hist_pre", ()))
     row("decode", c["pink"], s["decode"], s["decode_now"], s["decode_peak"],
@@ -637,7 +671,8 @@ def render(target: str, s: dict, c: dict, info: dict | None = None,
     if s["spec"]:
         pos = " ".join(f"{p:.0f}" for p in s["per_pos_pct"])
         acc_len = f"   acc.len {s['accept_len']:.2f}" if s["accept_len"] is not None else ""
-        L.append(f"  {d}spec dec{r}   accept {c['green']}{fmt_pct(s['accept_pct'])}{r}{acc_len}"
+        step = f"   step {s['ms_per_step']:.1f}ms" if s["ms_per_step"] is not None else ""
+        L.append(f"  {d}spec dec{r}   accept {c['green']}{fmt_pct(s['accept_pct'])}{r}{acc_len}{step}"
                  f"   draft {fmt_rate(s['draft_rate'])} → accepted {fmt_rate(s['accepted_rate'])} tok/s"
                  f"   {d}per-pos {pos}{r}")
     L.append("")
@@ -650,6 +685,318 @@ def render(target: str, s: dict, c: dict, info: dict | None = None,
     if width:
         L = [clip(line, width) for line in L]
     return "\n".join(L)
+
+
+# --------------------------------------------------------------- baseline ---
+
+def baseline_file() -> str:
+    return (os.environ.get("WEIGHTLESS_DASH_BASELINES")
+            or os.path.expanduser("~/.cache/weightless/dash/baselines.json"))
+
+
+def baseline_key(info: dict) -> str | None:
+    """A baseline only means something against the same lane identity —
+    same served model, context length and engine build."""
+    if not info.get("model"):
+        return None
+    return "|".join(str(info.get(k, "?")) for k in ("model", "ctx", "version"))
+
+
+def load_baselines() -> dict:
+    try:
+        with open(baseline_file()) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def load_baseline(info: dict) -> dict | None:
+    key = baseline_key(info)
+    base = load_baselines().get(key) if key else None
+    return dict(base, key=key) if isinstance(base, dict) else None
+
+
+def save_baseline(info: dict, fields: dict) -> str:
+    key = baseline_key(info)
+    if not key:
+        raise RuntimeError("lane identity unknown (no /v1/models id) — cannot key a baseline")
+    kept = {k: v for k, v in fields.items() if v is not None}
+    if not kept:
+        raise RuntimeError("no live rates to bless — run against a loaded lane")
+    path = baseline_file()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    allbases = load_baselines()
+    allbases[key] = {"saved_at": time.time(), **kept}
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(allbases, f, indent=2, sort_keys=True)
+        f.write("\n")
+    os.replace(tmp, path)
+    return path
+
+
+# ------------------------------------------------------------------- bench ---
+#
+# Methodology (after coolbho3k's draft-sampling replay driver): never measure
+# a request the lane was already handling. Every trial — warmup, serial case,
+# concurrency wave — starts on an idle lane, snapshots the request counters,
+# and afterwards asserts the counter delta contains exactly the trial's
+# requests and tokens. Other traffic fails the run loudly instead of
+# silently skewing it. Prompts carry a per-run nonce so a previous bench
+# run's prefix cache cannot serve this one.
+
+BENCH_SENTENCES = (
+    "Throughput without latency is a number without a question.",
+    "The cache holds keys and values for every token seen so far.",
+    "A queue forms when the KV cache cannot admit another sequence.",
+    "Prefill is parallel over positions; decode is one step per token.",
+    "Speculative decoding spends draft tokens to save forward passes.",
+    "A good benchmark isolates the trial from every other request.",
+    "The tail of the latency distribution is where users actually live.",
+    "Prefix caching turns repeated context into free context.",
+)
+
+
+def bench_passage() -> str:
+    """~2.4k tokens of stable, non-degenerate prose for the prefill case."""
+    return "\n".join(f"Note {i}: {BENCH_SENTENCES[i % len(BENCH_SENTENCES)]}"
+                     for i in range(160))
+
+
+def bench_cases() -> list:
+    return [
+        ("short", "Briefly introduce yourself in two sentences.", 64),
+        ("medium", "Explain how a transformer KV cache works, with a small worked example.", 256),
+        ("long", "Write a detailed design document for a token-bucket rate limiter: "
+                 "goals, architecture, edge cases, and a phased rollout plan.", 1024),
+        ("prefill", "Summarize the following notes in one sentence.\n\n" + bench_passage(), 32),
+    ]
+
+
+ISO_COUNTERS = (PROMPT_TOK, GEN_TOK, DRAFT_TOK, ACC_TOK, DRAFTS, PREEMPT, SUCCESS,
+                REQ_GEN + "_count", REQ_GEN + "_sum", TTFT + "_sum",
+                QUEUE_T + "_sum", PREF_T + "_sum", DEC_T + "_sum", E2E + "_sum")
+
+
+def counter_snapshot(m: dict) -> dict:
+    snap = {name: g(m, name) for name in ISO_COUNTERS}
+    snap["finished"] = (g(m, REQ_GEN + "_count") if has(m, REQ_GEN + "_count")
+                        else g(m, SUCCESS))
+    return snap
+
+
+def require_isolation_metrics(m: dict) -> None:
+    if not has(m, REQ_GEN + "_count") and not has(m, SUCCESS):
+        raise RuntimeError("lane exposes no finished-request counters "
+                           "(vllm:request_generation_tokens) — bench cannot isolate trials")
+
+
+def wait_idle(url: str, timeout: float, deadline_s: float) -> dict:
+    deadline = time.monotonic() + deadline_s
+    while True:
+        m = sample(url, timeout)
+        running, waiting = g(m, RUNNING), g(m, WAITING)
+        if running == 0 and waiting == 0:
+            return m
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"lane busy: {int(running)} running / {int(waiting)} waiting "
+                               f"after {deadline_s:.0f}s — bench needs the lane to itself")
+        time.sleep(1.0)
+
+
+def await_counters(url: str, timeout: float, before: dict, n: int,
+                   tries: int = 20, poll_s: float = 0.25) -> dict:
+    """Per-request counters land shortly after the HTTP response — poll
+    until this trial's requests are visible (usually one check, ≤ 5s)."""
+    for _ in range(tries):
+        snap = counter_snapshot(sample(url, timeout))
+        if snap["finished"] - before["finished"] >= n:
+            return snap
+        time.sleep(poll_s)
+    raise RuntimeError(f"metrics did not record {n} finished request(s) "
+                       f"within {tries * poll_s:.0f}s")
+
+
+def check_isolation(before: dict, after: dict, n: int, gen_tokens: float) -> dict:
+    delta = {k: after[k] - before[k] for k in before}
+    if any(v < 0 for v in delta.values()):
+        raise RuntimeError("a counter went backwards mid-trial (engine restart?)")
+    if delta["finished"] != n:
+        raise RuntimeError(f"request counters do not isolate the trial: expected {n} "
+                           f"finished, counted {delta['finished']:g} — other traffic on the lane?")
+    if delta[GEN_TOK] != gen_tokens:
+        raise RuntimeError(f"generation counter does not isolate the trial: expected "
+                           f"{gen_tokens:g} tokens, counted {delta[GEN_TOK]:g}")
+    return delta
+
+
+def chat_completion(base: str, model: str, content: str, max_tokens: int,
+                    temperature: float, timeout: float) -> tuple:
+    payload = {"model": model,
+               "messages": [{"role": "user", "content": content}],
+               "max_tokens": max_tokens, "temperature": temperature, "top_p": 1.0}
+    req = urllib.request.Request(base.rstrip("/") + "/v1/chat/completions",
+                                 data=json.dumps(payload).encode(),
+                                 headers={"Content-Type": "application/json"})
+    t0 = time.monotonic()
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        body = json.loads(r.read().decode())
+    usage = body.get("usage") or {}
+    if "completion_tokens" not in usage:
+        raise RuntimeError("chat response carried no usage block — cannot isolate the trial")
+    return usage, time.monotonic() - t0
+
+
+def trial_row(label: str, usage: dict, wall: float, delta: dict) -> dict:
+    comp, prompt = usage["completion_tokens"], usage.get("prompt_tokens", 0)
+    decode_s = delta[DEC_T + "_sum"] or None
+    prefill_s = delta[PREF_T + "_sum"] or None
+    drafts = delta[DRAFTS]
+    return {
+        "label": label,
+        "prompt_tokens": prompt,
+        "completion_tokens": comp,
+        "wall_s": round(wall, 3),
+        "ttft_s": delta[TTFT + "_sum"] or None,
+        "queue_s": delta[QUEUE_T + "_sum"] or None,
+        "prefill_s": prefill_s,
+        "decode_s": decode_s,
+        "e2e_s": delta[E2E + "_sum"] or None,
+        "decode_tps": comp / decode_s if decode_s else None,
+        "prompt_tps": prompt / prefill_s if prefill_s else None,
+        "accept_pct": delta[ACC_TOK] / delta[DRAFT_TOK] * 100 if delta[DRAFT_TOK] > 0 else None,
+        "tok_per_step": comp / drafts if drafts > 0 else None,
+        "ms_per_step": 1000 * decode_s / drafts if decode_s and drafts > 0 else None,
+    }
+
+
+def run_trial(args, model: str, label: str, content: str, max_tokens: int) -> dict:
+    wait_idle(args.url, args.timeout, args.idle_timeout)
+    before = counter_snapshot(sample(args.url, args.timeout))
+    usage, wall = chat_completion(args.url, model, content, max_tokens,
+                                  args.temperature, args.request_timeout)
+    delta = check_isolation(before, await_counters(args.url, args.timeout, before, 1),
+                            1, usage["completion_tokens"])
+    return trial_row(label, usage, wall, delta)
+
+
+def run_wave(args, model: str, nonce: str) -> dict:
+    n = args.wave
+    wait_idle(args.url, args.timeout, args.idle_timeout)
+    before = counter_snapshot(sample(args.url, args.timeout))
+    barrier = threading.Barrier(n + 1)
+
+    def one(i: int):
+        barrier.wait(timeout=15)
+        return chat_completion(args.url, model,
+                               f"[bench {nonce} #{i}] Explain how a transformer KV cache "
+                               f"works, with a small worked example.",
+                               256, args.temperature, args.request_timeout)
+
+    with ThreadPoolExecutor(max_workers=n) as pool:
+        futures = [pool.submit(one, i) for i in range(n)]
+        started = time.monotonic()
+        barrier.wait(timeout=15)
+        results = [f.result() for f in futures]
+        elapsed = time.monotonic() - started
+    tokens = sum(u["completion_tokens"] for u, _ in results)
+    delta = check_isolation(before, await_counters(args.url, args.timeout, before, n),
+                            n, tokens)
+    return {
+        "n": n,
+        "elapsed_s": round(elapsed, 3),
+        "completion_tokens": tokens,
+        "aggregate_tps": tokens / elapsed if elapsed > 0 else None,
+        "wall_s_per_req": [round(w, 3) for _, w in results],
+        "accept_pct": delta[ACC_TOK] / delta[DRAFT_TOK] * 100 if delta[DRAFT_TOK] > 0 else None,
+        "ms_per_step": (1000 * delta[DEC_T + "_sum"] / delta[DRAFTS]
+                        if delta[DEC_T + "_sum"] and delta[DRAFTS] > 0 else None),
+    }
+
+
+def script_sha256() -> str | None:
+    try:
+        with open(__file__, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return None
+
+
+def bench(args, err_c: dict) -> int:
+    info = lane_info(args.url, args.timeout)
+    model = info.get("model")
+    if not model:
+        print(f"{err_c['red']}bench needs the served model id, but "
+              f"{args.url}/v1/models did not answer{err_c['r']}", file=sys.stderr)
+        return 2
+    if args.out and os.path.exists(args.out):
+        print(f"{err_c['red']}refusing to overwrite {args.out} — preserve previous "
+              f"evidence; pick a new --out path{err_c['r']}", file=sys.stderr)
+        return 2
+    nonce = f"{int(time.time()):x}"
+    report = {"status": "running", "target": args.url, "lane": info,
+              "started_at": time.time(), "script_sha256": script_sha256(),
+              "settings": {"temperature": args.temperature, "top_p": 1.0,
+                           "wave": args.wave, "nonce": nonce},
+              "cases": []}
+
+    def save() -> None:
+        if args.out:
+            with open(args.out, "w") as f:
+                json.dump(report, f, indent=2)
+                f.write("\n")
+
+    try:
+        require_isolation_metrics(sample(args.url, args.timeout))
+        # Exercise lazy kernel paths before collecting timings; excluded.
+        report["warmup"] = run_trial(args, model, "excluded_warmup",
+                                     f"[bench {nonce}] List everyday objects and explain "
+                                     f"their uses in full sentences.", 64)
+        save()
+        for label, prompt, max_tokens in bench_cases():
+            row = run_trial(args, model, label, f"[bench {nonce}] {prompt}", max_tokens)
+            report["cases"].append(row)
+            save()
+            print(json.dumps({k: row[k] for k in
+                              ("label", "decode_tps", "prompt_tps", "ttft_s", "accept_pct")}),
+                  flush=True)
+        report["wave"] = run_wave(args, model, nonce)
+        serial = [r["decode_tps"] for r in report["cases"] if r["decode_tps"]]
+        prefill_row = next((r for r in report["cases"]
+                            if r["label"] == "prefill" and r["prompt_tps"]), None)
+        steps = [r["ms_per_step"] for r in report["cases"] if r["ms_per_step"]]
+        accepts = [r["accept_pct"] for r in report["cases"] if r["accept_pct"] is not None]
+        report["summary"] = {
+            "decode_tps": statistics.median(serial) if serial else None,
+            "prefill_tps": prefill_row["prompt_tps"] if prefill_row else None,
+            "wave_tps": report["wave"]["aggregate_tps"],
+            "accept_pct": statistics.median(accepts) if accepts else None,
+            "ms_per_step": statistics.median(steps) if steps else None,
+        }
+        base = load_baseline(info)
+        if base:
+            report["baseline"] = {k: v for k, v in base.items() if k != "key"}
+            report["vs_baseline"] = {k: round(cur / base[k], 4)
+                                     for k, cur in report["summary"].items()
+                                     if cur and base.get(k)}
+        if args.save_baseline:
+            report["saved_baseline"] = save_baseline(
+                info, {"source": "bench", **report["summary"]})
+        report["status"] = "complete"
+    except Exception as e:
+        report.update(status="failed", error=repr(e))
+        save()
+        print(f"{err_c['red']}bench failed: {e}{err_c['r']}", file=sys.stderr)
+        return 2
+    save()
+    summary = {**report["summary"]}
+    if report.get("vs_baseline"):
+        summary["vs_baseline"] = report["vs_baseline"]
+    print(json.dumps({"status": "complete", "summary": summary, "out": args.out}))
+    if not args.out:
+        print(json.dumps(report, indent=2))
+    return 0
 
 
 # --------------------------------------------------------------- terminal ---
@@ -760,14 +1107,40 @@ def main(argv=None) -> int:
     ap.add_argument("--timeout", type=positive_seconds, default=5.0, help="request timeout seconds (default: %(default)s)")
     ap.add_argument("--no-color", action="store_true",
                     help="plain output (auto when piped or NO_COLOR is set)")
+    ap.add_argument("--bench", action="store_true",
+                    help="active benchmark: warmup + 4 serial cases + a concurrency wave, "
+                         "every trial isolated by request counters (lane must be idle)")
+    ap.add_argument("--wave", type=int, default=6, metavar="N",
+                    help="concurrent requests in the bench wave (default: %(default)s)")
+    ap.add_argument("--temperature", type=float, default=0.0,
+                    help="bench sampling temperature (default: %(default)s — reproducible)")
+    ap.add_argument("--out", metavar="FILE",
+                    help="bench report JSON (refuses to overwrite — preserve previous evidence)")
+    ap.add_argument("--save-baseline", action="store_true",
+                    help="bless current rates (with --once) or bench results (with --bench) "
+                         "as this lane's baseline; later runs show base N.NNx ratios")
+    ap.add_argument("--idle-timeout", type=positive_seconds, default=30.0,
+                    help="seconds --bench waits for an idle lane before failing (default: %(default)s)")
+    ap.add_argument("--request-timeout", type=positive_seconds, default=600.0,
+                    help="per-request timeout for --bench (default: %(default)s)")
     args = ap.parse_args(argv)
     if args.json:
         args.once = True
+    if args.wave < 1:
+        ap.error("--wave must be at least 1")
+    if args.out and not args.bench:
+        ap.error("--out only makes sense with --bench")
+    if args.save_baseline and not (args.once or args.bench):
+        ap.error("--save-baseline needs --once (bless current rates) or --bench (bless results)")
+    if args.temperature < 0:
+        ap.error("--temperature must be non-negative")
 
     terminal = sys.stdout.isatty()
     color = terminal and "NO_COLOR" not in os.environ and not args.no_color
     c = palette(color)
     err_c = palette(color and sys.stderr.isatty())
+    if args.bench:
+        return bench(args, err_c)
     lane = Lane(span=args.window)
 
     def snapshot() -> dict:
@@ -785,16 +1158,32 @@ def main(argv=None) -> int:
             return 1
         info = lane_info(args.url, args.timeout)
         s = snapshot()
+        baseline = load_baseline(info)
+        if args.save_baseline:
+            try:
+                path = save_baseline(info, {
+                    "source": "dash --once",
+                    "prefill_tps": s["prefill"] or None,
+                    "decode_tps": s["decode"] or None,
+                    "stream_per_req": s["stream_per_req"],
+                    "accept_pct": s["accept_pct"],
+                    "ms_per_step": s["ms_per_step"]})
+            except Exception as e:
+                print(f"{err_c['red']}could not save baseline: {e}{err_c['r']}", file=sys.stderr)
+                return 1
+            print(f"baseline saved → {path}", file=sys.stderr)
         if args.json:
             out = {k: v for k, v in s.items() if not k.startswith("_")}
             out.update(target=args.url, info=info, time=time.time())
+            if baseline:
+                out["baseline"] = baseline
             print(json.dumps(out))
         else:
             width = shutil.get_terminal_size().columns if terminal else None
-            print(render(args.url, s, c, info=info, width=width))
+            print(render(args.url, s, c, info=info, width=width, baseline=baseline))
         return 0
 
-    info, info_t, error, paused = {}, -math.inf, None, False
+    info, info_t, error, paused, baseline = {}, -math.inf, None, False, None
     with Screen(terminal) as screen:
         while True:
             now = time.monotonic()
@@ -808,10 +1197,11 @@ def main(argv=None) -> int:
                         print(f"{err_c['red']}{error}{err_c['r']}", file=sys.stderr)
                 if now - info_t > 300 and error is None:
                     info, info_t = lane_info(args.url, args.timeout), now
+                    baseline = load_baseline(info) or baseline
             if lane.first is not None:
                 width = shutil.get_terminal_size().columns if terminal else None
                 screen.draw(render(args.url, snapshot(), c, info=info, width=width,
-                                   error=error, paused=paused))
+                                   error=error, paused=paused, baseline=baseline))
             elif terminal and error:
                 screen.draw(f"{c['red']}{error}{c['r']}  {c['d']}retrying every"
                             f" {args.interval:g}s · q quits{c['r']}")
