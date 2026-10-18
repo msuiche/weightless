@@ -7,6 +7,22 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 ## 2026-10-18
 
 ### Added
+- **captain-vector: calibration flags and metrics** (`tools/captain-vector/`).
+  `--winsorize Q` clamps every captured activation row to its own ±Q-quantile
+  before estimation — the softer massive-activation treatment next to
+  `--mask`, which the screen now names in its recommendation.
+  `--interpolate-dropped` fills null-gate-dropped layers with a normalised
+  lerp between kept neighbours instead of shipping holes in the span;
+  edge gaps stay dropped and the filled layers go into the description
+  metadata. `kldiv.py` measures mean per-token KL(stock || steered) of a
+  shipped vector on harmless prompts — teacher-forced through the same
+  `_attach` path `glp.py` uses — and `knee_search.py` runs a multi-objective
+  Optuna search over alpha (and optionally the shipped span) co-minimizing
+  refusal rate on harmful prompts and KL on harmless ones, reporting the
+  Pareto front and a recommended knee. optuna stays optional: only the
+  sampling loop imports it; `pick_knee` is pure and unit-tested offline.
+  Idea credit: p-e-w/heretic (AGPL-3.0) — reimplemented from the published
+  technique; no heretic code is used in this repository.
 - **README: Acknowledgements section** — heretic (Philipp Emanuel Weidmann),
   phantom-kv (Taha Karim), GCD (Vince Ovando / Tantalus), hf2q (Robert E.
   Lee / IOActive), contributors mgdowd / Thireus / robertelee78 / othexmr,
