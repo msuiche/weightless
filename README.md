@@ -556,6 +556,9 @@ verified against its pinned checkpoint revision.
   divergence from the original model, shipped as a modified checkpoint.
   The baked-weight counterpart to GLP's runtime steering, strongest on the
   workstation-scale dense and small-MoE models our lanes don't target.
+  captain-vector's winsorization, dropped-layer interpolation, KL-divergence
+  damage metric, and Optuna knee search borrow ideas from heretic,
+  reimplemented from the published technique with no code shared.
 - [phantom-kv](https://github.com/lordx64/phantom-kv) — Taha Karim
   (@lordx64). Refusal removal as a loadable KV-cache graft — zero weight
   modification, like GLP, through a different runtime mechanism.

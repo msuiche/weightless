@@ -142,6 +142,46 @@ width that isn't the model's hidden size, and layer ids past the model's
 depth. Needs `torch` only — transformers itself is not imported. A runnable
 end-to-end generate-with/without demo is `examples/apply_hf.py`.
 
+## Calibration: winsorize, interpolate, KL damage, the knee
+
+Four calibration additions, borrowed from p-e-w/heretic (AGPL-3.0) —
+reimplemented from the published technique; no heretic code is used in this
+repository:
+
+- `--winsorize Q` (0 < Q < 1) clamps every captured activation row to the
+  ±Q-quantile of its own component magnitudes, before estimation. Where
+  `--mask` zeroes the top dims of the direction outright, winsorization clips
+  each prompt's outliers and keeps every dimension in place. The
+  massive-activation screen that recommends `--mask 0.005` on a dominated
+  checkpoint also names `--winsorize 0.95` as the softer try — and flags a
+  `--winsorize` on a checkpoint with no massive activations, where clipping
+  only shaves signal. Idea credit: heretic's winsorization quantile.
+- `--interpolate-dropped` fills layers the null gate dropped with
+  `normalize(lerp(dirs[lo], dirs[hi], (L-lo)/(hi-lo)))` between the nearest
+  kept neighbours on both sides, so a gate pass does not punch holes in the
+  shipped span. Edge gaps with a kept neighbour on one side only stay
+  dropped; the filled layers are recorded in the GGUF's description
+  metadata. Idea credit: heretic's interpolation between adjacent layer
+  directions.
+- `kldiv.py` measures the quality cost of a shipped vector: mean per-token
+  KL(stock || steered) over greedy continuations of harmless prompts. The
+  stock model writes the reference continuations; both arms then
+  teacher-force prompt+continuation through the same `_attach` hook path
+  `glp.py` uses, and KL is averaged over the continuation positions. The
+  number to publish next to a delivery tally. Idea credit: heretic's
+  co-minimization of refusals and KL divergence from the original model.
+- `knee_search.py` replaces the hand-run alpha ladder with a multi-objective
+  Optuna TPE search: refusal rate on a harmful set and KL on harmless
+  prompts, both minimized, over alpha (0.25–3.0 by default) and optionally a
+  shipped-layer span (`--search-span LO-HI`). Refusals are classified on
+  short generations (default 100 tokens — a refusal appears early) with a
+  classifier written fresh for this file. The output is the trial table, the
+  Pareto front, and a recommended knee: among trials within a small delivery
+  tolerance of the best refusal rate, the lowest KL wins, ties to the lower
+  alpha. optuna is optional — only the sampling loop needs it; the decision
+  logic is pure and unit-tested. Idea credit: heretic's Optuna parameter
+  search.
+
 The derivation methodology gates — null calibration, prompt-driven capture,
 ship gates — are specified in `refusal-research/METHODOLOGY.md` (§18 and the
 sections it builds on) and are required practice, not suggestions.
@@ -150,6 +190,10 @@ sections it builds on) and are required practice, not suggestions.
 - `apply_transformers.py` — experiment-time helper: applies a GLP GGUF to any
   HF decoder model via forward hooks (torch only, transformers not imported)
 - `calibrate_null.py` — measures what held/null ratio pure noise reaches
+- `kldiv.py` — quality cost of a shipped vector: mean per-token
+  KL(stock || steered) on harmless prompts (idea credit: heretic)
+- `knee_search.py` — Optuna alpha/span search co-minimizing refusal rate and
+  KL, recommends the knee; optuna optional (idea credit: heretic)
 - `publish_hf.py` — ship helper: creates the HF repo (public, `gated="auto"`,
   RUA checkbox via the card's `extra_gated_*` frontmatter), uploads card +
   GGUF, then re-downloads the file and asserts sha256 byte-identity (stdlib +
