@@ -805,6 +805,52 @@ check("mask: materially changes a contaminated direction",
       cos_before_after < 0.99,
       f"cos(unmasked, masked) = {cos_before_after:.4f}")
 
+# --- winsorization: the softer massive-activation treatment ----------------
+# Applied to the captures BEFORE estimation: each row is clamped to its own
+# q-quantile bound, so outliers stop dominating the mean without a dimension
+# being deleted. The quantile axis and the clamp sign are what fail silently.
+Xw = torch.tensor([[-10.0, 1.0, 2.0, 3.0, 4.0],
+                   [2.0, 2.0, 2.0, 2.0, 2.0]])
+Wq = cv.winsorize_rows(Xw, 0.75)
+check("winsorize: clamps to the row's own q-quantile bound, sign kept",
+      Wq[0, 0] == -4.0 and torch.equal(Wq[0, 1:], Xw[0, 1:]),
+      f"{Wq[0].tolist()}  -- |x| sorted [1,2,3,4,10], q=0.75 lands on 4.0")
+check("winsorize: a row without spread is unchanged bit-exactly",
+      torch.equal(Wq[1], Xw[1]))
+Xr = torch.randn(24, D)
+Xr[:, 3] *= 400.0                       # the massive-activation shape
+Wr = cv.winsorize_rows(Xr, 0.95)
+bounds = torch.quantile(Xr.abs(), 0.95, dim=1, keepdim=True)
+check("winsorize: every component respects its row bound",
+      bool((Wr.abs() <= bounds + 1e-5).all()))
+check("winsorize: keeps the shape, deletes no dimension",
+      Wr.shape == Xr.shape and int((Wr == 0).sum()) == 0)
+check("winsorize: actually clips the planted outlier",
+      float(Wr[:, 3].abs().max()) < float(Xr[:, 3].abs().max()),
+      f"{float(Wr[:, 3].abs().max()):.1f} vs {float(Xr[:, 3].abs().max()):.1f}")
+
+# --- interpolation of null-gate-dropped layers ------------------------------
+# A dropped layer with kept neighbours on both sides is filled with the
+# normalised lerp between them; one-sided edge gaps stay dropped. A wrong fill
+# fails silently -- adjacent-layer directions are highly correlated, so a bad
+# interpolation still steers plausibly.
+d1, d5, d7 = (cv._unit(torch.randn(D)) for _ in range(3))
+dirs_in = {1: d1, 5: d5, 7: d7}
+filled = cv.interpolate_dropped(dirs_in, [0, 2, 3, 4, 6, 8])
+check("interpolate: interior gaps filled",
+      all(L in filled for L in (2, 3, 4, 6)))
+check("interpolate: edge gaps stay dropped",
+      0 not in filled and 8 not in filled)
+check("interpolate: midpoint is the normalised lerp",
+      torch.allclose(filled[6], cv._unit(d5 + 0.5 * (d7 - d5)), atol=1e-6))
+check("interpolate: weights follow (L-lo)/(hi-lo)",
+      torch.allclose(filled[2], cv._unit(d1 + 0.25 * (d5 - d1)), atol=1e-6))
+check("interpolate: filled directions are unit norm",
+      all(abs(float(filled[L].norm()) - 1.0) < 1e-5 for L in (2, 3, 4, 6)))
+check("interpolate: kept layers and the input dict untouched",
+      torch.equal(filled[1], d1) and torch.equal(filled[5], d5)
+      and sorted(dirs_in) == [1, 5, 7])
+
 # --- effective dose -------------------------------------------------------
 # alpha is not portable between checkpoints (measured: 4.9x difference in dose
 # per unit alpha between two models). Dose is the quantity that is.
@@ -874,6 +920,166 @@ check("draft stack: mtp.layers detected", nm == "mtp.layers" and len(st) == 1,
       f"found {nm!r}")
 nm2, st2 = cv.find_draft_stack(_NoMTP())
 check("draft stack: absent when there is none", nm2 is None and st2 is None)
+
+# --- KL divergence metric (kldiv) --------------------------------------------
+# The quality-retention number: mean per-token KL(stock || steered). If the
+# per-position math is wrong, every published damage number is wrong, and it
+# is wrong silently -- a KL off by a factor still looks like a KL.
+import kldiv as kd
+import knee_search as ks
+import math as _math
+lp_x = torch.randn(3, 5, 17)
+check("kl: identical logits give exactly 0",
+      float(kd.kl_per_token(lp_x, lp_x.clone()).abs().max()) < 1e-7)
+lg_p = torch.log(torch.tensor([0.5, 0.5]))
+lg_q = torch.log(torch.tensor([0.25, 0.75]))
+want_kl = 0.5 * _math.log(4.0 / 3.0)          # .5*ln(.5/.25) + .5*ln(.5/.75)
+got_kl = float(kd.kl_per_token(lg_p, lg_q))
+check("kl: analytic two-outcome case", abs(got_kl - want_kl) < 1e-6,
+      f"{got_kl:.6f} vs {want_kl:.6f}")
+check("kl: is asymmetric", abs(float(kd.kl_per_token(lg_q, lg_p)) - got_kl) > 1e-3)
+check("kl: preserves leading dims",
+      kd.kl_per_token(lp_x, torch.randn(3, 5, 17)).shape == (3, 5))
+# a constant added to every logit is a softmax no-op, so the edit scales a
+# FIXED perturbation direction -- KL grows with the scale along it
+pert = torch.randn(3, 5, 17)
+check("kl: grows with the size of the edit",
+      0 < float(kd.kl_per_token(lp_x, lp_x + 0.1 * pert).mean())
+      < float(kd.kl_per_token(lp_x, lp_x + 4.0 * pert).mean()))
+
+# --- knee search decision logic (knee_search) ---------------------------------
+# Pure trial dicts; optuna is never imported at module level, so these run on
+# a bare checkout -- the sampling loop degrades without optuna, the decision
+# rule does not.
+ktrials = [
+    {"alpha": 0.5, "refusal_rate": 0.50, "kl": 0.005},
+    {"alpha": 1.0, "refusal_rate": 0.20, "kl": 0.040},
+    {"alpha": 1.5, "refusal_rate": 0.20, "kl": 0.090},
+    {"alpha": 2.0, "refusal_rate": 0.00, "kl": 0.300},
+]
+check("pareto: front is the non-dominated trials",
+      sorted(ks.pareto_front(ktrials)) == [0, 1, 3])
+ladder = [
+    {"alpha": 0.5, "refusal_rate": 0.50, "kl": 0.010},
+    {"alpha": 1.0, "refusal_rate": 0.25, "kl": 0.030},
+    {"alpha": 1.5, "refusal_rate": 0.06, "kl": 0.080},
+    {"alpha": 2.0, "refusal_rate": 0.00, "kl": 0.200},
+    {"alpha": 2.5, "refusal_rate": 0.00, "kl": 0.350},
+]
+check("knee: lowest KL within the delivery tolerance wins",
+      ks.pick_knee(ladder, refusal_tol=0.05)["trial"]["alpha"] == 2.0,
+      "alpha 2.5 delivers the same 0% refusal at 1.75x the KL")
+check("knee: KL ties break to the lower alpha",
+      ks.pick_knee([{"alpha": 1.0, "refusal_rate": 0.10, "kl": 0.05},
+                    {"alpha": 2.0, "refusal_rate": 0.08, "kl": 0.05}],
+                   refusal_tol=0.05)["trial"]["alpha"] == 1.0)
+check("knee: the tolerance boundary is inclusive",
+      ks.pick_knee([{"alpha": 1.0, "refusal_rate": 0.00, "kl": 0.50},
+                    {"alpha": 2.0, "refusal_rate": 0.05, "kl": 0.01}],
+                   refusal_tol=0.05)["trial"]["alpha"] == 2.0)
+try:
+    ks.pick_knee([])
+    check("knee: empty trial list raises", False, "it did not")
+except ValueError:
+    check("knee: empty trial list raises", True)
+check("classify: refusal markers count",
+      ks.is_refusal("I'm sorry, but I can't help with that request."))
+check("classify: substantive compliance does not",
+      not ks.is_refusal("Sure, here is the overview you asked for, "
+                        "starting with the architecture and its parts."))
+check("classify: empty output counts as a refusal, never as delivery",
+      ks.is_refusal("") and ks.is_refusal("!!"),
+      "a collapsed model must not win the search")
+
+# --- kldiv plumbing: mock model, real _attach path (torch only) --------------
+# The row slicing is where kldiv fails silently: logits[t] predicts token t+1,
+# so a continuation at indices cut..end-1 is scored by positions cut-1..end-2.
+# An off-by-one there scores the prompt or drops a token and every published
+# KL is quietly wrong. Mock HF conventions (left padding, generate returns
+# prompt+continuation, forward returns .logits) and run the real measure_kl
+# through the real attach_glp_steering hooks.
+class _Out:
+    def __init__(self, logits):
+        self.logits = logits
+
+
+class _MockCfg:
+    def __init__(self, hidden_size):
+        self.hidden_size = hidden_size
+
+
+class _MockTok:
+    pad_token_id = 0
+    eos_token_id = 3
+    padding_side = "left"
+
+    def apply_chat_template(self, msgs, tokenize=False,
+                            add_generation_prompt=True, **kw):
+        return "x " + msgs[0]["content"]
+
+    def __call__(self, texts, return_tensors="pt", padding=True,
+                 add_special_tokens=False):
+        lens = [4 if len(t) < 10 else 6 for t in texts]
+        Smax = max(lens)
+        ids = torch.zeros(len(texts), Smax, dtype=torch.long)
+        am = torch.zeros(len(texts), Smax, dtype=torch.long)
+        for i, n in enumerate(lens):
+            ids[i, Smax - n:] = torch.arange(10, 10 + n)
+            am[i, Smax - n:] = 1
+        return {"input_ids": ids, "attention_mask": am}
+
+
+class _MockHF(torch.nn.Module):
+    """4-token vs 6-token prompts, one fixed continuation with an EOS inside:
+    exercises padding, the EOS trim and the logit slice in one pass."""
+
+    def __init__(self, n_layers):
+        super().__init__()
+        self.config = _MockCfg(D)
+        self.model = torch.nn.Module()
+        self.model.layers = torch.nn.ModuleList(
+            [_FakeLayer() for _ in range(n_layers)])
+        self.device = torch.device("cpu")
+
+    def generate(self, input_ids, attention_mask, max_new_tokens, **kw):
+        cont = torch.arange(20, 20 + max_new_tokens)
+        cont[3] = 3                          # EOS inside the continuation
+        out = input_ids.new_zeros(input_ids.shape[0],
+                                  input_ids.shape[1] + max_new_tokens)
+        out[:, :input_ids.shape[1]] = input_ids
+        out[:, input_ids.shape[1]:] = cont
+        return out
+
+    def forward(self, input_ids, attention_mask):
+        emb = torch.nn.functional.one_hot(input_ids % D, D).float()
+        return _Out(emb)
+
+with tempfile.TemporaryDirectory() as t:
+    mk = _MockHF(6)
+    mtok = _MockTok()
+    kgg = os.path.join(t, "k.gguf")
+    _gguf(kgg, _GOOD_KVS, {1: cv._unit(torch.randn(D)).tolist(),
+                           2: cv._unit(torch.randn(D)).tolist()})
+    mrows = kd.reference_rows(mtok, mk, ["short", "a much longer prompt"],
+                              max_new=5, batch=4)
+    check("kldiv: continuation trimmed after the first EOS",
+          all(r["ids"].shape[0] == r["cut"] + 4 and int(r["ids"][-1]) == 3
+              for r in mrows),
+          "EOS at continuation position 3 -> 4 scored tokens per row")
+    check("kldiv: left padding carries into the mask",
+          int(mrows[0]["mask"][:mrows[0]["cut"]].sum()) == 4)
+    mlog = kd.continuation_logits(mk, mrows[0])
+    check("kldiv: logit slice covers exactly the continuation positions",
+          mlog.shape == (4, D), f"{tuple(mlog.shape)}")
+    mean_kl, mper = kd.measure_kl(mtok, mk, ["short", "longer prompt text"],
+                                   kgg, alpha=None, max_new=5, batch=4)
+    check("kldiv: measure_kl runs through the real attach path",
+          len(mper) == 2 and all(p["kl"] is not None for p in mper))
+    check("kldiv: identity layers steer nothing, KL is exactly 0",
+          mean_kl == 0.0, f"mean {mean_kl}")
+    x_probe = torch.randn(1, 3, D)
+    check("kldiv: hooks removed after measure_kl",
+          torch.equal(mk.model.layers[1](x_probe), x_probe))
 
 # --- bake: GGUF + base weights -> rank-1 PEFT LoRA --------------------------
 # Needs safetensors on top of torch; skip cleanly without it.
