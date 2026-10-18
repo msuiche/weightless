@@ -434,6 +434,51 @@ def apply_mask(d, A, B, frac):
     return _unit(out)
 
 
+def winsorize_rows(X, q):
+    """Clamp every row of X to the +/- q-quantile of its own |components|.
+
+    The softer massive-activation treatment, applied to the capture matrices
+    BEFORE estimation: each prompt's outlier components are clipped to the
+    row's own bound, so a difference of means stops being dominated by the
+    pathology -- while every dimension keeps its place, unlike --mask which
+    zeroes dims outright. q=0.95 clips the top 5% of magnitudes per row.
+    Pure torch, unit-testable.
+
+    Idea credit: p-e-w/heretic (AGPL-3.0) -- reimplemented from the published
+    winsorization-quantile concept; no heretic code is used in this repository.
+    """
+    t = torch.quantile(X.abs(), q, dim=1, keepdim=True)
+    return X.clamp(-t, t)
+
+
+def interpolate_dropped(dirs, dropped):
+    """Fill null-gate-dropped layers that have kept neighbours on BOTH sides.
+
+    d = normalize(lerp(dirs[lo], dirs[hi], (L - lo) / (hi - lo))) with lo/hi
+    the nearest kept layers below/above. A gap with a kept neighbour on one
+    side only (layer 0, or the ends of the validated span) stays dropped --
+    extrapolating a direction past its support invents one. Returns a new
+    dict; `dirs` is untouched. Pure torch, unit-testable.
+
+    Idea credit: p-e-w/heretic (AGPL-3.0) -- reimplemented from the published
+    technique of interpolating a float direction index between adjacent layer
+    directions; no heretic code is used in this repository.
+    """
+    out = dict(dirs)
+    kept = sorted(dirs)
+    for L in dropped:
+        if L < 1:
+            continue
+        below = [k for k in kept if k < L]
+        above = [k for k in kept if k > L]
+        if not below or not above:
+            continue
+        lo, hi = below[-1], above[0]
+        v = dirs[lo] + (dirs[hi] - dirs[lo]) * ((L - lo) / (hi - lo))
+        out[L] = v / (v.norm() + 1e-9)
+    return out
+
+
 def est_dom(A, B):
     """Difference of means. Ignores the within-class covariance."""
     return _unit(A.mean(0) - B.mean(0))
@@ -2038,6 +2083,13 @@ def main():
                         "such model: +12.5 points of delivery AND +12.5 of control, "
                         "simultaneously. On a model without them it removes real "
                         "signal, so this is not a default.")
+    p.add_argument("--winsorize", type=float, default=0.0, metavar="Q",
+                   help="before estimation, clamp every captured activation "
+                        "row to the +/- Q quantile of its own component "
+                        "magnitudes (0.95 = clip the top 5%% per prompt). "
+                        "The softer alternative to --mask: tames "
+                        "massive-activation outliers without deleting "
+                        "dimensions. 0 disables.")
     p.add_argument("--reps", type=int, default=20)
     p.add_argument("--batch", type=int, default=1)
     p.add_argument("--dtype", default="bfloat16")
@@ -2059,6 +2111,12 @@ def main():
                         "time (the class declares both in "
                         "_keys_to_ignore_on_load_unexpected)")
 
+    p.add_argument("--interpolate-dropped", action="store_true",
+                   help="fill each null-gate-dropped layer (>= 1) that has "
+                        "kept neighbours on both sides with a normalised lerp "
+                        "between them, instead of leaving a hole in the "
+                        "shipped span. Edge gaps with one-sided neighbours "
+                        "stay dropped.")
     p.add_argument("--verify", type=int, default=0, metavar="N",
                    help="hold N prompts per side OUT of the derivation, then "
                         "generate on them with steering off and on and report "
@@ -2081,6 +2139,8 @@ def main():
     for req in ("model", "harmful", "harmless", "out"):
         if not getattr(a, req):
             p.error(f"--{req} is required (unless --validate is given)")
+    if a.winsorize and not 0 < a.winsorize < 1:
+        p.error("--winsorize Q must satisfy 0 < Q < 1")
     if torch is None:
         p.error("derivation requires torch; only --validate works without it")
 
@@ -2178,19 +2238,41 @@ def main():
     # relevant for this checkpoint.
     mr = {L: massive_ratio(A[L], B[L]) for L in sorted(A)}
     worst = max(mr, key=lambda L: mr[L][0])
-    peak, topdims = mr[worst]
+    peak_ratio, topdims = mr[worst]
     common = max(set(sum((mr[L][1] for L in mr), [])),
                  key=lambda d: sum(d in mr[L][1] for L in mr))
     n_with = sum(common in mr[L][1] for L in mr)
-    print(f"\n  massive-activation screen: peak/median {peak:.0f}x at layer {worst}"
+    print(f"\n  massive-activation screen: peak/median {peak_ratio:.0f}x at layer {worst}"
           f"; dim {common} in top-3 of {n_with}/{len(mr)} layers")
-    if a.mask <= 0 and peak >= 50 and n_with >= len(mr) * 0.8:
+    if a.mask <= 0 and peak_ratio >= 50 and n_with >= len(mr) * 0.8:
         print(f"  RECOMMEND --mask 0.005: one dimension dominates at every depth, "
               f"so a difference of means here partly points at it rather than at "
               f"your contrast. Reference: 75-434x needs masking, 6-17x does not.")
-    elif a.mask > 0 and peak < 20:
+        print(f"  Softer option: --winsorize 0.95 clips each prompt's outliers "
+              f"instead of deleting dimensions -- try it first when a mask's "
+              f"hard zero worries you.")
+    elif a.mask > 0 and peak_ratio < 20:
         print(f"  NOTE: --mask is set but this model shows no massive activations "
-              f"({peak:.0f}x). Masking will remove real signal here.")
+              f"({peak_ratio:.0f}x). Masking will remove real signal here.")
+    if a.winsorize and peak_ratio < 20:
+        print(f"  NOTE: --winsorize is set but this model shows no massive "
+              f"activations ({peak_ratio:.0f}x). Clipping will shave real "
+              f"signal here.")
+
+    # Winsorization happens after the screen, which describes the checkpoint
+    # as captured -- clamping first would hide the very ratio the screen
+    # exists to measure. Bounds are computed from the raw captures.
+    interp = []
+    if a.winsorize:
+        rels = []
+        for L in sorted(A):
+            X = torch.cat([A[L], B[L]])
+            t = torch.quantile(X.abs(), a.winsorize, dim=1)
+            rels.append(float(t.median() / max(float(X.abs().max()), 1e-9)))
+        A = {L: winsorize_rows(A[L], a.winsorize) for L in A}
+        B = {L: winsorize_rows(B[L], a.winsorize) for L in B}
+        print(f"  winsorize q={a.winsorize:g}: median clamp bound is "
+              f"{100 * statistics.median(rels):.1f}% of the layer peak")
 
     print(f"\n  {'layer':>5} {'held-out':>9} {'null':>7} {'ratio':>7}  verdict")
     dirs, dropped, ratios = {}, [], {}
@@ -2212,10 +2294,26 @@ def main():
     if dropped:
         print(f"\n  dropped {len(dropped)} layer(s) below {a.min_null_ratio}x null: "
               f"{dropped[:12]}{' ...' if len(dropped) > 12 else ''}")
+        if a.interpolate_dropped:
+            filled = interpolate_dropped(dirs, dropped)
+            interp = sorted(set(filled) - set(dirs))
+            if interp:
+                dirs = filled
+                print(f"  interpolated {len(interp)} dropped layer(s) from kept "
+                      f"neighbours: {interp}")
+                edges = [L for L in dropped if L not in interp]
+                if edges:
+                    print(f"    edge gap(s) without two-sided neighbours stay "
+                          f"dropped: {edges}")
+            else:
+                print("  interpolate-dropped: no dropped layer has kept neighbours "
+                      "on both sides; nothing filled")
 
     # sign: point along the harmful-minus-harmless difference, so that a POSITIVE
     # alpha removes the behaviour. Getting this backwards installs it instead.
-    ref = max(dirs, key=lambda L: ratios[L])
+    # The anchor is a gate-VALIDATED layer -- interpolated layers carry no
+    # ratio of their own.
+    ref = max((L for L in dirs if L in ratios), key=lambda L: ratios[L])
     anchor = A[ref].mean(0) - B[ref].mean(0)
     for L in list(dirs):
         if float(dirs[L] @ _unit(anchor)) < 0 and L == ref:
@@ -2280,11 +2378,18 @@ def main():
               f"a matched-mean pair (0.248 vs 0.244) had opposite outcomes, separated "
               f"only by the per-layer maximum (0.417 vs 0.653).")
 
+    gate_kept = [L for L in ship if L in ratios]
     val = (f"held-out vs shuffled-label null, {a.reps} reps; kept ratio >= "
-           f"{a.min_null_ratio}x; min kept {min(ratios[L] for L in ship):.1f}x"
-           f"; dose {dz:.3f}/alpha ({dz / floor:.1f}x random)")
+           f"{a.min_null_ratio}x; "
+           + (f"min kept {min(ratios[L] for L in gate_kept):.1f}x"
+              if gate_kept else "no gate-validated layer in the shipped span")
+           + f"; dose {dz:.3f}/alpha ({dz / floor:.1f}x random)")
     if a.mask > 0:
-        val += f"; masked top {100*a.mask:g}% of dims (peak/median {peak:.0f}x)"
+        val += f"; masked top {100*a.mask:g}% of dims (peak/median {peak_ratio:.0f}x)"
+    if a.winsorize:
+        val += f"; winsorized captures at q={a.winsorize:g}"
+    if interp:
+        val += f"; {len(interp)} interpolated layer(s) filled from kept neighbours"
 
     vr = None
     if a.verify > 0:
@@ -2340,14 +2445,17 @@ def main():
         "base_model": a.model, "revision": a.revision or "unspecified",
         "alpha": a.alpha, "hook": a.hook, "structure": a.structure,
         "method": (f"{a.estimator}_{a.structure.replace('-', '_')}"
-                   + (f"_mask{a.mask:g}" if a.mask > 0 else "")),
+                   + (f"_mask{a.mask:g}" if a.mask > 0 else "")
+                   + (f"_wins{a.winsorize:g}" if a.winsorize else "")),
         "contrast": a.contrast or f"{os.path.basename(a.harmful)} vs {os.path.basename(a.harmless)}",
         "validation": val,
-        "description": a.description or (
+        "description": (a.description or (
             f"Projective control vector. Apply as h -= alpha*(h.d)d at "
             f"{a.hook}. NOT additive: an additive consumer must refuse this file. "
             f"No weights are modified. alpha=1 removes the component; alpha>1 "
-            f"REFLECTS it and can install the behaviour instead."),
+            f"REFLECTS it and can install the behaviour instead.")
+            + (f" Layers {interp} interpolated from kept neighbours "
+               f"(--interpolate-dropped)." if interp else "")),
     })
     if a.save_directions:
         torch.save({"per_layer": ship, "ratios": ratios, "estimator": a.estimator,
@@ -2356,6 +2464,8 @@ def main():
 
     print(f"\n  wrote {a.out}")
     print(f"    {len(layers)} directions, layers {layers[0]}-{layers[-1]}")
+    if interp:
+        print(f"    including {len(interp)} interpolated layer(s): {interp}")
     print(f"    mode=project  hook={a.hook}  alpha_default={a.alpha}")
     print(f"    content_sha256 {sha[:16]}")
     if a.alpha > 1:
