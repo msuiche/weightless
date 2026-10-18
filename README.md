@@ -364,10 +364,10 @@ SGLang serves stock. Details: `sglang-plugin/README.md`.
 
 Naming convention: **GLP-n** is a GLP vector touching **n layers** — GLP-29
 below is the DSV4 vector, GLP-49 the Qwen one, GLP-47 the Flash-Next one,
-GLP-44 the GLM-Flash one, GLP-77 the GLM 743B one. All five lanes' vectors are
+GLP-44 the GLM-Flash one, GLP-77 the GLM 743B one. Every vector below is
 published under `msuiche/` on Hugging Face (gated — fetch with an HF token),
 spec-conformant per [`docs/spec/GLP.md`](docs/spec/GLP.md) and
-verified against their pinned checkpoint revisions.
+verified against its pinned checkpoint revision.
 
 - [`msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29`](https://huggingface.co/msuiche/DeepSeek-V4-Flash-0731-abliterated-cyber-GLP-29)
   — **DSV4 lane, GLP-29 (GGUF).** Cyber-contrast vector: 29 per-layer
@@ -417,6 +417,22 @@ verified against their pinned checkpoint revisions.
   makes it WORSE at full length** (do not raise it). Serving lane:
   `recipe/glm53xl/` (TP=4 on 4x Spark, tonyd2wild's Int4-Int8Mix stack; the
   hotfix steers `hidden_states + residual` on the `deepseek_v2` path).
+- [`msuiche/DeepSeek-V4.1-Flash-abliterated-cyber-GLP-39-L1-39-a0.5`](https://huggingface.co/msuiche/DeepSeek-V4.1-Flash-abliterated-cyber-GLP-39-L1-39-a0.5)
+  — **DeepSeek-V4.1-Flash (`deepseek_v41`), GLP-39.** Per-layer dom over the
+  post-layer hyper-connection fold reduced to the single stream (the mean over
+  the 4 hc copies, pre-engram — derive and apply at the same site), layers
+  1–39, α=0.5, mask 0.005 (the massive-activation screen flagged 571–3104×).
+  Derived 2026-09-10 on Modal (4×H200, vLLM `dsv41-feat` capture lane):
+  refusal32 4→24, cyber32 5→31, propaganda32 32/32, one benign classifier
+  false positive. Research vector only — the arch loads in no vLLM release
+  and no 2×128 GB quant exists, so `recipe/dsv41/` fails closed.
+- [`msuiche/DeepSeek-V4.1-Flash-1017-abliterated-cyber-GLP-39-L1-39-a0.75`](https://huggingface.co/msuiche/DeepSeek-V4.1-Flash-1017-abliterated-cyber-GLP-39-L1-39-a0.75)
+  — **DeepSeek-V4.1-Flash-1017, GLP-39.** Same hook over the same arch (the
+  1017 config is byte-identical to the 0909 release), layers 1–39, α=0.75 —
+  the knee moved: this checkpoint refuses harder at stock and code-mixes
+  earlier. Derived 2026-10-17 on the same Modal lane: refusal32 1→23,
+  cyber32 12→29, propaganda32 32/32, benign32 clean, zero garbles. Research
+  vector only, same blockers as the 0909 vector above.
 - [`msuiche/gemma-3-1b-it-abliterated-GLP-20-L4-25-a0.25`](https://huggingface.co/msuiche/gemma-3-1b-it-abliterated-GLP-20-L4-25-a0.25)
   — **Gemma-3 1B (`gemma3_text`), GLP-20.** Per-layer dom over the post-layer
   residual stream (1152), layers 4, 5, 8–25 zero-based — the null gate
@@ -510,9 +526,6 @@ verified against their pinned checkpoint revisions.
   their serving lanes are `recipe/qwen38fn/` (TP=2), `recipe/glm53/` (TP=4,
   needs 4 nodes) and `recipe/glm53xl/` (TP=4, 4 nodes + the Int4-Int8Mix
   stack).
-- **k=7/greedy draft A/B** (upstream issue #84): now one env line
-  (`DRAFT_SAMPLE_METHOD=greedy MTP_NUM_TOKENS=7`) after the 2026-08-21
-  upstream merge.
 - **Qwen LoRA cyber-holdout score** (run L): both Qwen steering arms match
   on refusal32; the LoRA arm still needs its cyber-holdout number before it
   can replace GGUF as the default. Lives in the eval pipeline, not this repo.
@@ -534,6 +547,31 @@ verified against their pinned checkpoint revisions.
 - [tonyd2wild/GLM-5.3-Flash-NVFP4-1M-KV-4x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-1M-KV-4x-DGX-Spark) + the [TP2 companion](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-262K-2x-DGX-Spark) — the GLM-5.3 lane's serving stack (sm121-v8 image patches, boot ritual, KV ladder), deployed and debugged by Knox (Claude) for @tonyd2wild; quant by [LibertAIDAI](https://huggingface.co/LibertAIDAI/GLM-5.3-Flash-NVFP4); gmu reference config by barrydeen
 - [tonyd2wild/GLM-5.3-Int4-Int8Mix-TP4-4x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Int4-Int8Mix-TP4-4x-DGX-Spark) + the [GLM-5.3 DGX Spark Cookbook](https://github.com/tonyd2wild/GLM-5.3-DGX-Spark-Cookbook) — the GLM-5.3 743B lane's serving stack (Int4-Int8Mix quant, sm12x kernel overlay, boot ritual); quant recipe from [QuantTrio](https://huggingface.co/QuantTrio), weights at [2wild4tv/GLM-5.3-Int4-Int8Mix](https://huggingface.co/2wild4tv/GLM-5.3-Int4-Int8Mix)
 - [othexmr/GLM-5.3-Flash-NVFP4-2x-4x-DGX-Sparks-RiNGSiDE](https://github.com/othexmr/GLM-5.3-Flash-NVFP4-2x-4x-DGX-Sparks-RiNGSiDE) — the GLM-5.3-Flash lane's current production serving stack (NVFP4 recipe, switchless ring NCCL, b12x kernels, RDMA prefill, DFlash2 drafting; TP2 and TP4 profiles). Our 4-node ring runs it with GLP-44 steering mounted on top (the `weightless` option in their launcher), live since 2026-09-29.
+
+## Acknowledgements
+
+- [heretic](https://github.com/p-e-w/heretic) — Philipp Emanuel Weidmann.
+  Fully automatic abliteration in the weights: an Optuna search over
+  weight-orthogonalization parameters that co-minimizes refusals and KL
+  divergence from the original model, shipped as a modified checkpoint.
+  The baked-weight counterpart to GLP's runtime steering, strongest on the
+  workstation-scale dense and small-MoE models our lanes don't target.
+- [phantom-kv](https://github.com/lordx64/phantom-kv) — Taha Karim
+  (@lordx64). Refusal removal as a loadable KV-cache graft — zero weight
+  modification, like GLP, through a different runtime mechanism.
+- [GCD](https://github.com/cybersharkvin/gcd-authz) — Vince Ovando
+  (Tantalus). Grammar-constrained decoding as a positive, generation-time
+  authorization control: forbidden tokens become ungenerable at the sampler,
+  per request. GCD constrains emission where GLP edits intent; the two
+  compose.
+- [hf2q](https://github.com/robertelee78/hf2q) — Robert E. Lee (IOActive).
+  The first inference-engine-native GCD implementation.
+- **Contributors** — [mgdowd](https://github.com/mgdowd),
+  [Thireus](https://github.com/Thireus),
+  [robertelee78](https://github.com/robertelee78),
+  [othexmr](https://github.com/othexmr).
+- **Community** — [Local Inference Lab](https://github.com/local-inference-lab),
+  the group behind the b12x kernel stack our lanes boot on.
 
 ## Fallback: the retired v027 stack
 

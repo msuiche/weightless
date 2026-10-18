@@ -4,6 +4,21 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-10-18
+
+### Added
+- **README: Acknowledgements section** — heretic (Philipp Emanuel Weidmann),
+  phantom-kv (Taha Karim), GCD (Vince Ovando / Tantalus), hf2q (Robert E.
+  Lee / IOActive), contributors mgdowd / Thireus / robertelee78 / othexmr,
+  and the Local Inference Lab community.
+- **README: the two DeepSeek-V4.1-Flash GLP-39 vectors** in the steering
+  catalog — 0909 (α=0.5) and 1017 (α=0.75), both research-only while the
+  `dsv41` serving lane stays blocked.
+
+### Removed
+- **README roadmap: the k=7/greedy draft A/B item** — shipped upstream
+  2026-08-21, no longer a plan.
+
 ## 2026-10-13
 
 ### Changed
