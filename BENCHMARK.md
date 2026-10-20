@@ -1100,7 +1100,19 @@ pair (64/64 greedy continuations, tokens and logprobs). The per-layer edit check
 passes on 40 of 44 layers; on layers 21, 24, 29 and 33 the error (1.5e-2 to
 2.8e-2 of the pre-edit component along the direction) is above the 1e-2 bound
 but 13 to 35 times below the bf16 rounding bound of the 16,384-wide stream, so
-the strict rule fails them and the rounding bound accepts them. Open: one
-steered CUDA-graph boot, run after batched and long-prefill loads, gave greedy
-continuations different from the other three steered boots; the cause is not
-isolated (a determinism question, not a graph-versus-eager one).
+the strict rule fails them and the rounding bound accepts them.
+
+Resolved (issue #5, root-caused 2026-10-19): one steered boot had given greedy
+continuations different from the other three steered boots. The cause is not
+the plugin, the load history, or CUDA graphs: on every boot each PP rank lets
+the Triton autotuner pick a config for SGLang's
+`kda_gate_chunk_cumsum_vector_kernel` (the GLM linear-attention gate cumsum),
+whose fp32 `tl.cumsum` rounds differently between two groups of its configs,
+and the pick — made once at the first prefill, with no disk cache — fixes the
+boot's state for its life. The boot's greedy output follows the pick one to
+one. For bit-comparable validation runs pin the pick:
+`TRITON_CACHE_AUTOTUNING=1` with one `TRITON_CACHE_DIR` shared by all ranks
+and boots (one seeding boot, then every later boot reuses its tuning; 6 of 6
+pinned boots matched the clean reference's tokens on all 64 prompts). The
+engine-side fix — a fixed config under `--enable-deterministic-inference` —
+is upstream SGLang's.

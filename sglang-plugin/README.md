@@ -187,6 +187,12 @@ have measured another value; the model cards give the safe range.
   decoding uses to guess the next tokens) stays stock. Alpha 0 is
   bit-identical to stock. Reloading weights from disk replaces the model
   and drops the sites: restart the server instead.
+- Bit-identity holds within a boot. Across boots the engine can flip the
+  bits on its own: SGLang autotunes some kernels at start-up without a
+  disk cache, and two configs of one kernel can round differently (seen on
+  GLM-5.3-Flash, issue #5). For bit-comparable validation across boots,
+  pin the pick: `TRITON_CACHE_AUTOTUNING=1` and one `TRITON_CACHE_DIR`
+  shared by every rank and boot.
 
 ## Tests
 

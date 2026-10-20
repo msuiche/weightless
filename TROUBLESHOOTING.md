@@ -20,9 +20,12 @@ Symptom → likely cause, in the order to check:
    the box is fine, only the stack died. Recover by relaunching the lane
    through its start script (RoCE GID indices re-resolve there), never
    `docker start`. The wizard's diagnose greps the last 300 log lines of
-   serving containers for this signature. Open gap: no container-level
-   watchdog yet — a cron checking `/v1/models` and relaunching the lane
-   would close it.
+   serving containers for this signature. Closed 2026-10-12 by the lane
+   watchdog (`scripts/lane_watchdog.py`, armed on the head by any `serve`:
+   cron every 5 min, three dead `/v1/models` checks relaunch the lane's
+   start script; switch-lock and boot-grace suppression keep it from firing
+   mid-switch or stacking launches). First live instance: the 2026-10-12
+   10:15 clean stop sat unserved ~5h until a human noticed.
 
 1. **Router answers but serves zero models** — the serving engine behind it
    is down, the router is fine. Diagnose falls through to the node check
@@ -145,3 +148,9 @@ First check the boot log: every rank prints
   run the plugin's tests against that SGLang before serving it.
 - **Steering gone after a weight update:** reloading weights from disk
   replaces the model and drops the sites; restart the server.
+- **Greedy output differs between two boots, fixed for each boot's life:**
+  not the plugin — an engine kernel's Triton autotune pick at start-up
+  (seen on GLM-5.3-Flash's `kda_gate_chunk_cumsum_vector_kernel`, whose
+  fp32 cumsum rounds differently between config groups; issue #5). Pin the
+  pick for bit-comparable runs: `TRITON_CACHE_AUTOTUNING=1` with one
+  `TRITON_CACHE_DIR` shared by all ranks and boots, seeded by a first boot.

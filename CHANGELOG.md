@@ -4,6 +4,20 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-10-19
+
+### Docs
+- **Issue #5 root-caused, disclosure updated** — the GLM-5.3-Flash
+  steered-boot nondeterminism is SGLang's uncached Triton autotune of
+  `kda_gate_chunk_cumsum_vector_kernel`: each PP rank picks a config at its
+  first prefill, two config groups round the fp32 cumsum differently, and the
+  pick fixes the boot's greedy output for its life. Not the plugin, the load
+  history, or CUDA graphs (analysis: @Thireus). `BENCHMARK.md` now carries
+  the resolution; `TROUBLESHOOTING.md` and `sglang-plugin/README.md` carry
+  the pinning recipe (`TRITON_CACHE_AUTOTUNING=1`, one shared
+  `TRITON_CACHE_DIR`). The fixed-config fix under
+  `--enable-deterministic-inference` is upstream SGLang's.
+
 ## 2026-10-18
 
 ### Added
