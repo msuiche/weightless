@@ -51,6 +51,20 @@ providers:
           supportsToolChoice: false
           requiresReasoningContentForToolCalls: true
           requiresAssistantContentForToolCalls: true
+      - id: deepseek-v4.1-flash
+        name: DeepSeek V4.1 Flash 1017 (4x DGX Spark TP=4, switchless ring, :8000)
+        baseUrl: http://localhost:8000/v1
+        reasoning: true
+        input: [text]
+        contextWindow: 1048576
+        maxTokens: 32768
+        compat:
+          supportsDeveloperRole: false
+          supportsReasoningEffort: true
+          maxTokensField: max_tokens
+          supportsToolChoice: false
+          requiresReasoningContentForToolCalls: true
+          requiresAssistantContentForToolCalls: true
       - id: glm53-flash-tp4
         name: GLM-5.3-Flash NVFP4 GLP-44 (4x DGX Spark TP=4, :8000 router)
         baseUrl: http://localhost:8000/v1

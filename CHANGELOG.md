@@ -4,6 +4,18 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-10-22
+
+### Added
+- **Smoke lane: `deepseek-v4.1-flash`** (`tests/smoke/models.yml`) —
+  DeepSeek V4.1 Flash 1017 on the 4-node switchless ring (TP=4, :8000),
+  1M context, reasoning on.
+- **README: spark-ds41f reference** — christopherowen/spark-ds41f linked in
+  References & credits: the reproducible TP4-ring / TP3-triangle Docker/vLLM
+  deployment for DSV4.1 Flash 1017 (TileLang kernels, sparknet one-shot
+  RoCE collectives) the new smoke lane points at; GLP steering available
+  there.
+
 ## 2026-10-19
 
 ### Docs
