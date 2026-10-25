@@ -1811,7 +1811,10 @@ def bake_lora(gguf_path, base, out_dir, alpha=None, modules=None,
     # Per direction layer, the residual writers that exist in THIS checkpoint.
     wanted = {}
     for L in sorted(dirs):
-        hits = sorted(k for k in wmap if f".layers.{L}." in k
+        # Accept both prefixed (model.layers.N.) and bare (layers.N.) key
+        # conventions -- the DeepSeek V4/V4.1 checkpoints ship bare keys.
+        hits = sorted(k for k in wmap
+                      if (f".layers.{L}." in k or f"layers.{L}." == k[:len(f"layers.{L}.")])
                       and any(k.endswith(s + ".weight") for s in suffixes))
         if not hits:
             raise ValueError(
