@@ -1843,6 +1843,20 @@ def bake_lora(gguf_path, base, out_dir, alpha=None, modules=None,
                 if W.shape[0] != D.shape[1]:
                     raise ValueError(f"{k}: out dim {W.shape[0]} != direction "
                                      f"dim {D.shape[1]} -- wrong base model")
+                # Zero-direction layers (uncovered by the vector, e.g. the
+                # dealign recovery ships 27 of 39) must bake to EXACT zero
+                # adapters — a no-op — never NaN from 0/0 normalization.
+                if not bool(torch.isfinite(D).all()) or float(D.abs().max()) == 0.0:
+                    stem = k[:-len(".weight")]
+                    mod = stem.split(f".layers.{L}.", 1)[-1]
+                    adapter[f"base_model.model.{stem}.lora_A.weight"] = torch.zeros(
+                        (D.shape[0], W.shape[1]), dtype=torch.float32)
+                    adapter[f"base_model.model.{stem}.lora_B.weight"] = torch.zeros(
+                        (W.shape[0], D.shape[0]), dtype=torch.float32)
+                    report_layers[f"{L}:{mod}"] = {"rel_fro": 0.0,
+                                                   "norm_A": 0.0}
+                    out(f"  layer {L:>3}  {mod:<24} |dW|/|W| 0.0000 (zero direction: no-op adapter)")
+                    continue
                 av = torch.tensor(alphas[L], dtype=torch.float32)
                 A = (-av.unsqueeze(1) * (D @ W)).clone()   # (rank, in)
                 B = D.T.contiguous().clone()               # (out, rank)
