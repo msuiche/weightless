@@ -61,6 +61,8 @@ SUITES = {
                             "core", "cyber32-suite.json"),
     "benign32": os.path.join(SPARK, "refusal-research", "suites",
                              "core", "benign32-suite.json"),
+    "weaponize32": os.path.join(SPARK, "refusal-research", "suites",
+                               "experimental", "weaponize32-suite.json"),
 }
 OUT = os.path.join(HERE, "out-dsv4-plugin-test")
 
