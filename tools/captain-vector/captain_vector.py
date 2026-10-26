@@ -2054,8 +2054,155 @@ def parse_span(s, n):
     lo, hi = (int(x) for x in s.split("-"))
     return list(range(max(lo, 0), min(hi, n - 1) + 1))
 
+# ---------------------------------------------------------------------------
+def recover_direction(base_snapshot, edited_snapshot, modules, out,
+                      alpha=1.0, revision=None, base_repo="", out_fn=print):
+    """Recover steering directions from a (base, edited) checkpoint pair.
+
+    For every weight tensor whose name contains one of `modules` (suffix
+    match against the safetensors key, e.g. 'attn.wo_b' or
+    'ffn.shared_experts.w2'), computes DeltaW = W_edited - W_base in fp32 and
+    takes the top left-singular vector of the SVD: for a rank-1 projective
+    weight edit DeltaW = -alpha * dhat (dhat^T W), that vector IS the
+    direction the edit removed. Works per layer; layer ids are parsed from
+    'layers.N.' in the tensor name (0-based -> GLP 1-based).
+
+    Not every edit is rank-1 (quantization-scale refits are diffuse). The
+    report carries per-tensor top-3 singular-value energy so the user can
+    see what they got: energy near 1.0 = clean rank-1 recovery; low energy
+    = diffuse edit, direction is the dominant component only.
+
+    Writes a GLP GGUF (glp.method = svd_weight_delta_recovery, the source
+    pair recorded in glp.contrast) plus a JSON report. Zero rows cover
+    untouched layers (runtime no-op).
+    """
+    import torch
+    from safetensors.torch import load_file, safe_open
+
+    base_snap, _ = _bake_resolve_base(base_snapshot, "", revision, out=out_fn)
+    edited_snap = edited_snapshot
+    if not os.path.isdir(edited_snap):
+        raise SystemExit(f"edited snapshot is not a local directory: {edited_snap}")
+    wmap = _bake_weight_index(base_snap)
+    edited_files = sorted(f for f in os.listdir(edited_snap)
+                          if f.endswith(".safetensors"))
+    # which base keys live in which edited shard: match by filename
+    wanted = {}
+    report = {}
+    for shard in edited_files:
+        epath = os.path.join(edited_snap, shard)
+        bpath = os.path.join(base_snap, shard)
+        if not os.path.exists(bpath):
+            continue  # edited-only shard (rare)
+        u = load_file(epath)
+        s = load_file(bpath)
+        for name in sorted(u.keys()):
+            if not any(name.endswith(m + ".weight") for m in modules):
+                continue
+            if name not in s:
+                continue
+            du = u[name].to(torch.float32)
+            ds = s[name].to(torch.float32)
+            if du.shape != ds.shape:
+                continue
+            delta = du - ds
+            nrm = float(delta.norm())
+            if nrm < 1e-3:
+                continue
+            U, S, Vh = torch.linalg.svd(delta, full_matrices=False)
+            e = S ** 2
+            tot = float(e.sum())
+            m = re.search(r"layers\.(\d+)\.", name)
+            if not m:
+                continue
+            L = int(m.group(1)) + 1
+            wanted[name] = (L, U[:, 0])
+            report[name] = {
+                "layer": L,
+                "delta_norm": round(nrm, 4),
+                "rel_delta": round(nrm / max(float(ds.norm()), 1e-9), 5),
+                "top1_energy": round(float(e[0] / tot), 4),
+                "top2_energy": round(float((e[0] + e[1]) / tot), 4),
+                "sv1_sv2": round(float(S[0] / (S[1] + 1e-9)), 2),
+            }
+            out_fn(f"  {name}: |dW|/|W| {report[name]['rel_delta']:.4f} "
+                   f"top1_energy {report[name]['top1_energy']:.3f} "
+                   f"sv1/sv2 {report[name]['sv1_sv2']:.1f}")
+    if not wanted:
+        raise SystemExit(
+            f"no weight tensors ending in {modules} differ between the "
+            f"snapshots -- wrong pair, or pass --modules explicitly")
+    # assemble the zero-padded stack by GLP layer id; width from first hit
+    width = int(next(iter(wanted.values()))[1].shape[0])
+    layers_hit = {L for L, _ in wanted.values()}
+    lo, hi = min(layers_hit), max(layers_hit)
+    stack = {L: torch.zeros(width, dtype=torch.float32) for L in range(lo, hi + 1)}
+    for name, (L, vec) in wanted.items():
+        v = vec / vec.norm()
+        stack[L] = v  # multiple hits per layer: last wins; report shows all
+    name_out = (f"glp.recovered-{os.path.basename(edited_snap.rstrip('/'))}"
+                f"-L{lo}-{hi}-a{alpha:g}")
+    gguf_path = out if out.endswith(".gguf") else os.path.join(out, f"{name_out}.gguf")
+    sha, written = write_gguf(gguf_path, stack, {
+        "model_hint": "",
+        "name": name_out,
+        "author": "captain-vector recover",
+        "base_model": base_repo or base_snapshot,
+        "revision": revision or "",
+        "alpha": alpha,
+        "hook": "residual_stream_post_layer",
+        "structure": "per-layer",
+        "method": "svd_weight_delta_recovery",
+        "contrast": (f"weight-diff recovery: base {base_repo or base_snapshot} "
+                     f"vs edited {edited_snapshot}; modules {','.join(modules)}; "
+                     "top left-singular vector of DeltaW per layer"),
+        "validation": (f"per-tensor rank report in {name_out}-report.json; "
+                       "top1_energy near 1.0 = clean rank-1 edit, low = diffuse "
+                       "(direction is the dominant component)"),
+        "description": (
+            "Projective control vector recovered from a weight-level edit "
+            "checkpoint pair via SVD. The direction the edited model's "
+            "writers no longer produce. NOT additive. Zero rows = layers "
+            "the edit did not touch (no-op)."
+        ),
+    })
+    json.dump(report, open(gguf_path.replace(".gguf", "-report.json"), "w"), indent=1)
+    out_fn(f"wrote {gguf_path}: sha {sha[:16]} layers {written[0]}-{written[-1]} "
+           f"({len(wanted)} tensors, {len(layers_hit)} layers)")
+    rc = validate_gguf(gguf_path, out=out_fn)
+    return rc
+
+
+def _recover_cmd(argv):
+    p = argparse.ArgumentParser(
+        prog="captain-vector recover",
+        description="Recover steering directions from a (base, edited) "
+                    "checkpoint pair via SVD of the weight deltas. The "
+                    "inverse of bake: given an abliterated/finetuned/merged "
+                    "checkpoint, extract the direction its writers removed.")
+    p.add_argument("base", help="pinned base snapshot dir (or HF id)")
+    p.add_argument("edited", help="edited snapshot dir (local)")
+    p.add_argument("--modules", default="attn.wo_b,ffn.shared_experts.w2",
+                   help="comma-separated tensor-name suffixes to diff "
+                        "(without .weight)")
+    p.add_argument("--out", required=True, help="output .gguf path or dir")
+    p.add_argument("--alpha", type=float, default=1.0)
+    p.add_argument("--revision", required=True,
+                   help="base checkpoint revision pin (required: the recovered "
+                        "GGUF must be tied to the exact base it was diffed "
+                        "against)")
+    p.add_argument("--base-repo", default="",
+                   help="HF repo id to record in the GGUF provenance")
+    a = p.parse_args(argv)
+    modules = [m.strip() for m in a.modules.split(",") if m.strip()]
+    return recover_direction(a.base, a.edited, modules, a.out,
+                             alpha=a.alpha, revision=a.revision,
+                             base_repo=a.base_repo)
+
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "recover":
+        sys.exit(_recover_cmd(sys.argv[2:]))
     # The file-serving subcommands are stdlib-only and take a GGUF path rather
     # than the derivation flags below; dispatch before argparse sees them.
     # bake joins them here (it also takes a GGUF, not derivation flags) but is
