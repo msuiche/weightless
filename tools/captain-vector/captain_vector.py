@@ -2056,7 +2056,8 @@ def parse_span(s, n):
 
 # ---------------------------------------------------------------------------
 def recover_direction(base_snapshot, edited_snapshot, modules, out,
-                      alpha=1.0, revision=None, base_repo="", out_fn=print):
+                      alpha=1.0, revision=None, base_repo="", out_fn=print,
+                      min_top1_energy=0.5, force=False):
     """Recover steering directions from a (base, edited) checkpoint pair.
 
     For every weight tensor whose name contains one of `modules` (suffix
@@ -2143,6 +2144,23 @@ def recover_direction(base_snapshot, edited_snapshot, modules, out,
     name_out = (f"glp.recovered-{os.path.basename(edited_snap.rstrip('/'))}"
                 f"-L{lo}-{hi}-a{alpha:g}")
     gguf_path = out if out.endswith(".gguf") else os.path.join(out, f"{name_out}.gguf")
+    report_path = gguf_path.replace(".gguf", "-report.json")
+    json.dump(report, open(report_path, "w"), indent=1)
+    # Projective gate: the GLP runtime can only subtract alpha*(h.d)d -- it
+    # expresses a rank-1 edit. A diffuse delta (low top1 energy) is mostly
+    # NOT shipped by this file, and the dsv41 trace work showed projection
+    # transfer fails in activation space even at 0.85 energy: the runtime
+    # covered 4.7% of the weight edit's effect, sign-flipped on 7/17
+    # layers. Refuse to write unless forced; the rank report is on disk.
+    med_top1 = statistics.median(v["top1_energy"] for v in report.values())
+    if med_top1 < min_top1_energy and not force:
+        raise SystemExit(
+            f"refusing to write a projective GLP: median top1_energy "
+            f"{med_top1:.3f} < {min_top1_energy} -- the edit is diffuse, a "
+            f"rank-1 file encodes at most that fraction of it in weight "
+            f"space, and weight-space rank does not bound activation-space "
+            f"transfer. Rank report: {report_path}. Re-run with --force to "
+            f"write anyway")
     sha, written = write_gguf(gguf_path, stack, {
         "model_hint": "",
         "name": name_out,
@@ -2166,7 +2184,6 @@ def recover_direction(base_snapshot, edited_snapshot, modules, out,
             "the edit did not touch (no-op)."
         ),
     })
-    json.dump(report, open(gguf_path.replace(".gguf", "-report.json"), "w"), indent=1)
     out_fn(f"wrote {gguf_path}: sha {sha[:16]} layers {written[0]}-{written[-1]} "
            f"({len(wanted)} tensors, {len(layers_hit)} layers)")
     rc = validate_gguf(gguf_path, out=out_fn)
@@ -2193,11 +2210,19 @@ def _recover_cmd(argv):
                         "against)")
     p.add_argument("--base-repo", default="",
                    help="HF repo id to record in the GGUF provenance")
+    p.add_argument("--min-top1-energy", type=float, default=0.5,
+                   help="minimum median top1 singular energy to ship: below "
+                        "this the edit is diffuse and a projective GLP cannot "
+                        "express it (default 0.5)")
+    p.add_argument("--force", action="store_true",
+                   help="write the GLP even when the edit is diffuse")
     a = p.parse_args(argv)
     modules = [m.strip() for m in a.modules.split(",") if m.strip()]
     return recover_direction(a.base, a.edited, modules, a.out,
                              alpha=a.alpha, revision=a.revision,
-                             base_repo=a.base_repo)
+                             base_repo=a.base_repo,
+                             min_top1_energy=a.min_top1_energy,
+                             force=a.force)
 
 
 def main():

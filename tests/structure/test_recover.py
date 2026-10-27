@@ -87,5 +87,50 @@ class RecoverSyntheticTest(unittest.TestCase):
             self.assertGreater(hit["top1_energy"], 0.999)
 
 
+    def test_refuses_diffuse_edit_unless_forced(self):
+        import torch
+        from safetensors.torch import save_file
+
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td) / "base"
+            edited = Path(td) / "edited"
+            base.mkdir()
+            edited.mkdir()
+            torch.manual_seed(0)
+            W = torch.randn(64, 32)
+            # diffuse delta: iid noise, top1_energy ~0.09, no direction
+            Wp = W + torch.randn(64, 32)
+            idx = {
+                "metadata": {"total_size": 64 * 32 * 4},
+                "weight_map": {
+                    "layers.5.attn.wo_b.weight": "model-00001-of-00001.safetensors",
+                },
+            }
+            for d_, tensors in ((base, W), (edited, Wp)):
+                save_file(
+                    {"layers.5.attn.wo_b.weight": tensors,
+                     "other.weight": torch.randn(8, 8)},
+                    str(d_ / "model-00001-of-00001.safetensors"))
+                idx["weight_map"]["other.weight"] = \
+                    "model-00001-of-00001.safetensors"
+                json.dump(idx, open(d_ / "model.safetensors.index.json", "w"))
+            out = str(Path(td) / "recovered.gguf")
+            pin = "deadbeef1234567890abcdef1234567890abcdef"
+            cmd = [sys.executable, str(CV), "recover", str(base), str(edited),
+                   "--modules", "attn.wo_b", "--out", out,
+                   "--base-repo", "test/synthetic", "--revision", pin]
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0, "diffuse edit must refuse")
+            self.assertIn("diffuse", r.stderr)
+            self.assertFalse(os.path.exists(out),
+                             "refused run must not write the GLP")
+            self.assertTrue(os.path.exists(out.replace(".gguf", "-report.json")),
+                            "refused run must still write the rank report")
+
+            r = subprocess.run(cmd + ["--force"], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertTrue(os.path.exists(out), "--force must write the GLP")
+
+
 if __name__ == "__main__":
     unittest.main()
