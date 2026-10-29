@@ -144,7 +144,7 @@ applier decides where a distributed file takes effect, so match the applier.
 | key | type | meaning |
 |---|---|---|
 | `glp.mode` | string | `project` or `add`. **Fatal if unrecognised.** |
-| `glp.spec_version` | uint32 | How to interpret the `glp.*` keys. `1`, or `2` when the file carries rank > 1 or alpha-scaling keys. |
+| `glp.spec_version` | uint32 | How to interpret the `glp.*` keys. `1`; `2` when the file carries rank > 1 or alpha-scaling keys; `3` when `glp.hook_point` names an hc fold site (see *Multi-copy streams and the fold site*). |
 
 `glp.spec_version` is deliberately distinct from `general.version`:
 `general.version` says *which build of this vector*, `spec_version` says *which
@@ -233,6 +233,7 @@ Recognised values:
 | `residual_stream_post_layer` | the accumulated residual after the layer's writes are folded in — llama.cpp's `build_cvec()` site, and the vLLM overlay's | vLLM, SGLang, llama.cpp fork |
 | `ffn_out_pre_residual` | the FFN/MoE write alone, before the residual (on DSpark, hyper-connection) fold | ds4 |
 | `attn_out_pre_residual` | the attention write alone, before the same fold | ds4 |
+| `hc_fold_pre_engram` | the post-fold stream on hyper-connection (multi-copy) architectures, immediately after the fold and before Engram/memory injection — see *Multi-copy streams and the fold site*. Requires `glp.spec_version = 3` | dsv41 |
 
 The two `*_pre_residual` values were added for ds4, which steers the writers
 rather than the folded residual: `ffn_out = moe + shared`, immediately before
@@ -250,6 +251,58 @@ producer targeting ds4 should export with the matching `hook_point` and an
 should refuse it, and if a caller overrides that refusal the alpha does not
 carry over. Coverage still dominates strength either way, so the same layer
 range is worth reusing across sites even when the alpha is not.
+
+### Multi-copy streams and the fold site (spec_version 3)
+
+Hyper-connection (hc) architectures — DeepSeek-V4.1, GLM-5.3, Hy4 — do not
+carry one residual per token but C copies: the stream is `[T, C, n_embd]`, and
+a layer's FFN write enters it at a **fold** (the `mhc_post` mixer, gated by
+`post_mix`/`res_mix` coefficients) computed at the start of the *next* layer's
+forward. On these archs `residual_stream_post_layer` names no tensor that
+exists between layers; the steerable post-layer stream materialises only
+inside the fold.
+
+`hc_fold_pre_engram` names that site: immediately after the fold, before
+Engram/memory injection. The projection operates on the model's own canonical
+reduction — the mean over copies:
+
+```
+h          <-  mean_c(stream)                       [T, n_embd]
+stream_c   <-  stream_c - alpha * (h . d) d         for every copy c
+```
+
+Subtracting the rank-1 term from every copy shifts the mean by exactly
+`alpha*(h.d)d` — no stochasticity assumption, and the edit is identical to
+projecting the mean directly. On an hc arch without Engram/memory injection,
+read the value as the same post-fold site.
+
+**Layer mapping at a fold site.** `direction.N` steers the fold that consumes
+layer N's FFN write. That fold runs at the start of layer N+1 for N below the
+last layer, and after the decoder loop for the final layer. The
+`direction.N` ↔ layer `N` contract is unchanged; only the *location* of the
+apply sits one fold later. `direction.0` stays invalid: layer 0's write does
+not fold through this path.
+
+**The companion writer is part of the site.** Files at this site are
+calibrated with the attention output writer (`o_proj` / `wo_b`) armed with the
+same stack and the same alpha: the fold removes the component from the
+accumulated stream while the writer projection attenuates its re-deposit. A
+reader implementing only the fold under-doses — the silent-degradation class
+this spec exists to kill — so the pairing belongs to the site definition, not
+to implementation taste. `glp.spec_version = 3` is required on any file whose
+`hook_point` names an hc fold site, and a reader that cannot arm both halves
+must refuse the file. Version-2 keys (`glp.rank` > 1, `glp.dir_scales`,
+`glp.layer_scales`) remain valid under version 3 with unchanged meaning.
+
+Measured basis for the first version-3 artifact: DeepSeek-V4.1-Flash-1017
+(40 layers, C = 4, n_embd = 5120), weight-SVD directions from the FFN writers,
+L11–37, alpha ladder on weaponize32: 20/32 refused stock → 16 (0.5) → 16 (1.0)
+→ 13 (1.5) → 8 (2.0) → 8 (2.5) → 5 (3.0) → 4 (3.5) → 3 (4.0), with refusal32
+at 6/32 and benign32-holdout at 9/32 (stock 8/32) at the 3.5 point. Alpha 4.0
+buys one more item at the cost of exact-token corruption (CVE-ID repetition);
+5.0 regresses on refusal count *and* coherence. The operating point is 3.5,
+and the residual refusals there are knowledge-boundary (post-cutoff CVEs),
+not refusal behaviour.
 
 `derived_at` exists because `hook_point` alone conflates two things: where the
 direction was derived and where it should be applied. For a natively derived
@@ -295,10 +348,18 @@ A conforming reader **must**:
    summing is meaningful for additive vectors only; two projections do not
    compose into a projection along the sum of their directions.
 7. Read `glp.spec_version` and **fail** on a version it does not implement.
-   Rank > 1 and the alpha-scaling keys are only valid under version 2 — a
-   reader that ignores unknown keys would otherwise apply the file with the
-   wrong alphas, silently.
-8. For rank > 1: require `glp.orthonormal=true`, verify the basis, and apply
+   Rank > 1 and the alpha-scaling keys are only valid under version 2+, and
+   hc fold-site hooks only under version 3 — a reader that ignores unknown
+   keys would otherwise apply the file with the wrong alphas or at the wrong
+   site, silently.
+8. For `hook_point` values naming an hc fold site (`hc_fold_pre_engram`):
+   require `glp.spec_version >= 3`, apply the projection to the mean over
+   stream copies broadcast to every copy, map `direction.N` to the fold
+   consuming layer N's FFN write, and arm the attention output writer with
+   the same stack and alpha. A reader that cannot arm both the fold and the
+   companion writer must **refuse** the file — the fold alone under-doses by
+   construction.
+9. For rank > 1: require `glp.orthonormal=true`, verify the basis, and apply
    `h <- h - sum_j alpha_j (h . d_j) d_j` with
    `alpha_{L,j} = alpha_default * dir_scales[j] * layer_scales[L]`. A reader
    that implements rank 1 only must **refuse** a rank-k file rather than

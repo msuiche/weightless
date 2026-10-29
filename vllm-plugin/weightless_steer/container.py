@@ -42,6 +42,11 @@ _FM = {0: "<B", 1: "<b", 2: "<H", 3: "<h", 4: "<I", 5: "<i", 6: "<f",
 
 _DIRECTION_RE = re.compile(r"direction\.(\d+)(?:\.(\d+))?")
 
+# Hook-point strings that require glp.spec_version 3: hc fold sites (multi-
+# copy stream op, fold mapping, companion writer — docs/spec/GLP.md,
+# "Multi-copy streams and the fold site").
+GLP_HOOKS_V3 = frozenset({"hc_fold_pre_engram"})
+
 
 def _int_meta(meta: dict, key: str, default: int) -> int:
     """An integer metadata value, coerced. Fixture files carry strings
@@ -165,14 +170,24 @@ def load_control_vector(
         )
 
     # The version gate: rank > 1 and the alpha-scaling keys change what a
-    # reader computes, so they are only valid under spec_version 2. A
-    # version-1 reader would ignore the keys it doesn't know and apply the
-    # file with the wrong alphas — silently. Refuse instead.
+    # reader computes, so they are only valid under spec_version 2; hc fold
+    # sites change where and how a reader applies (multi-copy stream, fold
+    # mapping, companion writer), so they are only valid under spec_version 3.
+    # A reader that ignores the keys it doesn't know would apply the file
+    # wrong — silently. Refuse instead. Note the hook match above runs first:
+    # this runtime implements no hc fold site today, so a version-3 file fails
+    # closed there before reaching this gate.
     version = _int_meta(meta, "glp.spec_version", 1)
-    if version not in (1, 2):
+    if version not in (1, 2, 3):
         raise ValueError(
             f"{path}: glp.spec_version={meta.get('glp.spec_version')!r} is "
-            f"not implemented by this reader (1 and 2 are). Refusing."
+            f"not implemented by this reader (1, 2 and 3 are). Refusing."
+        )
+    if file_hook in GLP_HOOKS_V3 and version < 3:
+        raise ValueError(
+            f"{path}: glp.hook_point={file_hook!r} is an hc fold site and "
+            f"requires glp.spec_version 3 (this file declares {version}). "
+            f"Refusing."
         )
     rank_declared = _int_meta(meta, "glp.rank", 1)
     if version == 1 and (rank_declared != 1

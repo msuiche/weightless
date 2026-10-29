@@ -62,7 +62,15 @@ GLP_HOOKS = {
     "post_layer": "residual_stream_post_layer",
     "attn_out": "attn_out_pre_residual",
     "ffn_out": "ffn_out_pre_residual",
+    "hc_fold": "hc_fold_pre_engram",
 }
+
+# Hook-point strings that require glp.spec_version 3 (hc fold sites: multi-copy
+# stream op + fold mapping + companion writer, GLP.md "Multi-copy streams and
+# the fold site"). A file at one of these sites marked version < 3 would be
+# applied at the wrong site by a pre-3 reader, so the writer bumps the version
+# and the validator refuses the mismatch.
+GLP_HOOKS_V3 = {"hc_fold_pre_engram"}
 
 
 # ---------------------------------------------------------------------------
@@ -659,8 +667,13 @@ def write_gguf(path, dirs, meta):
         w.add_string("general.base_model.0.name", base)
     w.add_string("general.base_model.0.version", meta["revision"])
 
+    # Resolve the hook before writing spec_version: hc fold sites force 3.
+    hook_glp = GLP_HOOKS.get(meta["hook"], meta["hook"])
+    if hook_glp not in GLP_HOOKS.values():
+        raise ValueError(f"unknown hook {meta['hook']!r}")
     w.add_uint32("glp.spec_version",
-                 2 if (k > 1 or dir_scales or layer_scales) else 1)
+                 3 if hook_glp in GLP_HOOKS_V3
+                 else 2 if (k > 1 or dir_scales or layer_scales) else 1)
     w.add_string("glp.generator", f"captain-vector {__version__}")
     w.add_string("glp.mode", "project")
     w.add_float32("glp.alpha_default", float(meta["alpha"]))
@@ -677,9 +690,8 @@ def write_gguf(path, dirs, meta):
     # always the hook here; a transferred vector (derived_at != hook_point) is
     # a relabel job for other tooling, not a derivation. Accept both internal
     # hook names (post_layer) and GLP.md strings (residual_stream_post_layer).
-    hook_glp = GLP_HOOKS.get(meta["hook"], meta["hook"])
-    if hook_glp not in GLP_HOOKS.values():
-        raise ValueError(f"unknown hook {meta['hook']!r}")
+    # hook_glp was already resolved and validated above (spec_version depends
+    # on it).
     w.add_string("glp.hook_point", hook_glp)
     w.add_string("glp.derived_at", hook_glp)
     w.add_string("glp.method", meta["method"])
@@ -911,10 +923,10 @@ def validate_gguf(path, out=print):
               f"glp.mode = {mode!r}" + (" (unrecognised: readers must refuse)"
                                         if mode not in ("project", "add") else ""))
     if "glp.spec_version" in meta:
-        check(meta["glp.spec_version"] in (1, 2),
+        check(meta["glp.spec_version"] in (1, 2, 3),
               f"glp.spec_version = {meta['glp.spec_version']}" +
               (" (unrecognised: readers must refuse)"
-               if meta["glp.spec_version"] not in (1, 2) else ""))
+               if meta["glp.spec_version"] not in (1, 2, 3) else ""))
 
     # apply parameters
     hook = meta.get("glp.hook_point")
@@ -937,6 +949,13 @@ def validate_gguf(path, out=print):
     if rank != 1:
         out(f"  [note] glp.rank = {rank}: subspace projection -- readers that "
             f"implement rank 1 only must refuse this file")
+    # hc fold sites change where and how a reader applies (multi-copy mean,
+    # fold mapping, companion writer), so they require spec_version 3: a
+    # pre-3 reader would apply at the wrong site and nothing would flag it.
+    if hook in GLP_HOOKS_V3:
+        check(version >= 3,
+              f"glp.hook_point = {hook!r} requires glp.spec_version 3 "
+              f"(hc fold site), file carries {version}")
     # rank > 1 or alpha-scaling keys change what a reader computes, so they
     # require spec_version 2: a version-1 reader would otherwise apply the
     # file with the wrong alphas and nothing would flag it.
@@ -1407,10 +1426,13 @@ def audit_gguf(path, expect_sha256=None):
             add(False, "glp.mode",
                 f"{mode!r}: unrecognised, a conformant reader must refuse")
     ver = meta.get("glp.spec_version", 1)
-    add(ver in (1, 2), "glp.spec_version", f"{ver}")
+    add(ver in (1, 2, 3), "glp.spec_version", f"{ver}")
     hook = meta.get("glp.hook_point")
     if hook is not None:
         add(hook in GLP_HOOKS.values(), "glp.hook_point", hook)
+        if hook in GLP_HOOKS_V3:
+            add(int(ver) >= 3, "hc fold site requires spec_version 3",
+                f"hook {hook!r}, version {ver}")
     rank = int(meta.get("glp.rank", 1) or 1)
     if rank == 1:
         add(True, "rank", "1: one fixed direction per layer")

@@ -71,6 +71,14 @@ class GgufGateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "glp.hook_point"):
             self.load(good_meta(), hook="ffn_out_pre_residual")
 
+    def test_hc_fold_hook_under_version_2_is_fatal(self):
+        # An hc fold site marked below spec_version 3 must be refused even by
+        # a reader that implements the hook (GLP.md, "Multi-copy streams and
+        # the fold site").
+        meta = {**good_meta(), "glp.hook_point": "hc_fold_pre_engram"}
+        with self.assertRaisesRegex(ValueError, "spec_version 3"):
+            self.load(meta, hook="hc_fold_pre_engram")
+
     def test_transferred_vector_warns_but_loads(self):
         meta = {**good_meta(), "glp.derived_at": "ffn_out_pre_residual"}
         with self.assertLogs("weightless_steer.container", level="WARNING"):
@@ -156,8 +164,13 @@ class Rank2GateTests(unittest.TestCase):
 
     def test_unimplemented_spec_version_is_fatal(self):
         with self.assertRaisesRegex(ValueError, "spec_version"):
-            self.load(rank2_meta(**{"glp.spec_version": "3"}),
+            self.load(rank2_meta(**{"glp.spec_version": "4"}),
                       rank2_tensors())
+
+    def test_spec_version_3_loads(self):
+        meta, _ = self.load(rank2_meta(**{"glp.spec_version": "3"}),
+                            rank2_tensors())
+        self.assertEqual(meta["glp.spec_version"], "3")
 
     def test_rank2_under_version_1_is_fatal(self):
         with self.assertRaisesRegex(ValueError, "spec_version 2"):
