@@ -4,8 +4,27 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
-## 2026-10-22
+## 2026-10-31
 
+### Added
+- **GLP spec_version 3 fold-site serving** (`vllm-plugin/archs/dsv41.py`) —
+  `hc_fold_pre_engram` on DeepSeek-V4.1-Flash-1017: the fold materializes
+  (the tree's own Engram pattern), `h = mean over the 4 hc copies`, every
+  copy loses `alpha*(h.d)d`, `direction[i-1]` at layer i (post-loop for the
+  final layer), and the mandatory companion `o_proj` writer armed with the
+  same stack and alpha. Off is stock: no vector → the tree's fused path,
+  zero extra kernels, no CUDA-graph delta. Registry shadow
+  `DeepseekV41ForCausalLM`; 8 functional tests plus the full plugin suite
+  green. The published GLP-27 vector (L11-37, alpha 3.5) now serves through
+  the plugin; the same semantics are live on the ring in the spark-ds41f
+  lane (glp-specv3, christopherowen/spark-ds41f#738).
+
+### Changed
+- **SGLang V4.1 refusal text** — now points at the fold-site lane and the
+  vLLM plugin adapter instead of claiming no reader exists; the refusal
+  itself stands (SGLang's V4.1 loop bypasses the hook path).
+
+## 2026-10-22
 ### Added
 - **Smoke lane: `deepseek-v4.1-flash`** (`tests/smoke/models.yml`) —
   DeepSeek V4.1 Flash 1017 on the 4-node switchless ring (TP=4, :8000),

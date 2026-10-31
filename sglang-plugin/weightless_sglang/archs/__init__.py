@@ -62,9 +62,11 @@ REFUSED = {
         "outputs were not checked."
     ),
     "DeepseekV41ForCausalLM": (
-        "DeepSeek-V4.1 is not supported: its layer loop calls forward_hc_pre_from_prev "
-        "directly and precomputes the next layer's input from the unsteered stream "
-        "(SGLang normally serves it as DeepseekV4ForCausalLM, where the DeepSeek-V4 row "
-        "refuses it)."
+        "DeepSeek-V4.1 is not supported by this plugin: its layer loop calls "
+        "forward_hc_pre_from_prev directly and precomputes the next layer's "
+        "input from the unsteered stream (SGLang normally serves it as "
+        "DeepseekV4ForCausalLM, where the DeepSeek-V4 row refuses it). The "
+        "fold site (GLP spec_version 3, hc_fold_pre_engram) ships in the vLLM "
+        "plugin (archs/dsv41) and in the spark-ds41f lane (glp-specv3)."
     ),
 }

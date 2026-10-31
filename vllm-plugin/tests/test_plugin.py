@@ -62,6 +62,8 @@ class RegisterTests(unittest.TestCase):
              "weightless_steer.archs.hy4:SteeredHy4ForCausalLM",
              "DeepseekV4ForCausalLM":
              "weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM",
+             "DeepseekV41ForCausalLM":
+             "weightless_steer.archs.dsv41:SteeredDeepseekV41LLMForCausalLM",
              "Qwen4ExpForConditionalGeneration":
              "weightless_steer.archs.qwen38fn:SteeredQwen3_8FlashNextForConditionalGeneration",
              "Qwen4ExpForCausalLM":

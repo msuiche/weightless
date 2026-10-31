@@ -150,8 +150,10 @@ def dsv4_preflight(*, runner, backbone, meta, path, row, row_name):
             f"weightless: this {row_name} is DeepSeek-V4.1 ({why}). SGLang serves V4.1 "
             f"through the V4 class, but its layer loop calls forward_hc_pre_from_prev "
             f"directly (no forward hook runs there) and precomputes the next layer's input "
-            f"from the unsteered stream. DeepSeek-V4.1 is not supported by this plugin (nor "
-            f"by the vLLM plugin). Refusing."
+            f"from the unsteered stream. The fold site (GLP spec_version 3, "
+            f"hc_fold_pre_engram) ships in the vLLM plugin (archs/dsv41) and in the "
+            f"spark-ds41f lane (glp-specv3); this SGLang adapter still refuses V4.1 because "
+            f"its loop bypasses the hook path entirely. Refusing."
         )
     why = model_type_reason(runner, backbone)
     if why is not None:

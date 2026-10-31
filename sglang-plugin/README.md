@@ -138,7 +138,7 @@ that dispatches on the loop index).
 | Nanbeige4.2-3B | `NanbeigeForCausalLM` | `hidden + residual` at each of 44 execution steps (22 layers x 2 loops); looped | structure-tested |
 | Ouro | `OuroForCausalLM` | | refused: SGLang has no Ouro model |
 | Inkling | `InklingForConditionalGeneration`, `InklingForCausalLM` | | refused: the post-layer stream never exists between layers |
-| DeepSeek-V4.1 | `DeepseekV41ForCausalLM`, or V4.1 served as `DeepseekV4ForCausalLM` | | refused: its loop prepares the next layer's input from the unsteered stream |
+| DeepSeek-V4.1 | `DeepseekV41ForCausalLM`, or V4.1 served as `DeepseekV4ForCausalLM` | | refused: its loop prepares the next layer's input from the unsteered stream. The fold site (spec 3, hc_fold_pre_engram) ships in the vLLM plugin (archs/dsv41) and the spark-ds41f lane (glp-specv3) |
 | other names | `KimiLinearForCausalLM`, `DeepseekV4ForConditionalGeneration` | | refused: a different model under that name, or no such SGLang class |
 
 Structure-tested means: fakes shaped like the SGLang classes, SGLang's own

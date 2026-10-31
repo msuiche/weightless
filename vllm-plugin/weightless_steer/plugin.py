@@ -41,6 +41,12 @@ SHADOWED_ARCHS = {
         "weightless_steer.archs.hy4:SteeredHy4ForCausalLM",
     "DeepseekV4ForCausalLM":
         "weightless_steer.archs.dsv4:SteeredDeepseekV4ForCausalLM",
+    # DeepSeek-V4.1: the fold-site row (GLP spec_version 3,
+    # hc_fold_pre_engram). The multimodal wrapper builds its language model
+    # through the registry, so this one shadow covers both the plain and
+    # the VL serving shapes. GLP-27 is the file this row serves.
+    "DeepseekV41ForCausalLM":
+        "weightless_steer.archs.dsv41:SteeredDeepseekV41LLMForCausalLM",
     # qwen38fn: the RadixArk NVFP4 checkpoint declares Qwen4ExpForCausalLM's
     # multimodal sibling (the day-0 image's registry name for the arch); the
     # wrapper instantiates its language model directly, so the CausalLM
