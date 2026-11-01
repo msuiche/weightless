@@ -335,6 +335,24 @@ A direction is tied to the exact base checkpoint it was derived from. Applying
 one to a different revision is undefined, hence the commit pin rather than just
 a model name.
 
+### Informational keys (optional, never gated)
+
+Some producers record capture-time statistics under `glp.*`. These keys are
+**diagnostics**: a reader must not change any computation based on them, and
+their absence is never an error — which is why they need no `spec_version`
+entry of their own. Format follows `glp.layer_scales`: comma-separated `L:v`
+pairs keyed by layer.
+
+| key | meaning |
+|---|---|
+| `glp.dose_cos` | Per-layer mean \|h·d̂\|/‖h‖ of the derivation's capture rows — the fraction of the stream norm the projection removes at α=1. The file's effective push is `alpha_default × dose_cos` × the stream norm. |
+| `glp.resid_norm_median` | Per-layer median ‖h‖ of the same rows — the denominator for reading the dose in residual-norm ("rel") units without re-capturing. |
+
+A reader may surface them (inspect tooling does); a producer that invents new
+`glp.*` diagnostics should document them here rather than coining them silently
+— the namespace is shared, and an undocumented key is one someone else will
+define differently.
+
 ## Reader conformance
 
 A conforming reader **must**:
