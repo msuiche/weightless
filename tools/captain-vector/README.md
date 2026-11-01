@@ -186,6 +186,45 @@ The derivation methodology gates — null calibration, prompt-driven capture,
 ship gates — are specified in `refusal-research/METHODOLOGY.md` (§18 and the
 sections it builds on) and are required practice, not suggestions.
 
+## 0.6.0: rel dosing, behavioural controls, steer-lens, rollout harvest
+
+Four additions, borrowed from
+[lyramakesmusic/neuron-explorer](https://github.com/lyramakesmusic/neuron-explorer)
+(MIT) — reimplemented at vector granularity for the GLP pipeline; no
+neuron-explorer code is used in this repository:
+
+- **Rel dosing recorded in the file.** The derivation already reports dose
+  (mean |h·d|/‖h‖, the fraction of the residual norm the projection takes at
+  α=1); 0.6.0 writes it. Exported GGUFs carry `glp.dose_cos` (per-layer
+  mean|cos|) and `glp.resid_norm_median` (per-layer median residual norm at
+  capture), so any runtime or review can read the push in residual-norm
+  units — the units their sweep showed actually predict the coherent window
+  (~0.5–0.8× for every neuron, gibberish past 1.5×). `inspect` prints both,
+  plus the file's average push at `alpha_default`. Informational keys:
+  readers ignore them, per the spec's unknown-key rule. Idea credit:
+  neuron-explorer's dose calibration against the median residual norm.
+- **`--verify-controls K` (default 4): the behavioural null.** Their sweep
+  bought its rigor with random-direction controls — name/maker flips and
+  delivery jumps happen under *random* pushes too, so "the output changed"
+  proves nothing. With `--verify N`, K random unit directions are steered at
+  the same alpha over the same held-out harmful prompts; the steered arm
+  must beat **every** control or the tool warns that the push, not the
+  direction, may be doing the work. Idea credit: neuron-explorer's 256
+  random controls per sweep.
+- **`steer-lens`: the effect lens of a shipped vector.**
+  `captain-vector steer-lens VEC.gguf --model M [--alpha A] [--probes f.json]`
+  runs probe prompts stock vs steered and reports next-token Δlogprob (top-k)
+  and KL per probe — a derive-time quality gate that catches directions
+  which separate statistically but move the distribution nowhere specific,
+  before the full suites run. Fold-site (spec-3) hooks are refused, never
+  re-sited. Idea credit: neuron-explorer's `steer_lens` per-neuron
+  Δlogprob/KL maps.
+- **`--verify-topk K`: harvest now, decrypt later.** Every verify rollout
+  can keep per-step top-K logprobs (saved into `--save-directions`), so
+  later analysis — lenses, ranks, shifts — recomputes from the records
+  instead of re-running the model. Idea credit: neuron-explorer's
+  keep-everything rollout records.
+
 - `captain_vector.py` — the library and its CLI (single file on purpose)
 - `apply_transformers.py` — experiment-time helper: applies a GLP GGUF to any
   HF decoder model via forward hooks (torch only, transformers not imported)
