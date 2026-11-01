@@ -1461,5 +1461,101 @@ else:
             check("apply: unknown architecture fails with evidence",
                   "model.layers" in str(e), str(e)[-90:])
 
+# --- 0.6.0: rel-dose metadata, behavioural controls, steer-lens, top-k harvest ---
+
+# 1. rel-dose capture statistics round-trip through write -> validate -> inspect
+with tempfile.TemporaryDirectory() as td:
+    p = os.path.join(td, "dose.gguf")
+    dirs_in = {1: cv._unit(torch.randn(16)), 2: cv._unit(torch.randn(16))}
+    cv.write_gguf(p, dirs_in, {
+        "model_hint": "test", "name": "dose-test", "author": "t",
+        "description": "t", "base_model": "o/m", "revision": "a" * 40,
+        "alpha": 1.5, "hook": "post_layer", "method": "m", "contrast": "c",
+        "structure": "per-layer",
+        "resid_norm_median": {1: 25.4, 2: 31.0},
+        "dose_cos": {1: 0.12, 2: 0.34},
+    })
+    rc = cv.validate_gguf(p, out=lambda *_: None)
+    check("dose metadata: file validates", rc == 0, f"rc={rc}")
+    rep = cv.inspect_gguf(p)
+    check("dose metadata: inspect reports dose block", "dose" in rep)
+    check("dose metadata: mean/max/alpha", rep["dose"]["mean"] == 0.23
+          and rep["dose"]["max_layer"] == 2 and rep["dose"]["alpha"] == 1.5,
+          str(rep.get("dose")))
+    check("dose metadata: resid norm range", rep["dose"]["resid_min"] == 25.4
+          and rep["dose"]["resid_max"] == 31.0)
+    txt = cv.format_inspect(rep)
+    check("dose metadata: inspect prints rel units",
+          "residual norm median" in txt and "0.35x the residual norm" in txt, txt[-400:])
+
+# 2. controls_verdict: the behavioural-null gate, pure function
+b, mx, mn = cv.controls_verdict(0.9, [])
+check("controls: empty null passes", b and mx == 0.0 and mn == 0.0)
+b, mx, mn = cv.controls_verdict(0.9, [0.3, 0.5, 0.4])
+check("controls: beats all", b and mx == 0.5 and abs(mn - 0.4) < 1e-9)
+b, _, _ = cv.controls_verdict(0.5, [0.5, 0.4])
+check("controls: tie is not a win (push may be doing the work)", not b)
+b, _, _ = cv.controls_verdict(0.4, [0.5, 0.4])
+check("controls: below max fails", not b)
+
+# 3. _lens_topk: KL and delta-logprob math
+V = 32
+l0 = torch.randn(V)
+kl, top = cv._lens_topk(l0, l0.clone(), 5)
+check("lens: identical distributions have zero KL", abs(kl) < 1e-5, f"kl={kl}")
+check("lens: top-k size", len(top) == 5)
+l1 = l0.clone(); l1[3] += 4.0
+kl, top = cv._lens_topk(l0, l1, 5)
+p0 = torch.log_softmax(l0.float(), -1); p1 = torch.log_softmax(l1.float(), -1)
+kl_ref = float((p0.exp() * (p0 - p1)).sum())
+check("lens: KL matches reference", abs(kl - kl_ref) < 1e-5, f"{kl} vs {kl_ref}")
+top_ids = [t[0] for t in top]
+check("lens: top ids are stock-argmax", top_ids == torch.topk(p0, 5).indices.tolist())
+d3 = [t for t in top if t[0] == 3]
+check("lens: delta is steered minus stock logprob",
+      not d3 or abs(d3[0][2] - float(p1[3] - p0[3])) < 1e-5)
+
+# 4. _topk_records: per-step top-k extraction from a generated batch
+cut, V = 4, 16
+seqs = torch.arange(2 * (cut + 3)).reshape(2, cut + 3)
+scores = [torch.randn(2, V) for _ in range(3)]
+recs = cv._topk_records(seqs, scores, cut, 3)
+check("topk: one record per prompt", len(recs) == 2)
+check("topk: one step per generated token", len(recs[0]) == 3)
+lp0 = torch.log_softmax(scores[0][0].float(), -1)
+v_ref, i_ref = torch.topk(lp0, 3)
+check("topk: step 0 top ids match", [t[0] for t in recs[0][0]["top"]] == i_ref.tolist())
+check("topk: chosen id recorded", recs[0][0]["id"] == int(seqs[0, cut]))
+check("topk: logprobs rounded and negative", all(p <= 0 for _, p in recs[0][0]["top"]))
+
+# 5. _glp_dirs_for_runtime: GGUF -> runtime dirs and hook mapping
+with tempfile.TemporaryDirectory() as td:
+    p = os.path.join(td, "rt.gguf")
+    _gguf(p, [_kv_str("glp.mode", "project"),
+              _kv_str("glp.hook_point", "residual_stream_post_layer")],
+          {1: [1.0] + [0.0] * 7, 2: [0.0, 1.0] + [0.0] * 6})
+    meta, tensors = cv._read_gguf(p)
+    dirs, hook = cv._glp_dirs_for_runtime(meta, tensors)
+    check("runtime dirs: layers and hook", sorted(dirs) == [1, 2] and hook == "post_layer")
+    check("runtime dirs: values", float(dirs[1][0]) == 1.0 and float(dirs[2][1]) == 1.0)
+
+    p2 = os.path.join(td, "fold.gguf")
+    _gguf(p2, [_kv_str("glp.mode", "project"),
+               _kv_str("glp.hook_point", "hc_fold_pre_engram")], {1: [1.0] + [0.0] * 7})
+    try:
+        cv._glp_dirs_for_runtime(*cv._read_gguf(p2))
+        check("runtime dirs: fold hook refused", False)
+    except SystemExit as e:
+        check("runtime dirs: fold hook refused", "no runtime site" in str(e))
+
+    p3 = os.path.join(td, "rankk.gguf")
+    _gguf(p3, [_kv_str("glp.mode", "project")],
+          {1: [1.0] + [0.0] * 7, (1, 1): [0.0, 1.0] + [0.0] * 6})
+    try:
+        cv._glp_dirs_for_runtime(*cv._read_gguf(p3))
+        check("runtime dirs: rank-k refused", False)
+    except SystemExit as e:
+        check("runtime dirs: rank-k refused", "rank-k" in str(e))
+
 print(f"\n  {len(fails)} failure(s)" + (": " + ", ".join(fails) if fails else ""))
 sys.exit(1 if fails else 0)

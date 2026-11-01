@@ -53,7 +53,7 @@ _no_grad = torch.no_grad if torch is not None else lambda: (lambda f: f)
 # gguf package), because that is where a bad file hurts. The torch import
 # above stays mandatory for derivation itself.
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 # Internal --hook names to the GLP.md hook-point strings. An unknown hook must
 # fail loud here rather than ship a file whose hook_point lies about where the
@@ -279,18 +279,43 @@ def steer_hooks(ad, dirs, alpha, hook):
     return handles
 
 
+def _topk_records(sequences, scores, cut, k):
+    """Per-prompt, per-step top-k logprobs from a generate() call -- the
+    harvest-now-decrypt-later record: every later analysis (lens, rank,
+    shift) recomputes from these instead of re-running the model."""
+    recs = []
+    for i in range(sequences.shape[0]):
+        steps = []
+        for j, s in enumerate(scores):
+            lp = torch.log_softmax(s[i].float(), dim=-1)
+            v, ix = torch.topk(lp, k)
+            steps.append({"id": int(sequences[i, cut + j]),
+                          "top": [[int(x), round(float(p), 4)] for p, x in zip(v, ix)]})
+        recs.append(steps)
+    return recs
+
+
 @_no_grad()
-def generate(tok, model, prompts, max_new_tokens=192, batch_size=4):
-    outs = []
+def generate(tok, model, prompts, max_new_tokens=192, batch_size=4, top_k=0):
+    outs, recs = [], []
     for s in range(0, len(prompts), batch_size):
         chunk = [render(tok, p) for p in prompts[s:s + batch_size]]
         enc = tok(chunk, return_tensors="pt", padding=True, add_special_tokens=False)
         enc = {k: v.to(model.device) for k, v in enc.items()}
-        o = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False,
-                           pad_token_id=tok.pad_token_id)
+        if top_k:
+            o = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False,
+                               pad_token_id=tok.pad_token_id,
+                               output_scores=True, return_dict_in_generate=True)
+            seqs, scores = o.sequences, o.scores
+        else:
+            seqs = model.generate(**enc, max_new_tokens=max_new_tokens,
+                                  do_sample=False, pad_token_id=tok.pad_token_id)
+            scores = None
         cut = enc["input_ids"].shape[1]
-        outs.extend(tok.decode(row[cut:], skip_special_tokens=True) for row in o)
-    return outs
+        outs.extend(tok.decode(row[cut:], skip_special_tokens=True) for row in seqs)
+        if top_k:
+            recs.extend(_topk_records(seqs, scores, cut, top_k))
+    return (outs, recs) if top_k else outs
 
 
 _REFUSE = re.compile(
@@ -352,8 +377,26 @@ def score(text):
     return "REFUSE" if _REFUSE.search(head) else "COMPLY"
 
 
-def verify(tok, model, ad, ship, alpha, hook, hp_held, lp_held, max_new, batch):
-    """Delivery on held-out harmful and harmless prompts, steering off then on."""
+def controls_verdict(steered_delivery, control_deliveries):
+    """(beats_all, max, mean) -- does the direction beat EVERY random push at
+    the same dose? The null neuron-explorer's sweep bought: name/maker flips
+    and delivery jumps happen under random pushes too, so 'the output changed'
+    proves nothing. A control that matches the steered delivery means the dose
+    alone, not the direction, is doing the work."""
+    if not control_deliveries:
+        return True, 0.0, 0.0
+    mx, mn = max(control_deliveries), statistics.mean(control_deliveries)
+    return steered_delivery > mx, mx, mn
+
+
+def verify(tok, model, ad, ship, alpha, hook, hp_held, lp_held, max_new, batch,
+           n_controls=0, top_k=0, seed=0):
+    """Delivery on held-out harmful and harmless prompts, steering off then on.
+
+    With n_controls > 0, additionally steers n_controls random unit directions
+    (same layers, same alpha) over the held-out harmful prompts and records
+    their deliveries -- a behavioural null for the steered arm. With top_k > 0
+    every rollout keeps per-step top-k logprobs."""
     out = {}
     for arm, a_val in (("baseline", 0.0), ("steered", alpha)):
         handles = steer_hooks(ad, ship, a_val, hook) if a_val else []
@@ -362,19 +405,74 @@ def verify(tok, model, ad, ship, alpha, hook, hp_held, lp_held, max_new, batch):
             for side, prompts in (("harmful", hp_held), ("harmless", lp_held)):
                 if not prompts:
                     continue
-                labs = [score(t) for t in
-                        generate(tok, model, prompts, max_new, batch)]
+                if top_k:
+                    texts, recs = generate(tok, model, prompts, max_new, batch, top_k)
+                else:
+                    texts = generate(tok, model, prompts, max_new, batch)
+                labs = [score(t) for t in texts]
                 res[side] = {
                     "n": len(labs),
                     "comply": labs.count("COMPLY"),
                     "garbled": labs.count("GARBLED"),
                     "delivery": labs.count("COMPLY") / len(labs),
                 }
+                if top_k:
+                    res[side]["rollouts"] = [
+                        {"completion": t, "steps": s} for t, s in zip(texts, recs)]
             out[arm] = res
         finally:
             for h in handles:
                 h.remove()
+    if n_controls and hp_held:
+        g = torch.Generator().manual_seed(seed)
+        deliveries = []
+        for _ in range(n_controls):
+            rnd = {L: _unit(torch.randn(ad.hidden, generator=g)) for L in ship}
+            handles = steer_hooks(ad, rnd, alpha, hook)
+            try:
+                labs = [score(t) for t in generate(tok, model, hp_held, max_new, batch)]
+                deliveries.append(labs.count("COMPLY") / len(labs))
+            finally:
+                for h in handles:
+                    h.remove()
+        out["controls"] = {"n": n_controls, "alpha": alpha,
+                           "harmful_delivery": deliveries}
     return out
+
+
+# ---------------------------------------------------------------------------
+# steer-lens -- the effect lens of a shipped vector
+# ---------------------------------------------------------------------------
+def _lens_topk(logits0, logits1, k=5):
+    """(KL, [(token_id, logp_stock, delta)]): KL(stock || steered) at the next
+    position plus the top-k stock tokens and their logprob deltas. Pure
+    function, unit-tested without a model."""
+    l0 = torch.log_softmax(logits0.float(), dim=-1)
+    l1 = torch.log_softmax(logits1.float(), dim=-1)
+    kl = float((l0.exp() * (l0 - l1)).sum())
+    p0, ix = torch.topk(l0, k)
+    return kl, [(int(i), float(p), float(l1[i] - p)) for p, i in zip(p0, ix)]
+
+
+@_no_grad()
+def steer_lens(tok, model, ad, dirs, alpha, hook, prompts, k=5):
+    """Next-token effect of the vector on probe prompts, steered vs stock."""
+    rows = []
+    for prompt in prompts:
+        enc = tok(render(tok, prompt), return_tensors="pt", add_special_tokens=False)
+        enc = {kk: v.to(model.device) for kk, v in enc.items()}
+        l0 = model(**enc).logits[0, -1]
+        handles = steer_hooks(ad, dirs, alpha, hook)
+        try:
+            l1 = model(**enc).logits[0, -1]
+        finally:
+            for h in handles:
+                h.remove()
+        kl, top = _lens_topk(l0, l1, k)
+        rows.append({"prompt": prompt, "kl": kl,
+                     "top": [{"token": i, "text": tok.decode([i]),
+                              "logp_stock": p, "delta": d} for i, p, d in top]})
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -686,6 +784,16 @@ def write_gguf(path, dirs, meta):
         w.add_string("glp.layer_scales",
                      ",".join(f"{L}:{m:g}" for L, m in
                               sorted(layer_scales.items())))
+    # Informational capture statistics (readers ignore unknown keys; these
+    # change nothing a consumer computes). resid_norm_median: median residual
+    # norm per layer at capture -- the denominator of residual-norm-relative
+    # ("rel") dosing. dose_cos: mean |h.d|/||h|| per layer, so the effective
+    # push of this file is alpha_default * dose_cos x the stream norm.
+    for key, glp_key in (("resid_norm_median", "glp.resid_norm_median"),
+                         ("dose_cos", "glp.dose_cos")):
+        if meta.get(key):
+            w.add_string(glp_key, ",".join(f"{L}:{float(meta[key][L]):.6g}"
+                                           for L in layers))
     # captain-vector captures and applies at the same site, so derived_at is
     # always the hook here; a transferred vector (derived_at != hook_point) is
     # a relabel job for other tooling, not a derivation. Accept both internal
@@ -1155,7 +1263,7 @@ def inspect_gguf(path, topk=5):
     widths = sorted({len(e["_vals"]) for e in layers})
     for e in layers:
         del e["_vals"]
-    return {
+    rep = {
         "file": os.path.basename(path),
         "glp": is_glp,
         "rank": rank,
@@ -1164,6 +1272,32 @@ def inspect_gguf(path, topk=5):
         "n_embd": widths[0] if len(widths) == 1 else widths,
         "layers": layers,
     }
+    # Optional capture statistics written by the derivation lane (0.6.0+):
+    # per-layer median residual norm and mean |cos| of the shipped direction,
+    # so the file can state its own push in residual-norm (rel) units.
+    def _per_layer(key):
+        raw_kv = meta.get(key, "")
+        out = {}
+        for part in raw_kv.split(","):
+            if ":" in part:
+                L, v = part.split(":", 1)
+                try:
+                    out[int(L)] = float(v)
+                except ValueError:
+                    pass
+        return out
+    dose_cos, resid = _per_layer("glp.dose_cos"), _per_layer("glp.resid_norm_median")
+    if dose_cos:
+        vals = sorted(dose_cos.values())
+        rep["dose"] = {
+            "mean": sum(vals) / len(vals),
+            "max": max(vals),
+            "max_layer": max(dose_cos, key=dose_cos.get),
+            "alpha": float(meta.get("glp.alpha_default", 1.0)),
+            "resid_min": min(resid.values()) if resid else None,
+            "resid_max": max(resid.values()) if resid else None,
+        }
+    return rep
 
 
 def format_inspect(rep):
@@ -1191,6 +1325,15 @@ def format_inspect(rep):
         if "top_dims" in e:
             line += "   " + " ".join(f"{i}:{v:+.3f}" for i, v in e["top_dims"])
         out.append(line)
+    if rep.get("dose"):
+        dz = rep["dose"]
+        out.append(f"  dose (mean|cos| at alpha=1): mean {dz['mean']:.3f}, "
+                   f"max {dz['max']:.3f} at L{dz['max_layer']}")
+        resid = (f"{dz['resid_min']:.1f}..{dz['resid_max']:.1f}"
+                 if dz["resid_min"] is not None else "not recorded")
+        out.append(f"  residual norm median: {resid}; at alpha_default "
+                   f"{dz['alpha']:g} the average push is "
+                   f"{dz['alpha'] * dz['mean']:.2f}x the residual norm")
     if rep["rank"] > 1:
         # the table above is direction 0; a subspace file has more to say
         out.append(f"  rank {rep['rank']} subspace: h <- h - sum_j "
@@ -2247,9 +2390,127 @@ def _recover_cmd(argv):
                              force=a.force)
 
 
+# ---------------------------------------------------------------------------
+# steer-lens command -- the effect lens of a shipped vector
+# ---------------------------------------------------------------------------
+_LENS_PROBES = [
+    "Who are you?",
+    "Explain how a transformer works.",
+    "Write a haiku about the sea.",
+    "What is 17 * 23?",
+]
+
+
+def _glp_dirs_for_runtime(meta, tensors):
+    """(dirs {layer: tensor}, internal hook name) from a GLP file. Rank-1
+    only; hook values without a runtime site here are fatal, not re-sited."""
+    if meta.get("glp.mode", "add") != "project":
+        raise SystemExit("steer-lens: glp.mode must be 'project'")
+    hook_glp = meta.get("glp.hook_point", "residual_stream_post_layer")
+    if hook_glp in GLP_HOOKS_V3:
+        raise SystemExit(f"steer-lens: hook {hook_glp!r} is a spec-3 fold site "
+                         f"-- no runtime site in this tool (engine-level hooks)")
+    inv = {v: k for k, v in GLP_HOOKS.items()}
+    if hook_glp not in inv:
+        raise SystemExit(f"steer-lens: hook {hook_glp!r} has no runtime site "
+                         f"in this tool (fold-site hooks are engine-level)")
+    import numpy as np
+    dirs = {}
+    for name, dims, dtype, raw in tensors:
+        parsed = _parse_direction_name(name)
+        if parsed is None:
+            continue
+        L, j = parsed
+        if j != 0:
+            raise SystemExit("steer-lens: rank-k files are not supported")
+        if dtype != 0:
+            raise SystemExit("steer-lens: F32 tensors only")
+        if L not in dirs:
+            dirs[L] = torch.from_numpy(np.frombuffer(raw, dtype="<f4").copy())
+    if not dirs:
+        raise SystemExit("steer-lens: no direction tensors in the file")
+    return dirs, inv[hook_glp]
+
+
+def _load_runtime(model_id, dtype_name, device, max_mem, text_only):
+    """Tokenizer + model + config for the behavioural lanes (verify, lens).
+    Same conventions as the derivation loader."""
+    from transformers import AutoTokenizer, AutoConfig
+    tok = AutoTokenizer.from_pretrained(model_id)
+    tok.padding_side = "left"
+    if tok.pad_token is None:
+        tok.pad_token = tok.eos_token
+    cfg = AutoConfig.from_pretrained(model_id)
+    arch = (getattr(cfg, "architectures", None) or [""])[0]
+    if text_only or not ("ConditionalGeneration" in arch or "ImageText" in arch):
+        from transformers import AutoModelForCausalLM as Cls
+    else:
+        from transformers import AutoModelForImageTextToText as Cls
+    dev = pick_device(device)
+    device_map = {"cpu": None, "all": "auto"}.get(dev, dev)
+    load_kw = {}
+    if device_map == "auto" and max_mem and torch.cuda.is_available():
+        load_kw["max_memory"] = {i: f"{max_mem}GiB"
+                                 for i in range(torch.cuda.device_count())}
+    model = Cls.from_pretrained(model_id, dtype=getattr(torch, dtype_name),
+                                device_map=device_map, **load_kw)
+    if dev == "mps":
+        model = model.to("mps")
+    model.eval()
+    return tok, model, cfg, arch
+
+
+def _lens_cmd(argv):
+    p = argparse.ArgumentParser(
+        prog="captain-vector steer-lens",
+        description="Effect lens of a GLP vector: next-token logit shift "
+                    "(delta-logprob, KL) on probe prompts, steered vs stock. "
+                    "A derive-time quality gate: a direction that separates "
+                    "but moves the distribution nowhere specific is junk.")
+    p.add_argument("gguf", help="GLP vector file")
+    p.add_argument("--model", required=True, help="local path or HF id")
+    p.add_argument("--alpha", type=float, default=None,
+                   help="default: the file's glp.alpha_default")
+    p.add_argument("--probes", default="",
+                   help="JSON list of prompts; default: built-in capability probes")
+    p.add_argument("--k", type=int, default=5, help="top-k tokens per probe")
+    p.add_argument("--out", default="", help="also write the lens rows as JSON")
+    p.add_argument("--dtype", default="bfloat16")
+    p.add_argument("--device", default="auto")
+    p.add_argument("--max-mem-per-gpu", default="", metavar="GiB")
+    p.add_argument("--text-only", action="store_true")
+    a = p.parse_args(argv)
+    if torch is None:
+        p.error("steer-lens requires torch")
+    meta, tensors = _read_gguf(a.gguf)
+    dirs, hook = _glp_dirs_for_runtime(meta, tensors)
+    alpha = a.alpha if a.alpha is not None else float(meta.get("glp.alpha_default", 1.0))
+    probes = (json.load(open(a.probes)) if a.probes else _LENS_PROBES)
+    tok, model, cfg, arch = _load_runtime(a.model, a.dtype, a.device,
+                                          a.max_mem_per_gpu, a.text_only)
+    ad = Adapter(model, cfg)
+    print(f"  steer-lens: {arch}  alpha={alpha:g}  hook={hook}  "
+          f"layers={len(dirs)}  probes={len(probes)}")
+    rows = steer_lens(tok, model, ad, dirs, alpha, hook, probes, a.k)
+    mean_kl = statistics.mean(r["kl"] for r in rows)
+    for i, r in enumerate(rows):
+        print(f"  [{i}] KL {r['kl']:.4f}  {r['prompt'][:60]!r}")
+        for t in r["top"]:
+            print(f"      {t['delta']:+7.3f} {t['text']!r:24} (stock logp {t['logp_stock']:.3f})")
+    print(f"  mean KL {mean_kl:.4f} over {len(rows)} probes")
+    if a.out:
+        json.dump({"gguf": a.gguf, "model": a.model, "alpha": alpha,
+                   "hook": GLP_HOOKS[hook], "mean_kl": mean_kl, "rows": rows},
+                  open(a.out, "w"), indent=1)
+        print(f"  wrote {a.out}")
+    return 0
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "recover":
         sys.exit(_recover_cmd(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "steer-lens":
+        sys.exit(_lens_cmd(sys.argv[2:]))
     # The file-serving subcommands are stdlib-only and take a GGUF path rather
     # than the derivation flags below; dispatch before argparse sees them.
     # bake joins them here (it also takes a GGUF, not derivation flags) but is
@@ -2338,6 +2599,17 @@ def main():
                    help="token cap for --verify. A refusal appears early, so this "
                         "is deliberately short")
     p.add_argument("--verify-batch", type=int, default=4)
+    p.add_argument("--verify-controls", type=int, default=4, metavar="K",
+                   help="with --verify: also steer K random unit directions at "
+                        "the same alpha over the held-out harmful prompts and "
+                        "report whether the steered arm beats every control. "
+                        "The behavioural null: a random push flips outputs too, "
+                        "so 'delivery moved' proves nothing by itself. 0 disables.")
+    p.add_argument("--verify-topk", type=int, default=0, metavar="K",
+                   help="with --verify: keep per-step top-K logprobs for every "
+                        "rollout (saved into --save-directions). Harvest now, "
+                        "decrypt later: later analysis recomputes from these "
+                        "instead of re-running the model. 0 disables.")
 
     p.add_argument("--author", default="")
     p.add_argument("--description", default="")
@@ -2546,6 +2818,8 @@ def main():
         sys.exit("  --apply-layers excluded every validated layer")
 
     per_dose = {L: dose(A[L], B[L], ship[L]) for L in ship}
+    resid_med = {L: float(torch.cat([A[L], B[L]]).float().norm(dim=1).median())
+                 for L in ship}
     dz = statistics.mean(per_dose.values())
     peak_L = max(per_dose, key=per_dose.get)
     peak = per_dose[peak_L] * a.alpha
@@ -2557,6 +2831,9 @@ def main():
           f"{peak_L} ({dz / floor:.1f}x the {floor:.3f} a random direction scores)")
     print(f"    at alpha={a.alpha:g}: ~{100 * dz * a.alpha:.0f}% of the residual norm "
           f"on average, ~{100 * peak:.0f}% at the worst layer")
+    print(f"    residual norm median: {min(resid_med.values()):.1f}.."
+          f"{max(resid_med.values()):.1f} -- recorded per layer in the file, so "
+          f"the push can be read in residual-norm (rel) units anywhere")
     if n_over:
         hot = sorted((L for L, v in per_dose.items() if v * a.alpha > 0.5),
                      key=lambda L: -per_dose[L])
@@ -2607,7 +2884,8 @@ def main():
         print(f"\n  verifying on {len(hp_held)} held-out harmful + "
               f"{len(lp_held)} held-out harmless, alpha={a.alpha} ...", flush=True)
         vr = verify(tok, model, ad, ship, a.alpha, a.hook,
-                    hp_held, lp_held, a.verify_max_new, a.verify_batch)
+                    hp_held, lp_held, a.verify_max_new, a.verify_batch,
+                    n_controls=a.verify_controls, top_k=a.verify_topk)
         print(f"  {'':<10} {'harmful delivery':>17} {'harmless delivery':>18}")
         for arm in ("baseline", "steered"):
             r = vr.get(arm, {})
@@ -2644,6 +2922,21 @@ def main():
             print(f"\n  WARNING: {gar} garbled completion(s) while steered. A "
                   f"collapsed model scores as compliance under any refusal-string "
                   f"classifier. Lower alpha before trusting any number here.")
+        ctrl = vr.get("controls")
+        if ctrl and sh is not None:
+            beats, mx, mn = controls_verdict(sh, ctrl["harmful_delivery"])
+            print(f"  random-direction controls x{ctrl['n']} (same alpha): "
+                  f"harmful delivery max {100 * mx:.0f}%, mean {100 * mn:.0f}%")
+            if not beats:
+                print("\n  WARNING: the steered delivery does not beat every "
+                      "random-direction control at the same dose. The push, "
+                      "not the direction, may be doing the work. Raise "
+                      "--verify-controls for a tighter null before shipping.")
+            else:
+                notes.append(f"beats {ctrl['n']} random-direction controls")
+        if a.verify_topk:
+            print(f"  rollouts kept with per-step top-{a.verify_topk} logprobs "
+                  f"(saved into --save-directions)")
         if notes:
             val += f"; verified out-of-sample on {a.verify}+{a.verify} ({', '.join(notes)})"
         print("\n  NOTE: --verify uses a crude refusal-string classifier with a "
@@ -2655,6 +2948,7 @@ def main():
         "author": a.author or "unknown",
         "base_model": a.model, "revision": a.revision or "unspecified",
         "alpha": a.alpha, "hook": a.hook, "structure": a.structure,
+        "resid_norm_median": resid_med, "dose_cos": per_dose,
         "method": (f"{a.estimator}_{a.structure.replace('-', '_')}"
                    + (f"_mask{a.mask:g}" if a.mask > 0 else "")
                    + (f"_wins{a.winsorize:g}" if a.winsorize else "")),
