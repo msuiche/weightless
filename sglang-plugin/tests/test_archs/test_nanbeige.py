@@ -44,6 +44,7 @@ from glpfiles import good_meta, write_gguf  # noqa: E402
 
 from test_archs import (_trees, _parse, _cls, _fn, _src, _calls_where, _returns_in_order,
                          _assign, unit_dirs)  # noqa: E402
+from test_archs import installed_stage_built, old_layout_trees, NOT_PORTED  # noqa: E402
 
 from weightless_sglang import core as wcore  # noqa: E402
 from weightless_sglang.archs import ARCH  # noqa: E402
@@ -634,6 +635,7 @@ def real_nanbeige_reference(m, x, steps, alpha):
 
 
 @unittest.skipUnless(NBM is not None, f"SGLang's Nanbeige model is not importable here ({NB_WHY})")
+@unittest.skipIf(installed_stage_built("srt/models/nanbeige.py", {"NanbeigeDecoderLayer"}), NOT_PORTED)
 class RealNanbeige(RealBase):
     L, LOOPS = 22, 2
 
@@ -712,12 +714,16 @@ class RealNanbeige(RealBase):
 MODEL_FILE = "srt/models/nanbeige.py"
 
 
-@unittest.skipUnless(_trees(MODEL_FILE), "no SGLang package with models/nanbeige.py found")
+NAN_TREES = old_layout_trees(MODEL_FILE, {"NanbeigeDecoderLayer"})
+
+
+@unittest.skipUnless(NAN_TREES, "no SGLang package with models/nanbeige.py and the older layer "
+                                f"layout found (on the others: {NOT_PORTED})")
 class StructureNanbeige(unittest.TestCase):
     """Pins, per SGLang tree, the code paths the Nanbeige row depends on."""
 
     def each(self, rel):
-        return [(t, _parse(t, rel)) for t in _trees(MODEL_FILE)]
+        return [(t, _parse(t, rel)) for t in NAN_TREES]
 
     def test_nanbeige_classes_backbone_and_pp(self):
         row = ARCH["NanbeigeForCausalLM"]

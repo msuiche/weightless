@@ -4,6 +4,26 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-11-08 (SGLang plugin, Thireus fork)
+
+### Added
+- **`sglang-plugin/`: DeepSeek-V4.1-Flash row** (`weightless_sglang/archs/dsv41.py`,
+  row `DeepseekV4ForCausalLM:deepseek_v41`; SGLang rewrites the V4.1 name to the V4
+  class). It edits the 4 hyper-connection copies inside each layer's FFN post
+  (`ffn_boundary.update.post`), before the next layer's Engram read, with the
+  coefficient of their mean (`WEIGHTLESS_STEER_HC_COPIES=mean`, or `each`), and
+  drops the next input the post precomputed so the next layer reads the edited
+  copies. That is the fold of layer N's FFN write: the spec_version 3 fold site's
+  location and edit. Fused Triton kernel with a start-up self-check, pipeline
+  ranks wrap their own layers.
+- **The same row serves GLP spec_version 3 fold-site files** (`hc_fold_pre_engram`,
+  GLP-27 L11-37 a3.5): the folds as above (`mean` only) and the companion writer,
+  the attention write projected with the same stack and alpha before the attention
+  post folds it in, the layer at position k with stack row k + 1 (the vLLM
+  plugin's mapping). Its own fired check, boot-line field and manifest entry.
+  Attention TP above 1 is refused for such a file. CPU-tested on fakes and on
+  SGLang's real V4.1 loop over three pipeline stages; not run on a GPU.
+
 ## 2026-11-08
 
 ### Docs
@@ -246,6 +266,23 @@ live in `BENCHMARK.md`; this file tracks what shipped.
   tests, and a newer SGLang is unsupported until the rows go green against
   it. (Post-merge follow-up on PR #4; the GLM-5.3-Flash steered-boot
   nondeterminism it disclosed is tracked as issue #5.)
+
+## 2026-10-05
+
+### Changed
+- **`sglang-plugin/` serves SGLang's stage-boundary layer layout**
+  (`sglang.srt.layers.layer_boundary`, SGLang main since 2026-09-30) next
+  to the older one, picked per rank from what the layers hold. Qwen3.8-27B
+  steers through the forward batch's residual stream; GLM-5.3-Flash steers
+  the feed-forward post-combine inside the FFN boundary's mHC update. Same
+  stream, same edit, same bits as on the older layout (CPU, SGLang's real
+  model classes on both layouts, pipeline ranks included).
+- Ranks come from SGLang's ModelRunner or `get_parallel()`; with neither,
+  the boot stops instead of assuming rank 0 of 1. The fired check also
+  fails a site that ran twice in one forward. Rows not ported yet
+  (GLM-5.3, Hy4-preview, Qwen3.8-Flash-Next, Nemotron-3.5-Lightning,
+  Nanbeige) are refused on stage-boundary trees. 407 CPU tests. Details:
+  `sglang-plugin/README.md`, "SGLang layouts".
 
 ## 2026-10-04
 

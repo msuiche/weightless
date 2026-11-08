@@ -158,12 +158,13 @@ values. `install_steering` is generic.
 | Nemotron-3.5-Lightning | forward wrap | `(hidden, residual)` | the loop calls `layer.forward(...)`, which bypasses forward hooks, so the instance's `forward` is wrapped |
 | GLM-5.3-Flash | special | the output of `layer_communicator.mhc.mlp_combine`, `[T, 4 x 4096]` | the last layer contracts its stream inside the layer, so the site is the call that materialises it |
 | DeepSeek-V4-Flash | special | `output[0]` of the fused-mode 4-tuple, the FFN write (`ffn_out_pre_residual`) | no post-layer stream exists between layers in the fused mode; the file is measured at the FFN write |
+| DeepSeek-V4.1-Flash | special | the HcState returned by the FFN boundary's `HcUpdate.post`: the 4 hyper-connection copies `[T, 4, 5120]` | served as `DeepseekV4ForCausalLM` (model_type `deepseek_v41`); every reader of the layer's output (the next layer's read, the Engram seam, the FinalRead, and the FFN exit that writes the stream when the layer hands off to the next pipeline stage) runs that post, so the edit precedes Engram and the hand-off; the precomputed next input is dropped. A GLP spec_version 3 file (`hc_fold_pre_engram`) steers the same post and also arms the companion writer: the attention update's `post` gets the attention write projected with stack row k + 1 at layer k, with its own fired check |
 
 Refused by name, with the reason in the boot error: Ouro (no SGLang model),
 Inkling (each layer's short convolution is deferred to the next layer, so the
-post-layer stream never exists), DeepSeek-V4.1 (its loop prepares the next
-layer's input from the unsteered stream), and two names that are a different
-model or no SGLang class.
+post-layer stream never exists), and three names that are a different model or
+no SGLang class (`DeepseekV41ForCausalLM` among them: SGLang serves V4.1 as
+`DeepseekV4ForCausalLM`, where the V4.1 row steers it).
 
 At each steered layer's first forward the site checks that the output slots it
 reads hold what the row declares (the type, a float of 16 bits or more, the

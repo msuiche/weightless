@@ -17,6 +17,11 @@ subtract are two separate roundings, as they are in torch. With that, the
 fused kernel and the torch path give the same bits (checked at start-up
 by ``self_check`` and by the unit tests).
 
+A second kernel, ``_glp_hc_mean_kernel``, is the DeepSeek-V4.1 row's edit of
+the 4 hyper-connection copies with the coefficient of their mean
+(archs/dsv41.py ``hc_mean_delta``, the same steps), with its own start-up
+check, ``self_check_hc_mean``.
+
 WEIGHTLESS_STEER_KERNEL picks the path: ``auto`` (the default: this kernel
 when Triton and a CUDA device are there and the self-check passes,
 otherwise torch), ``triton`` or ``torch``.
@@ -116,6 +121,42 @@ if triton is not None:
                 tl.store(o_ptr + row * stride_o + o, out.to(o_ptr.dtype.element_ty, fp_downcast_rounding="rtne"), mask=m)
 
 
+    @triton.jit
+    def _glp_hc_mean_kernel(x_ptr, d_ptr, a_ptr, o_ptr, H, stride_xt, stride_xs, stride_ot,
+                            stride_os, BITS, INV_S, S: tl.constexpr, BLOCK: tl.constexpr):
+        # One program per token: its S hyper-connection copies, each H wide
+        # (H <= BLOCK, the whole row in registers). The steps of
+        # archs/dsv41.hc_mean_delta, in its order: the fp32 sum of the copies
+        # in index order, times 1/S (exact, S a power of two), dot_fixed of
+        # that mean with d, then every copy minus (alpha * c) * d.
+        tok = tl.program_id(0).to(tl.int64)
+        offs = tl.arange(0, BLOCK)
+        m = offs < H
+        d = tl.load(d_ptr + offs, mask=m, other=0.0)
+        base = x_ptr + tok * stride_xt
+        acc = tl.load(base + offs, mask=m, other=0.0).to(tl.float32)
+        for k in tl.static_range(1, S):
+            acc = acc + tl.load(base + k * stride_xs + offs, mask=m, other=0.0).to(tl.float32)
+        h = acc * INV_S
+        p = h * d
+        pm = tl.max(tl.abs(p), axis=0)
+        e = (pm.to(tl.int32, bitcast=True) >> 23) & 0xFF
+        s = tl.minimum(tl.maximum(BITS + 126 - e, -100), 100)
+        scale = ((s + 127) << 23).to(tl.float32, bitcast=True)
+        inv = ((127 - s) << 23).to(tl.float32, bitcast=True)
+        q = (p * scale).to(tl.int64)
+        c = tl.sum(q, axis=0).to(tl.float32) * inv
+        a = tl.load(a_ptr)
+        t = a * c
+        td = t * d
+        obase = o_ptr + tok * stride_ot
+        for k in tl.static_range(S):
+            x = tl.load(base + k * stride_xs + offs, mask=m, other=0.0).to(tl.float32)
+            out = x - td
+            tl.store(obase + k * stride_os + offs,
+                     out.to(o_ptr.dtype.element_ty, fp_downcast_rounding="rtne"), mask=m)
+
+
 def available() -> bool:
     """Triton is importable and a CUDA device is visible."""
     return triton is not None and torch.cuda.is_available()
@@ -184,5 +225,49 @@ def self_check(device, dtype=torch.bfloat16, width=5120, rows=33, with_residual=
         want = steer_delta(x, rr, d, al)
         got = steer_delta_fused(x, rr, d, al)
         if not torch.equal(got.view(-1).view(torch.uint8), want.view(-1).view(torch.uint8)):
+            return False
+    return True
+
+
+def steer_hc_mean_fused(x: torch.Tensor, d: torch.Tensor, alpha: torch.Tensor) -> torch.Tensor:
+    """The DeepSeek-V4.1 mean-coefficient edit (archs/dsv41.hc_mean_delta) for
+    CUDA tensors: x [T, S, W] (S a power of two, W <= MAX_BLOCK); the same
+    bits as the torch path (checked at start-up by ``self_check_hc_mean``)."""
+    T, S, W = x.shape
+    if S < 1 or S & (S - 1) or W > MAX_BLOCK:
+        raise RuntimeError(f"weightless: the fused hc-mean kernel takes S a power of two and "
+                           f"W <= {MAX_BLOCK}, not S={S}, W={W}")
+    if x.stride(-1) != 1:
+        x = x.contiguous()
+    out = torch.empty((T, S, W), dtype=x.dtype, device=x.device)
+    if T:
+        block = triton.next_power_of_2(int(W))
+        _glp_hc_mean_kernel[(T,)](x, d, alpha, out, W, x.stride(0), x.stride(1), out.stride(0),
+                                  out.stride(1), fixed_point_bits(W), 1.0 / S, S=S, BLOCK=block,
+                                  num_warps=8, enable_fp_fusion=False)
+    return out
+
+
+def self_check_hc_mean(device, dtype=torch.bfloat16, width=5120, rows=33, copies=4) -> bool:
+    """``self_check`` for the mean-coefficient edit: random [rows, copies,
+    width] streams with a few very large values and one all-zero token, both
+    paths at alpha 0, 0.5, 0.75, 1 and 2. True when they give the same bits.
+    Also compiles the kernel for ``dtype`` and ``width`` before any CUDA graph
+    is captured."""
+    from .archs.dsv41 import hc_mean_rows
+    if int(width) > MAX_BLOCK:
+        return False
+    g = torch.Generator().manual_seed(20261025)
+    x = torch.randn(rows, copies, width, generator=g) * 4.0
+    x[:, :, :: max(1, width // 3)] *= 400.0
+    x[0].zero_()
+    d = torch.randn(width, generator=g, dtype=torch.float64)
+    d = (d / d.norm()).float()
+    x, d = x.to(dtype).to(device), d.to(device)
+    for a in (0.0, 0.5, 0.75, 1.0, 2.0):
+        al = torch.tensor(a, dtype=torch.float32, device=device)
+        want = hc_mean_rows(x, d, al)
+        got = steer_hc_mean_fused(x, d, al)
+        if not torch.equal(got.reshape(-1).view(torch.uint8), want.reshape(-1).view(torch.uint8)):
             return False
     return True

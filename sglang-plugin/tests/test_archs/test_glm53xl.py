@@ -47,6 +47,7 @@ from glpfiles import good_meta, write_gguf  # noqa: E402
 
 from test_archs import (_trees, _parse, _cls, _fn, _src, _calls, _entry, _returns, _loops,
                          _layer_calls, unit_dirs, proj_ok, OneRank, runner_of, spy_out)  # noqa: E402
+from test_archs import installed_stage_built, old_layout_trees, NOT_PORTED  # noqa: E402
 
 from weightless_sglang import core as wcore  # noqa: E402
 from weightless_sglang.archs import ARCH  # noqa: E402
@@ -619,6 +620,7 @@ def _ds_has_ffn_exit():
 
 
 @unittest.skipUnless(DS, f"SGLang's DeepseekV2 / GlmMoeDsa model is not importable here ({DS_WHY})")
+@unittest.skipIf(installed_stage_built("srt/models/deepseek_v2.py", {"DeepseekV2DecoderLayer"}), NOT_PORTED)
 class RealGlm53(RealBase):
     def setUp(self):
         super().setUp()
@@ -761,10 +763,12 @@ class RealGlm53(RealBase):
 # ---------------------------------------------------------------- structure
 
 
-GLM53_TREES = _trees("srt/models/glm4_moe.py")
+GLM53_TREES = old_layout_trees("srt/models/deepseek_v2.py", {"DeepseekV2DecoderLayer"},
+                               "srt/models/glm4_moe.py")
 
 
-@unittest.skipUnless(GLM53_TREES, "no SGLang package with models/glm4_moe.py found")
+@unittest.skipUnless(GLM53_TREES, "no SGLang package with models/glm4_moe.py and the older layer "
+                                  f"layout found (on the others: {NOT_PORTED})")
 class StructureGlm53(unittest.TestCase):
     """GlmMoeDsaForCausalLM -> DeepseekV2ForCausalLM -> DeepseekV2Model ->
     DeepseekV2DecoderLayer, in every tree."""

@@ -22,8 +22,19 @@ wrapping off again. A handler must wrap an INSTANCE attribute, never a
 class, and must raise if the attribute it wraps is missing or has another
 shape than the row expects: the boot then stops. ``site`` is the text
 written to the log line and the manifest.
+
+SGLang's stage-boundary layers (``core.stage_boundaries``: the layer holds
+``attn_boundary`` and ``ffn_boundary``) keep the residual in the forward
+batch, not in the layer's output. A row serves them only when it says so
+(``ArchRow.boundary``); every other row refuses such a layer at install,
+before anything is hooked. A "hook" row with ``boundary`` gets the
+residual-stream codec (``core.make_stream_hook``); a special handler that
+serves them names its site there with ``boundary_site=...`` and installs
+itself on either layout, choosing by what the layer holds.
 """
 from __future__ import annotations
+
+from types import SimpleNamespace
 
 import dataclasses
 from typing import Callable, Optional
@@ -71,6 +82,8 @@ class ArchRow:
     loop            looped rows only: config -> LoopSpec (layers per loop
                     pass, passes, and where the loop index is in the
                     layer's call); see nanbeige.py.
+    boundary        the row also serves SGLang's stage-boundary layers
+                    (see the module text). False: such a layer is refused.
     """
 
     backbone: tuple
@@ -88,6 +101,7 @@ class ArchRow:
     hint: frozenset = frozenset()
     kind: Optional[Callable] = None
     loop: Optional[Callable] = None
+    boundary: bool = False
 
 
 def hidden_size(cfg):
@@ -95,13 +109,49 @@ def hidden_size(cfg):
 
 
 SPECIAL = {}
+# special handler name -> the site text on stage-boundary layers, for the
+# handlers that serve them (``register_special(..., boundary_site=...)``)
+BOUNDARY_SITE = {}
+# special handler name -> a factory, called once at install, of the edit its
+# site runs instead of the row-wise one (``register_special(..., edit=...)``):
+# ``edit(x, r, d, alpha, kernel) -> x'``, with optional ``label`` (appended to
+# the site text), ``self_check(device, dtype, width)`` (the fused kernel's
+# start-up check) and ``diag_view(x, x') -> (rows, rows')`` (what the eager
+# diagnostics measure). Only the DeepSeek-V4.1 row has one (archs/dsv41.py).
+EDIT = {}
 
 
-def register_special(name, *, site):
+def register_special(name, *, site, boundary_site=None, edit=None):
     def deco(fn):
         if name in SPECIAL:
             raise RuntimeError(f"weightless: special install handler {name!r} registered twice")
         SPECIAL[name] = (fn, site)
+        if boundary_site is not None:
+            BOUNDARY_SITE[name] = boundary_site
+        if edit is not None:
+            EDIT[name] = edit
+        return fn
+
+    return deco
+
+
+# special handler name -> a companion site some files need next to the main
+# one (``register_companion``). Only the DeepSeek-V4.1 row has one: a GLP
+# spec_version 3 fold-site file (hc_fold_pre_engram) is calibrated with the
+# attention output writer armed too, and a reader that cannot arm it must
+# refuse the file (docs/spec/GLP.md, "Multi-copy streams and the fold site").
+# Fields: ``hooks`` (the file hooks that need it), ``row_offset`` (the layer at
+# position k uses stack row k + row_offset), ``site`` (the text) and
+# ``install(layer, site, *, layer_id, row_id, backbone, row) -> undo``.
+COMPANION = {}
+
+
+def register_companion(name, *, hooks, row_offset, site):
+    def deco(fn):
+        if name in COMPANION:
+            raise RuntimeError(f"weightless: companion for {name!r} registered twice")
+        COMPANION[name] = SimpleNamespace(hooks=frozenset(hooks), row_offset=int(row_offset),
+                                          site=site, install=fn)
         return fn
 
     return deco

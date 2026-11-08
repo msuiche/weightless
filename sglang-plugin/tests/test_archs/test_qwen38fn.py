@@ -42,6 +42,7 @@ from test_archs import test_qwen38 as fakes  # noqa: E402  (the Qwen3.8-27B fake
 
 from test_archs import (_trees, _parse, _cls, _fn, _src, _calls, _entry, _returns, _loops,
                          _layer_calls, unit_dirs, proj_ok, OneRank, runner_of, spy_out)  # noqa: E402
+from test_archs import installed_stage_built, old_layout_trees, NOT_PORTED  # noqa: E402
 
 from weightless_sglang.archs import ARCH  # noqa: E402
 from weightless_sglang.install import install_steering  # noqa: E402
@@ -543,6 +544,7 @@ def qx_run(run, x=None, proxy=None):
 
 
 @unittest.skipUnless(QXM, f"SGLang's qwen4_exp model is not importable here ({QX_WHY})")
+@unittest.skipIf(installed_stage_built("srt/models/qwen4_exp.py", {"Qwen4ExpLinearDecoderLayer", "Qwen4ExpAttentionDecoderLayer"}), NOT_PORTED)
 class RealQwen38fn(RealBase):
     def setUp(self):
         super().setUp()
@@ -627,10 +629,11 @@ class RealQwen38fn(RealBase):
 # ---------------------------------------------------------------- structure
 
 
-QX_TREES = _trees("srt/models/qwen4_exp.py")
+QX_TREES = old_layout_trees("srt/models/qwen4_exp.py", {"Qwen4ExpLinearDecoderLayer", "Qwen4ExpAttentionDecoderLayer"})
 
 
-@unittest.skipUnless(QX_TREES, "no SGLang package with models/qwen4_exp.py found")
+@unittest.skipUnless(QX_TREES, "no SGLang package with models/qwen4_exp.py and the older layer "
+                               f"layout found (on the others: {NOT_PORTED})")
 class StructureQwen38fn(unittest.TestCase):
     def trees(self):
         return [(t, _parse(t, "srt/models/qwen4_exp.py")) for t in QX_TREES]

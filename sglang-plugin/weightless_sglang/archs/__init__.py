@@ -1,23 +1,30 @@
 """The architecture rows, one module per architecture, and the served
 model classes the plugin refuses by name.
 
-``ARCH`` maps each served model class name (exact) to its row; anything that
-is in neither ``ARCH`` nor ``REFUSED`` fails the boot with the generic "no
-SGLang steering adapter" error. A class in ``REFUSED`` fails with its own
-reason: the vLLM plugin has an adapter for it, but SGLang either has no such
-model, runs it in a way this plugin cannot steer without an SGLang change,
-or uses the name for a different model (KimiLinearForCausalLM).
+``ARCH`` maps each row name to its row. A row name is a served model class
+name (exact), or ``Class:model_type`` for a variant: a model that SGLang
+serves through another model's class. ``VARIANTS`` lists, per served class,
+the variants and the test that picks each one (install.resolve_row tries
+them first, in order); a class with no matching variant gets its own row.
+Anything that is in neither ``ARCH`` nor ``REFUSED`` fails the boot with the
+generic "no SGLang steering adapter" error. A class in ``REFUSED`` fails with
+its own reason: the vLLM plugin has an adapter for it, but SGLang either has
+no such model, runs it in a way this plugin cannot steer without an SGLang
+change, or uses the name for a different model (KimiLinearForCausalLM).
 
-DeepSeek-V4.1 served as ``DeepseekV4ForCausalLM`` is refused by the
-DeepSeek-V4 row itself (dsv4.py, ``dsv4_preflight``), and so is a
-DeepSeek-V4 residual-site file.
+DeepSeek-V4.1 is served as ``DeepseekV4ForCausalLM`` (SGLang's
+configs/deepseek_v41.py rewrites the architecture name) with model_type
+deepseek_v41: the ``DeepseekV4ForCausalLM:deepseek_v41`` variant
+(dsv41.py). A DeepSeek-V4 residual-site file is refused by the DeepSeek-V4
+row itself (dsv4.py, ``dsv4_preflight``).
 """
 from __future__ import annotations
 
-from . import dsv4, glm5next, glm53xl, hy4, kimi_k3, nanbeige, nemotron_h, qwen38, qwen38fn
-from .base import PREFLIGHT, SPECIAL  # noqa: F401  (install.py reads them here)
+from . import dsv4, dsv41, glm5next, glm53xl, hy4, kimi_k3, nanbeige, nemotron_h, qwen38, qwen38fn
+from .base import BOUNDARY_SITE, COMPANION, EDIT, PREFLIGHT, SPECIAL  # noqa: F401  (install.py reads them here)
 
-# Served model class name (exact) -> row. Anything else fails closed.
+# Row name (a served model class name, exact, or Class:model_type for a
+# variant) -> row. Anything else fails closed.
 ARCH = {
     **qwen38.ROWS,
     **glm5next.ROWS,
@@ -28,6 +35,14 @@ ARCH = {
     **nemotron_h.ROWS,
     **kimi_k3.ROWS,
     **nanbeige.ROWS,
+    **dsv41.ROWS,
+}
+
+# Served model class name -> ((picks(model, runner) -> bool, row name), ...):
+# the variants served through that class, tried in order before the class's
+# own row.
+VARIANTS = {
+    dsv41.SERVED_CLASS: ((dsv41.selects, dsv41.ROW_NAME),),
 }
 
 # Served model classes refused by name -> the reason, quoted in the boot error.
@@ -62,11 +77,9 @@ REFUSED = {
         "outputs were not checked."
     ),
     "DeepseekV41ForCausalLM": (
-        "DeepSeek-V4.1 is not supported by this plugin: its layer loop calls "
-        "forward_hc_pre_from_prev directly and precomputes the next layer's "
-        "input from the unsteered stream (SGLang normally serves it as "
-        "DeepseekV4ForCausalLM, where the DeepSeek-V4 row refuses it). The "
-        "fold site (GLP spec_version 3, hc_fold_pre_engram) ships in the vLLM "
-        "plugin (archs/dsv41) and in the spark-ds41f lane (glp-specv3)."
+        "SGLang has no DeepseekV41ForCausalLM class: configs/deepseek_v41.py rewrites that "
+        "architecture name to DeepseekV4ForCausalLM, and the DeepSeek-V4.1 row steers the "
+        "model there (DeepseekV4ForCausalLM:deepseek_v41). A class under this name was never "
+        "checked, so it is not steered."
     ),
 }

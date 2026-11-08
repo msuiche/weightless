@@ -732,13 +732,15 @@ class Rows(unittest.TestCase):
 
 class _BypassBackbone(fakes.Backbone):
     """A loop that reaches some layers without calling them (as a
-    two-batch-overlap path or a changed call style would)."""
+    two-batch-overlap path or a changed call style would), or calls some
+    twice (as a doubled site would)."""
 
-    def forward(self, x, skip=()):
+    def forward(self, x, skip=(), twice=()):
         h, r = x, None
         for i in range(self.start_layer, self.end_layer):
             layer = self.layers[i]
-            h, r = (layer.forward if i in skip else layer)(hidden_states=h, residual=r)
+            for _ in range(2 if i in twice else 1):
+                h, r = (layer.forward if i in skip else layer)(hidden_states=h, residual=r)
         return h + r
 
 
@@ -758,7 +760,7 @@ class FiredCheckTests(unittest.TestCase):
         bb = _BypassBackbone(64, 8)
         return types.SimpleNamespace(
             model=fakes.Qwen3_5ForConditionalGeneration(bb), is_draft_worker=False, tp_rank=0,
-            tp_size=1, model_config=types.SimpleNamespace(
+            tp_size=1, pp_rank=0, pp_size=1, model_config=types.SimpleNamespace(
                 hf_config=types.SimpleNamespace(model_type="qwen3_5")))
 
     def test_all_fire(self):
@@ -776,6 +778,21 @@ class FiredCheckTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "did not run"):
             run.model.model.forward(torch.randn(3, 8), skip=(10, 30))
         run.model.model(torch.randn(3, 8))  # the next full forward is fine again
+
+    def test_a_site_that_runs_twice_fails(self):
+        """A steered site that runs twice in one forward applies the edit to
+        the edited stream (at alpha 2 the second reflection undoes the
+        first): it fails closed like a missing one."""
+        run = self.runner()
+        install_steering(run, source="env")
+        with self.assertRaisesRegex(RuntimeError, r"ran more than once in this forward "
+                                                  r"\(layers \[11\], \[2\] times\)"):
+            run.model.model(torch.randn(3, 8), twice=(11,))
+        with self.assertRaisesRegex(RuntimeError, r"\(layers \[10, 30\], \[2, 2\] times\)"):
+            run.model.model.forward(torch.randn(3, 8), twice=(10, 30))
+        run.model.model(torch.randn(3, 8), twice=(12,))  # an unsteered layer may run twice
+        run.model.model(torch.randn(3, 8))  # the next full forward is fine again
+        self.assertEqual(run._weightless_steer_check.fired, {10: 1, 11: 1, 30: 1})
 
     def test_unsteered_layers_may_be_bypassed(self):
         run = self.runner()
@@ -874,7 +891,7 @@ class SpecialInstall(unittest.TestCase):
             write_gguf(path, m, {f"direction.{i}": (np.eye(16, dtype=np.float32)[i % 16], 0)
                                  for i in layers})
             run = types.SimpleNamespace(model=ModelCls(BB()), is_draft_worker=False, tp_rank=0,
-                                        tp_size=1, model_config=None)
+                                        tp_size=1, pp_rank=0, pp_size=1, model_config=None)
             with mock.patch.dict(os.environ, {"WEIGHTLESS_STEER_PATH": path}, clear=False):
                 rec = install_steering(run, source="env")
             self.assertEqual(rec["site"], "comb")
@@ -1472,6 +1489,192 @@ class Diag(unittest.TestCase):
         floor = 2.0 ** -8 * st["sum_norm_xnew"]
         self.assertLess(st["sum_abs_post"], floor)
         print(f"  diag: pre={st['sum_abs_pre']:.3e} post={st['sum_abs_post']:.3e} floor~{floor:.3e}")
+
+
+class Ranks(unittest.TestCase):
+    """read_ranks: the runner's own fields (SGLang before #41813), else
+    get_parallel(), else the boot fails; never a default."""
+
+    def _fake_sglang(self, get_parallel):
+        rc = types.ModuleType("sglang.srt.runtime_context")
+        rc.get_parallel = get_parallel
+        srt = types.ModuleType("sglang.srt")
+        srt.runtime_context = rc
+        pkg = types.ModuleType("sglang")
+        pkg.srt = srt
+        return mock.patch.dict(sys.modules, {"sglang": pkg, "sglang.srt": srt,
+                                             "sglang.srt.runtime_context": rc})
+
+    def test_runner_fields_first(self):
+        from weightless_sglang.install import read_ranks
+        run = types.SimpleNamespace(tp_rank=1, tp_size=2, pp_rank=0, pp_size=3)
+        with self._fake_sglang(lambda: types.SimpleNamespace(tp_rank=9, tp_size=9, pp_rank=9,
+                                                             pp_size=9)):
+            self.assertEqual(read_ranks(run), (1, 2, 0, 3, "runner"))
+
+    def test_get_parallel_when_the_runner_has_none(self):
+        from weightless_sglang.install import read_ranks
+        run = types.SimpleNamespace(tp_rank=0, tp_size=1)  # half the fields: not the runner's
+        with self._fake_sglang(lambda: types.SimpleNamespace(tp_rank=0, tp_size=1, pp_rank=2,
+                                                             pp_size=3)):
+            self.assertEqual(read_ranks(run), (0, 1, 2, 3, "get_parallel"))
+
+    def test_neither_fails_closed(self):
+        from weightless_sglang.install import read_ranks
+
+        def unwritten():
+            raise RuntimeError("parallel name 'pp_rank' has not been written in this process")
+
+        with self._fake_sglang(unwritten):
+            with self.assertRaisesRegex(RuntimeError, r"ranks cannot be read: the ModelRunner has no "
+                                                      r"tp_rank, tp_size, pp_rank, pp_size"):
+                read_ranks(types.SimpleNamespace())
+
+    def test_install_reads_them_and_records_the_source(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "v.gguf")
+            m = good_meta(layers=(1, 2), alpha="1.0")
+            m["controlvector.model_hint"] = "qwen3_5"
+            write_gguf(path, m, good_tensors(layers=(1, 2), width=8))
+            run = fakes.runner()
+            for k in ("pp_rank", "pp_size"):
+                delattr(run, k)
+            with self._fake_sglang(lambda: types.SimpleNamespace(tp_rank=0, tp_size=1, pp_rank=0,
+                                                                 pp_size=1)), \
+                    mock.patch.dict(os.environ, {"WEIGHTLESS_STEER_PATH": path}, clear=False):
+                rec = install_steering(run, source="env")
+            self.assertEqual((rec["rank_source"], rec["pp_rank"], rec["pp_size"]), ("get_parallel", 0, 1))
+
+
+class _StageBoundary:
+    def __init__(self, update=None):
+        self.declaration = types.SimpleNamespace(update=update or types.SimpleNamespace(
+            is_plain_add=True, applied_at_exit=False))
+
+
+StageBoundary = type("StageBoundary", (_StageBoundary,), {})
+
+
+class BoundaryLayout(unittest.TestCase):
+    """SGLang's stage-boundary layers: recognised, and refused on every row
+    that does not serve them (ArchRow.boundary), before anything is hooked."""
+
+    def test_stage_boundaries(self):
+        plain = nn.Module()
+        self.assertIsNone(wcore.stage_boundaries(plain))
+        self.assertFalse(wcore.uses_stage_boundaries(plain))
+        pair = nn.Module()
+        pair.attn_boundary, pair.ffn_boundary = StageBoundary(), StageBoundary()
+        self.assertEqual(wcore.stage_boundaries(pair), (pair.attn_boundary, pair.ffn_boundary))
+        one = nn.Module()
+        one.boundary = StageBoundary()  # a single stage (Nemotron-H's layers on that layout)
+        self.assertTrue(wcore.uses_stage_boundaries(one))
+        with self.assertRaisesRegex(RuntimeError, "its attn_boundary is NoneType"):
+            wcore.stage_boundaries(one)
+        odd = nn.Module()
+        odd.attn_boundary, odd.ffn_boundary = StageBoundary(), object()
+        with self.assertRaisesRegex(RuntimeError, "its ffn_boundary is object"):
+            wcore.stage_boundaries(odd)
+
+    def test_rows_that_serve_them(self):
+        served = sorted(n for n, r in ARCH.items() if r.boundary)
+        self.assertEqual(served, ["DeepseekV4ForCausalLM:deepseek_v41",
+                                  "Glm5NextForConditionalGeneration", "Qwen3_5ForCausalLM",
+                                  "Qwen3_5ForConditionalGeneration"])
+
+    def test_every_other_row_refuses_them(self):
+        from weightless_sglang.install import _layout
+        for name, row in sorted(ARCH.items()):
+            for attrs in (("attn_boundary", "ffn_boundary"), ("boundary",)):
+                with self.subTest(row=name, attrs=attrs):
+                    bb = nn.Module()
+                    bb.layers = nn.ModuleList(nn.Module() for _ in range(3))
+                    for layer in bb.layers:
+                        for a in attrs:
+                            setattr(layer, a, StageBoundary())
+                    if row.boundary and attrs == ("attn_boundary", "ffn_boundary"):
+                        self.assertEqual(_layout(bb, [1, 2], lambda i: i, row, name), "stage-boundary")
+                    elif row.boundary:
+                        with self.assertRaisesRegex(RuntimeError, "not a StageBoundary"):
+                            _layout(bb, [1, 2], lambda i: i, row, name)
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "needs a port to the "
+                                                                  "layer-boundary API"):
+                            _layout(bb, [1, 2], lambda i: i, row, name)
+
+    def test_the_older_layout_is_not_affected(self):
+        from weightless_sglang.install import _layout
+        bb = nn.Module()
+        bb.layers = nn.ModuleList(nn.Module() for _ in range(3))
+        for name, row in ARCH.items():
+            self.assertEqual(_layout(bb, [1, 2], lambda i: i, row, name), "layer-output")
+
+    def test_the_stream_codec_serves_only_the_pair_it_reads(self):
+        """A non-special row marked ``boundary`` gets the residual-stream
+        codec, which edits one stream with the stream's residual. A row read
+        any other way (several streams, no residual, another tuple, a loop,
+        a forward wrap) is refused on stage-boundary layers; on the older
+        layout it is unaffected."""
+        from weightless_sglang.install import _layout
+        row = ARCH["Qwen3_5ForConditionalGeneration"]
+        fields = {f: getattr(row, f) for f in row.__dataclass_fields__}
+        pair = nn.Module()
+        pair.layers = nn.ModuleList(nn.Module() for _ in range(3))
+        for layer in pair.layers:
+            layer.attn_boundary, layer.ffn_boundary = StageBoundary(), StageBoundary()
+        old = nn.Module()
+        old.layers = nn.ModuleList(nn.Module() for _ in range(3))
+        self.assertEqual(_layout(pair, [1, 2], lambda i: i, row, "q"), "stage-boundary")
+        for change in (dict(per_stream=True), dict(residual_index=None), dict(arity=3),
+                       dict(hidden_index=1, residual_index=0), dict(residual_may_be_none=True),
+                       dict(exec_id="looped"), dict(install="forward_wrap")):
+            with self.subTest(**change):
+                other = ArchRow(**{**fields, **change})
+                with self.assertRaisesRegex(RuntimeError, "residual-stream codec"):
+                    _layout(pair, [1, 2], lambda i: i, other, "q")
+                self.assertEqual(_layout(old, [1, 2], lambda i: i, other, "q"), "layer-output")
+
+    def test_install_refuses_a_row_the_stream_codec_cannot_read(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "v.gguf")
+            m = good_meta(layers=(1, 2), alpha="1.0")
+            m["controlvector.model_hint"] = "qwen3_5"
+            write_gguf(path, m, good_tensors(layers=(1, 2), width=8))
+            row = ARCH["Qwen3_5ForConditionalGeneration"]
+            per_stream = dict(Qwen3_5ForConditionalGeneration=ArchRow(
+                **{**{f: getattr(row, f) for f in row.__dataclass_fields__}, "per_stream": True}))
+            run = fakes.runner()
+            for i in (1, 2):
+                layer = run.model.model.layers[i]
+                layer.attn_boundary, layer.ffn_boundary = StageBoundary(), StageBoundary()
+            with mock.patch.dict(ARCH, per_stream), \
+                    mock.patch.dict(os.environ, {"WEIGHTLESS_STEER_PATH": path}, clear=False):
+                with self.assertRaisesRegex(RuntimeError, "residual-stream codec"):
+                    install_steering(run, source="env")
+            self.assertFalse(any(layer._forward_hooks for layer in run.model.model.layers))
+            self.assertFalse(hasattr(run.model.model, "_steer_stack"))
+
+    def test_install_refuses_before_anything_is_hooked(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "v.gguf")
+            m = good_meta(layers=(1, 2), alpha="1.0")
+            m["controlvector.model_hint"] = "qwen3_5"
+            write_gguf(path, m, good_tensors(layers=(1, 2), width=8))
+            row = ARCH["Qwen3_5ForConditionalGeneration"]
+            ported_off = dict(Qwen3_5ForConditionalGeneration=ArchRow(
+                **{**{f: getattr(row, f) for f in row.__dataclass_fields__}, "boundary": False}))
+            for marked, pattern, arch in (((1, 2), "needs a port", ported_off),
+                                          ((2,), "mixes SGLang layer layouts", {})):
+                with self.subTest(marked=marked):
+                    run = fakes.runner()
+                    for i in marked:
+                        run.model.model.layers[i].boundary = StageBoundary()
+                    with mock.patch.dict(ARCH, arch), \
+                            mock.patch.dict(os.environ, {"WEIGHTLESS_STEER_PATH": path}, clear=False):
+                        with self.assertRaisesRegex(RuntimeError, pattern):
+                            install_steering(run, source="env")
+                    self.assertFalse(any(layer._forward_hooks for layer in run.model.model.layers))
+                    self.assertFalse(hasattr(run.model.model, "_steer_stack"))
 
 
 if __name__ == "__main__":

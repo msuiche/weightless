@@ -48,6 +48,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # tests/
 import glpfiles  # noqa: E402  (sets up the import paths)
 from glpfiles import good_meta, good_tensors, write_gguf  # noqa: E402
 from test_archs import test_dsv4 as fd  # noqa: E402  (the DeepSeek-V4 fake)
+from test_archs import test_dsv41 as fd41  # noqa: E402  (the DeepSeek-V4.1 fake)
 from test_archs import test_glm5next as fg  # noqa: E402  (the GLM-5.3-Flash fake)
 from test_archs import test_qwen38 as fakes  # noqa: E402  (the Qwen3.8-27B fake)
 from test_archs import test_refused as fa  # noqa: E402  (a fake for any served class)
@@ -360,12 +361,26 @@ MATRIX = {
         expect=("refused", r"plain DeepSeek-V4-Flash-Vision-Exp GLP-29 file.*Serve the -ffn file"),
         geometry=("deepseek-ai__DeepSeek-V4-Flash-Vision-Exp",
                   {"num_hidden_layers": 43, "hidden_size": 4096})),
+    # DeepSeek-V4.1: SGLang serves it as DeepseekV4ForCausalLM (model_type
+    # deepseek_v41), the row DeepseekV4ForCausalLM:deepseek_v41 (archs/dsv41.py)
     "dsv41-glp39": dict(
         file="glp.deepseek-v41-flash-GLP-39-L1-39-a0.5.gguf",
-        row="DeepseekV4ForCausalLM", status="structure-tested",
-        fake=("dsv4", dict(hidden=5120, hc_mult=4, num_layers=40, model_type="deepseek_v41",
-                           v41=True), "deepseek_v41"),
-        expect=("refused", r"is DeepSeek-V4.1 \(model_type='deepseek_v41'\).*forward_hc_pre_from_prev"),
+        row="DeepseekV4ForCausalLM:deepseek_v41", status="structure-tested",
+        fake=("dsv41", 5120, 40), expect=("ok", list(range(1, 40)), 5120, 0.5),
+        geometry=("dsv41", {"num_hidden_layers": 40, "hidden_size": 5120, "hc_mult": 4})),
+    "dsv41-1017-glp39": dict(
+        file="glp.deepseek-v41-flash-1017-GLP-39-L1-39-a0.75.gguf",
+        row="DeepseekV4ForCausalLM:deepseek_v41", status="structure-tested",
+        fake=("dsv41", 5120, 40), expect=("ok", list(range(1, 40)), 5120, 0.75),
+        geometry=("dsv41", {"num_hidden_layers": 40, "hidden_size": 5120, "hc_mult": 4,
+                            "model_type": "deepseek_v41_text",
+                            "architectures": ["DeepseekV41ForCausalLM"]})),
+    # the GLP spec_version 3 fold-site file (hc_fold_pre_engram): the same row,
+    # folds on its rows and the companion writer one layer below
+    "dsv41-1017-glp27-fold": dict(
+        file="glp.deepseek-v41-flash-1017-GLP-27-L11-37-a3.5.gguf",
+        row="DeepseekV4ForCausalLM:deepseek_v41", status="structure-tested",
+        fake=("dsv41", 5120, 40), expect=("ok", list(range(11, 38)), 5120, 3.5),
         geometry=("dsv41", {"num_hidden_layers": 40, "hidden_size": 5120, "hc_mult": 4})),
     "hy4-glp77": dict(
         file="Hy4-preview-abliterated-cyber-GLP-77-L1-77-a2.0.gguf",
@@ -451,6 +466,9 @@ def build(entry):
         return fakes.runner(width=entry["fake"][1])
     if kind == "glm":
         return fg.runner((45,), 0, hidden=entry["fake"][1])
+    if kind == "dsv41":
+        _, width, layers = entry["fake"]
+        return fd41.runner((layers,), 0, hidden=width)
     if kind == "dsv4":
         _, kw, hf = entry["fake"]
         return fd.runner(cfg=fd.config(**{"hidden": kw["hidden"], "hc_mult": kw["hc_mult"],
@@ -512,10 +530,10 @@ class Matrix(_Base):
     the model's real config."""
 
     def test_every_published_file_is_in_the_matrix(self):
-        """The 15 published files, each at least once."""
+        """The 17 published files, each at least once."""
         found = sorted(os.path.basename(p) for d in glpfiles.GLP_DIRS for p in _walk(d))
         self.assertEqual(sorted(set(found)), ALL_FILES)
-        self.assertEqual(len(ALL_FILES), 15)
+        self.assertEqual(len(ALL_FILES), 17)
 
     def test_structure_rules_on_the_real_files(self):
         from weightless_steer.container import read_gguf_cvec
