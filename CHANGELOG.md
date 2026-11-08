@@ -4,6 +4,17 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-11-08
+
+### Docs
+- **Featured GLP projects** — the README now spotlights
+  [christopherowen/spark-ds41f](https://github.com/christopherowen/spark-ds41f)
+  and its built-in GLP spec_version 3 support, with the LocalArena serving
+  results and a link to the published GLP-27 vector, plus
+  [othexmr/GLM-5.3-Flash-NVFP4-2x-4x-DGX-Sparks-RiNGSiDE](https://github.com/othexmr/GLM-5.3-Flash-NVFP4-2x-4x-DGX-Sparks-RiNGSiDE)
+  and its GLP-44 integration. The detailed published vector catalog moved to
+  `docs/VECTORS.md`, leaving a concise catalog link in the README.
+
 ## 2026-10-31
 
 ### Added
