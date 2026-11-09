@@ -10,6 +10,14 @@ not the plugin hook (for example a server flag); both share one install.
 What differs between architectures is data, not code: one ``ArchRow`` per
 served model class in ``archs.ARCH`` says where the steering site is and
 how to read it. ``install_steering`` is generic.
+
+Two things moved in SGLang's layer-boundary series (2026-09-24 to 09-30):
+the decoder layers of many models are built from stage boundaries (see
+core.stage_boundaries; a row serves them only with ``ArchRow.boundary``),
+and ModelRunner no longer carries tp_rank, tp_size, pp_rank and pp_size
+(#41813): the ranks are read from the runner when it has them, else from
+``sglang.srt.runtime_context.get_parallel()``, and the boot fails when
+neither answers (``read_ranks``).
 """
 from __future__ import annotations
 
@@ -22,9 +30,10 @@ import sys
 
 import torch
 
-from .archs import ARCH, PREFLIGHT, REFUSED, SPECIAL
+from .archs import ARCH, BOUNDARY_SITE, COMPANION, EDIT, PREFLIGHT, REFUSED, SPECIAL, VARIANTS
 from .archs.base import EXEC_IDS, INSTALL_MODES
-from .core import FiredCheck, LayerDiag, make_post_layer_hook, make_site, wrap_forward
+from .core import (FiredCheck, LayerDiag, make_post_layer_hook, make_site, make_stream_hook,
+                   stage_boundaries, uses_stage_boundaries, wrap_forward)
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +61,16 @@ def _steer_env(path, alpha, layers):
                 os.environ[k] = v
 
 
-def resolve_row(model):
-    """Return (row name, ArchRow) for a served model, or raise."""
+def resolve_row(model, runner=None):
+    """Return (row name, ArchRow) for a served model, or raise.
+
+    A served class with variants (``archs.VARIANTS``: a model SGLang serves
+    through another model's class, picked from the model's config) gets the
+    first variant whose test passes, else its own row."""
     name = type(model).__name__
+    for picks, key in VARIANTS.get(name, ()):
+        if picks(model, runner):
+            return key, ARCH[key]
     row = ARCH.get(name)
     if row is None:
         if name in REFUSED:
@@ -133,7 +149,7 @@ def _act_dtype(runner):
     return dt if isinstance(dt, torch.dtype) else torch.bfloat16
 
 
-def pick_kernel(choice, device, dtype, width, with_residual=True):
+def pick_kernel(choice, device, dtype, width, with_residual=True, check=None, form=None):
     """Pick the kernel for the edit. Returns (kernel, reason).
 
     WEIGHTLESS_STEER_KERNEL: "auto" (default) uses the fused Triton kernel
@@ -144,7 +160,9 @@ def pick_kernel(choice, device, dtype, width, with_residual=True):
 
     ``width`` and ``with_residual`` are those of the row's steering site
     (its stream width, and whether it passes a residual), so the
-    self-check runs exactly the kernel variant the model will run.
+    self-check runs exactly the kernel variant the model will run. A row
+    with its own edit passes that edit's start-up check as ``check``
+    (``check(device, dtype=, width=) -> bool``) and its text as ``form``.
     """
     choice = (choice or "").strip().lower() or "auto"
     if choice not in KERNELS:
@@ -154,7 +172,8 @@ def pick_kernel(choice, device, dtype, width, with_residual=True):
         return "torch", "forced by WEIGHTLESS_STEER_KERNEL=torch"
     from . import fused
 
-    form = f"width {int(width)}, {'with' if with_residual else 'no'} residual"
+    form = (f"{form}, width {int(width)}" if form else
+            f"width {int(width)}, {'with' if with_residual else 'no'} residual")
     why = None
     if not fused.available():
         why = "Triton or a CUDA device is not available"
@@ -162,7 +181,9 @@ def pick_kernel(choice, device, dtype, width, with_residual=True):
         why = f"the model is on {device}, not on a CUDA device"
     else:
         try:
-            if not fused.self_check(device, dtype=dtype, width=width, with_residual=with_residual):
+            ok = (check(device, dtype=dtype, width=width) if check is not None else
+                  fused.self_check(device, dtype=dtype, width=width, with_residual=with_residual))
+            if not ok:
                 why = (f"the fused kernel did not give the same bits as the torch path at "
                        f"start-up ({form})")
         except Exception as e:  # compile or launch failure
@@ -172,6 +193,34 @@ def pick_kernel(choice, device, dtype, width, with_residual=True):
     if choice == "triton":
         raise RuntimeError(f"weightless: WEIGHTLESS_STEER_KERNEL=triton but {why}")
     return "torch", f"auto: torch path, because {why}"
+
+
+_RANKS = ("tp_rank", "tp_size", "pp_rank", "pp_size")
+
+
+def read_ranks(runner):
+    """This rank's (tp_rank, tp_size, pp_rank, pp_size, source).
+
+    The runner's own fields when it has all four (SGLang before #41813, the
+    serving build b62df575), else ``get_parallel()``, the process's parallel
+    state that SGLang reads them from since. Never a default: a rank that
+    cannot be read fails the boot, so a pipeline rank cannot pass as rank 0
+    of 1 (the manifests and log lines are keyed by it, and TP > 1 is refused
+    on it).
+    """
+    if all(hasattr(runner, k) for k in _RANKS):
+        return tuple(int(getattr(runner, k)) for k in _RANKS) + ("runner",)
+    try:
+        from sglang.srt.runtime_context import get_parallel
+        par = get_parallel()
+        vals = tuple(int(getattr(par, k)) for k in _RANKS)
+    except Exception as e:
+        missing = [k for k in _RANKS if not hasattr(runner, k)]
+        raise RuntimeError(
+            f"weightless: this rank's tp/pp ranks cannot be read: the ModelRunner has no "
+            f"{', '.join(missing)} and get_parallel() did not answer ({type(e).__name__}: {e}). "
+            f"Failing closed.") from e
+    return vals + ("get_parallel",)
 
 
 def _refuse_server_args(runner, row_name):
@@ -198,6 +247,55 @@ def _check_structure(row, row_name, meta, path):
             f"weightless: {path} is per-execution-step (a looped model's file), but "
             f"{row_name} runs each layer once. Refusing."
         )
+
+
+def _layout(backbone, local, phys, row, row_name, start=None):
+    """The SGLang layer layout of this rank's steered layers: "stage-boundary"
+    (core.stage_boundaries) or "layer-output" (everything older); one for
+    all of them. A row without ``boundary`` refuses stage-boundary layers,
+    and so does a non-special row that the residual-stream codec cannot
+    read (anything but a one-stream (hidden, residual) "hook" row).
+    A rank with no steered layer reports the layout of its first layer
+    (``start``) and refuses nothing: nothing is hooked there."""
+    if not local:
+        try:
+            first = backbone.layers[start] if start is not None else None
+        except (IndexError, TypeError):
+            first = None
+        return "stage-boundary" if first is not None and uses_stage_boundaries(first) else "layer-output"
+    kinds = {}
+    for i in local:
+        kinds.setdefault(
+            "stage-boundary" if uses_stage_boundaries(backbone.layers[phys(i)])
+            else "layer-output", []).append(i)
+    if len(kinds) > 1:
+        raise RuntimeError(f"weightless: {row_name} mixes SGLang layer layouts on this rank "
+                           f"({ {k: v[:4] for k, v in kinds.items()} }). Failing closed.")
+    layout = next(iter(kinds), "layer-output")
+    if layout == "stage-boundary" and not row.boundary:
+        raise RuntimeError(
+            f"weightless: {row_name}'s decoder layers are built from SGLang's stage boundaries "
+            f"(attn_boundary / ffn_boundary: the layer returns its output alone and the residual "
+            f"stays in the forward batch), and this row's site is only validated on the older "
+            f"layout where the layer returns it. Refusing to serve unsteered; this row needs a "
+            f"port to the layer-boundary API.")
+    if layout == "stage-boundary" and not row.install.startswith("special:"):
+        # The residual-stream codec (core.make_stream_hook) edits the layer's output as ONE
+        # stream with r = the stream's residual: the (hidden, residual) pair of the older
+        # layout and nothing else. A row read another way there would be edited wrongly.
+        shape = dict(install=row.install, exec_id=row.exec_id, arity=row.arity,
+                     hidden_index=row.hidden_index, residual_index=row.residual_index,
+                     per_stream=row.per_stream, residual_may_be_none=row.residual_may_be_none)
+        if shape != dict(install="hook", exec_id="layer", arity=2, hidden_index=0,
+                         residual_index=1, per_stream=False, residual_may_be_none=False):
+            raise RuntimeError(
+                f"weightless: {row_name} serves SGLang's stage-boundary layers through the "
+                f"residual-stream codec, which edits one stream with the stream's residual (a "
+                f"'hook' row whose older output is the (hidden, residual) pair, one direction "
+                f"per layer); this row is {shape}. Failing closed.")
+    for i in local if layout == "stage-boundary" else ():
+        stage_boundaries(backbone.layers[phys(i)])  # the pair this plugin knows, or raise
+    return layout
 
 
 def install_steering(runner, *, source="env", path=None, alpha=None, layers=None):
@@ -229,12 +327,9 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
         return prev  # same file through both routes: install once
 
     model = runner.model
-    row_name, row = resolve_row(model)
+    row_name, row = resolve_row(model, runner)
     _refuse_server_args(runner, row_name)
-    tp_rank = getattr(runner, "tp_rank", 0)
-    tp_size = getattr(runner, "tp_size", 1)
-    pp_rank = getattr(runner, "pp_rank", 0)
-    pp_size = getattr(runner, "pp_size", 1)
+    tp_rank, tp_size, pp_rank, pp_size, rank_source = read_ranks(runner)
     if tp_size > 1 and row.tp != "ok":
         raise RuntimeError(
             f"weightless: {row_name} is not validated at TP={tp_size} (its layer outputs may "
@@ -248,12 +343,7 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
         if special is None:
             raise RuntimeError(f"weightless: {row_name} needs install handler {install!r}, "
                                f"which this build does not have. Failing closed.")
-        site_name = special[1]
-    elif install == "hook":
-        site_name = "decoder-layer output"
-    elif install in INSTALL_MODES:
-        site_name = "decoder-layer forward"
-    else:
+    elif install not in INSTALL_MODES:
         raise RuntimeError(f"weightless: {row_name} has unknown install mode {install!r}")
 
     backbone, _ = resolve_backbone(model, row)
@@ -316,6 +406,25 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
                 f"weightless: layer {i} is {cls}, not one of {sorted(row.layers)}; "
                 f"its output convention is not validated. Failing closed."
             )
+    layout = _layout(backbone, local, phys, row, row_name, start=start if start < end else None)
+    if special is not None:
+        site_name = special[1]
+        if layout == "stage-boundary":
+            site_name = BOUNDARY_SITE.get(install.split(":", 1)[1])
+            if site_name is None:  # cannot happen with row.boundary checked; keep fail-closed
+                raise RuntimeError(f"weightless: {row_name}'s handler {install!r} names no site on "
+                                   f"stage-boundary layers. Failing closed.")
+    elif install == "hook":
+        site_name = ("decoder-layer output (residual stream)" if layout == "stage-boundary"
+                     else "decoder-layer output")
+    else:
+        site_name = "decoder-layer forward"
+    # A special row may run its own edit (archs/base.py EDIT), made here, after
+    # its preflight has checked the settings it reads.
+    special_name = install.split(":", 1)[1] if special is not None else None
+    edit = EDIT[special_name]() if special_name in EDIT else None
+    if edit is not None and getattr(edit, "label", None):
+        site_name = f"{site_name} [{edit.label}]"
 
     try:
         dev = next(backbone.parameters()).device
@@ -329,7 +438,8 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
         diag = LayerDiag(os.environ.get("WEIGHTLESS_STEER_DIAG_DIR") or os.getcwd(), local)
     kernel, kernel_why = pick_kernel(
         os.environ.get("WEIGHTLESS_STEER_KERNEL", ""), dev, _act_dtype(runner), width,
-        with_residual=row.residual_index is not None)
+        with_residual=row.residual_index is not None,
+        check=getattr(edit, "self_check", None), form=getattr(edit, "form", None))
 
     check = FiredCheck(local, what=f"steered {site_name}")
     handles = []
@@ -341,7 +451,11 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
         handles = install_looped(backbone, local, loop, install, **codec_kw)
     for n, i in enumerate(local if loop is None else ()):
         nxt = local[n + 1] if n + 1 < len(local) else None
-        if install == "hook":
+        if install == "hook" and layout == "stage-boundary":
+            handles.append(backbone.layers[i].register_forward_hook(make_stream_hook(
+                backbone, i, next_layer_id=nxt, diag=diag, kernel=kernel, width=width,
+                check=check, row=row_name), with_kwargs=True))
+        elif install == "hook":
             handles.append(backbone.layers[i].register_forward_hook(make_post_layer_hook(
                 backbone, i, next_layer_id=nxt, **codec_kw)))
         elif install == "forward_wrap":  # the loop calls layer.forward(...): wrap the instance
@@ -350,10 +464,40 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
         else:
             site = make_site(backbone, i, next_layer_id=nxt, diag=diag, kernel=kernel,
                              width=width, per_stream=row.per_stream, check=check, row=row_name,
-                             hidden_slot=site_name)
+                             hidden_slot=site_name, edit=edit)
             handles.append(special[0](backbone.layers[i], site, layer_id=i, backbone=backbone,
                                       row=row))
     undo_check = check.wrap_forward(backbone) if local else None
+
+    # A companion site some files need next to the main one (archs/base.py
+    # COMPANION): the layer at position k gets stack row k + row_offset, so it
+    # can be a layer the file has no row for. Its own fired check.
+    writer = None
+    comp = COMPANION.get(special_name) if special_name is not None else None
+    if comp is not None and file_hook in comp.hooks:
+        pairs = [(k, k + comp.row_offset) for k in range(start, end)
+                 if (k + comp.row_offset) in core.dirs]
+        for k, _ in pairs:
+            cls = type(backbone.layers[k]).__name__
+            if cls not in row.layers:
+                raise RuntimeError(f"weightless: layer {k} (companion {comp.site}) is {cls}, not "
+                                   f"one of {sorted(row.layers)}. Failing closed.")
+        wkernel, wkernel_why = pick_kernel(os.environ.get("WEIGHTLESS_STEER_KERNEL", ""), dev,
+                                           _act_dtype(runner), width, with_residual=False)
+        wcheck = FiredCheck([r for _, r in pairs],
+                            what=f"companion {comp.site} (stack row = layer + {comp.row_offset})")
+        for k, r in pairs:
+            wsite = make_site(backbone, r, kernel=wkernel, width=width, per_stream=False,
+                              check=wcheck, row=row_name, hidden_slot=comp.site)
+            handles.append(comp.install(backbone.layers[k], wsite, layer_id=k, row_id=r,
+                                        backbone=backbone, row=row))
+        writer = {"site": comp.site, "row_offset": comp.row_offset,
+                  "layers": [k for k, _ in pairs], "rows": [r for _, r in pairs],
+                  "kernel": wkernel, "kernel_reason": wkernel_why,
+                  "fired_check": "armed" if pairs else "no local sites",
+                  "fired_at_capture": wcheck.fired_at_capture,
+                  "undo_check": wcheck.wrap_forward(backbone) if pairs else None,
+                  "check": wcheck}
 
     ltypes = [type(backbone.layers[phys(i)]).__name__ for i in local]
     if row.kind is not None:
@@ -371,10 +515,16 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
         f"layers={rng} ({len(local)}{kinds}) "
         f"alpha={core.alpha:.3f} hook={file_hook} file_sha256={sha} diag={int(diag is not None)} "
         f"pp_rank={pp_rank} row={row_name} install={install} site={site_name} width={width} "
+        f"layout={layout} "
         + (f"exec=looped({loop.num_loops}x{loop.per_loop}, direction.N=step N-1) "
            if loop is not None else "")
         + f"kernel={kernel} ({kernel_why})"
     )
+    if writer is not None:
+        wl = writer["layers"]
+        line += (f" companion={writer['site']} layers="
+                 f"{(str(wl[0]) + '..' + str(wl[-1])) if wl else 'none'} ({len(wl)}, stack row = "
+                 f"layer + {writer['row_offset']}) companion_kernel={writer['kernel']}")
     _emit(line)
 
     rec = {
@@ -387,6 +537,8 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
         "tp_size": tp_size,
         "pp_rank": pp_rank,
         "pp_size": pp_size,
+        "rank_source": rank_source,
+        "layout": layout,
         "hooked_layers": local,
         "local_layer_ids": local,
         "full_attn_layers": [i for i, t in zip(local, ltypes) if "Attention" in t],
@@ -408,6 +560,10 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
         "fired_at_capture": check.fired_at_capture,
         "exec_id": row.exec_id,
     }
+    if edit is not None:
+        rec["edit"] = getattr(edit, "label", type(edit).__name__)
+    if writer is not None:
+        rec["companion"] = {k: v for k, v in writer.items() if k not in ("undo_check", "check")}
     if loop is not None:
         rec["loop"] = {"per_loop": loop.per_loop, "num_loops": loop.num_loops,
                        "exec_steps": loop.steps, "loop_arg": loop.arg, "loop_kwarg": loop.kwarg,
@@ -418,6 +574,9 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
     runner._weightless_steer_handles = handles
     runner._weightless_steer_check = check
     runner._weightless_steer_undo_check = undo_check
+    runner._weightless_steer_companion_check = writer["check"] if writer is not None else None
+    runner._weightless_steer_undo_companion_check = (writer["undo_check"] if writer is not None
+                                                     else None)
     mdir = os.environ.get("WEIGHTLESS_STEER_MANIFEST_DIR", "").strip()
     if mdir:
         os.makedirs(mdir, exist_ok=True)
@@ -432,4 +591,6 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
 
         write_manifest()
         check.on_capture = write_manifest
+        if writer is not None:
+            writer["check"].on_capture = write_manifest
     return rec

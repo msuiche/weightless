@@ -48,6 +48,7 @@ from glpfiles import good_meta, write_gguf  # noqa: E402
 
 from test_archs import (_trees, _parse, _cls, _fn, _has_fn, _src, _calls_where,
                          _returns_in_order, _assign, unit_dirs)  # noqa: E402
+from test_archs import installed_stage_built, old_layout_trees, NOT_PORTED  # noqa: E402
 
 from weightless_sglang import core as wcore  # noqa: E402
 from weightless_sglang.archs import ARCH  # noqa: E402
@@ -516,6 +517,7 @@ def _try(name):
         return None, f"{type(e).__name__}: {e}"
 
 
+NEM_LAYERS = {"NemotronHMLPDecoderLayer", "NemotronHMoEDecoderLayer", "NemotronHMambaDecoderLayer", "NemotronHAttentionDecoderLayer"}
 NH, NH_WHY = _try("sglang.srt.models.nemotron_h")
 
 
@@ -701,6 +703,7 @@ def real_nemotron_reference(pattern, x, dirs, alpha):
 
 
 @unittest.skipUnless(NH is not None, f"SGLang's Nemotron-H model is not importable here ({NH_WHY})")
+@unittest.skipIf(installed_stage_built("srt/models/nemotron_h.py", NEM_LAYERS), NOT_PORTED)
 class RealNemotron(RealBase):
     def run_model(self, pattern, width, path=None, install="forward_wrap", tp_size=1,
                   dirs=None, alpha=None, tokens=3, capture=()):
@@ -798,12 +801,16 @@ class RealNemotron(RealBase):
 MODEL_FILE = "srt/models/nemotron_h.py"
 
 
-@unittest.skipUnless(_trees(MODEL_FILE), "no SGLang package with models/nemotron_h.py found")
+NEM_TREES = old_layout_trees(MODEL_FILE, NEM_LAYERS)
+
+
+@unittest.skipUnless(NEM_TREES, "no SGLang package with models/nemotron_h.py and the older layer "
+                                f"layout found (on the others: {NOT_PORTED})")
 class StructureNemotronH(unittest.TestCase):
     """Pins, per SGLang tree, the code paths the Nemotron-H rows depend on."""
 
     def each(self, rel):
-        return [(t, _parse(t, rel)) for t in _trees(MODEL_FILE)]
+        return [(t, _parse(t, rel)) for t in NEM_TREES]
 
     def test_nemotron_classes_and_backbone(self):
         row = ARCH["NemotronHForCausalLM"]

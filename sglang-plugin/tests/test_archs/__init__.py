@@ -9,6 +9,13 @@
 - ``unit_dirs`` (synthetic unit directions for a GLP file), ``proj_ok``
   (the edit's two properties) and the pieces the tests that run SGLang's
   own classes share (a one-rank group, a runner around a model, a spy).
+- SGLang's stage-boundary layout (the layer-boundary series, 2026-09-24 to
+  09-30): ``stage_built(tree, rel, classes)`` says whether a tree builds
+  those decoder-layer classes from stage boundaries, ``old_layout_trees``
+  keeps the trees that do not (the structure tests of a row not ported to
+  the new layout read only those), and ``installed_stage_built`` asks the
+  same of the importable SGLang (its Real* tests skip there). Such a row is
+  refused at install on those trees: test_core.BoundaryLayout proves it.
 """
 import ast
 import importlib.util
@@ -33,6 +40,50 @@ def _trees(*files):
             seen.add(r)
             res.append(r)
     return res
+
+
+_STAGE_MARKS = ("append_stages(", "make_stage_boundary(", "self.attn_boundary",
+                "self.ffn_boundary", "self.boundary.prepare(")
+
+
+def stage_built(tree, rel, classes):
+    """True when any class named in ``classes`` in ``rel`` of ``tree`` (or a
+    base class of it defined in the same file) builds its decoder layer from
+    stage boundaries (append_stages, make_stage_boundary, attn_boundary /
+    ffn_boundary)."""
+    path = os.path.join(tree, *rel.split("/"))
+    if not os.path.isfile(path):
+        return False
+    defs = {n.name: n for n in ast.walk(_parse(tree, rel)) if isinstance(n, ast.ClassDef)}
+    todo, seen = [c for c in classes if c in defs], set()
+    while todo:
+        c = todo.pop()
+        if c in seen:
+            continue
+        seen.add(c)
+        if any(m in _src(defs[c]) for m in _STAGE_MARKS):
+            return True
+        todo += [_src(b).split(".")[-1] for b in defs[c].bases if _src(b).split(".")[-1] in defs]
+    return False
+
+
+def old_layout_trees(rel, classes, *more):
+    """``_trees(rel, *more)`` without the trees that build ``classes`` from
+    stage boundaries."""
+    return [t for t in _trees(rel, *more) if not stage_built(t, rel, classes)]
+
+
+def installed_stage_built(rel, classes):
+    """``stage_built`` for the importable SGLang package (False without one)."""
+    spec = importlib.util.find_spec("sglang")
+    if spec is None or not spec.submodule_search_locations:
+        return False
+    return stage_built(list(spec.submodule_search_locations)[0], rel, classes)
+
+
+NOT_PORTED = ("this SGLang builds the row's decoder layers from stage boundaries (the "
+              "layer-boundary series); the row is not ported to that layout and install_steering "
+              "refuses it there (test_core.BoundaryLayout)")
 
 
 def _parse(tree, rel):

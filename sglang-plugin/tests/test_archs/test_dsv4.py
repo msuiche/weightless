@@ -12,9 +12,12 @@ layer, the model loop) folds the edited write into the streams.
   the real width (4096) on a 43-layer fake: the 0731 GLP-29 file and the
   Vision-Exp -ffn file install; the GLP-42 residual file, the plain
   Vision-Exp file and the DeepSeek-V4.1 file are refused with their named
-  errors. With WEIGHTLESS_TEST_DSV41_CONFIG set to the DeepSeek-V4.1
-  config.json, the V4.1 refusal is also proven on the config SGLang builds
-  from it.
+  errors. A model with any DeepSeek-V4.1 sign (model_type deepseek_v41*,
+  hc_pre_from_prev_sublayer) is served by the V4.1 row instead
+  (archs/dsv41.py, test_dsv41.py), which refuses this older-layout fake: by
+  its model type, or by its layer class. With WEIGHTLESS_TEST_DSV41_CONFIG
+  set to the DeepSeek-V4.1 config.json, that is also proven on the config
+  SGLang builds from it.
 - ``RealLayers``: SGLang's real ``DeepseekV4DecoderLayer.forward`` in its
   fused mHC mode, the real ``hc_pre`` / ``hc_post`` /
   ``_run_moe_ffn_dp_sync``, the real ``DeepseekV4Model.forward`` loop with
@@ -540,7 +543,9 @@ class Refusals(Dsv4Base):
             with self.subTest(name):
                 run = runner()
                 mutate(run)
-                with self.assertRaisesRegex(RuntimeError, "is DeepSeek-V4.1"):
+                # served by the V4.1 row, which refuses a model that is not exactly V4.1
+                with self.assertRaisesRegex(RuntimeError, r"DeepseekV4ForCausalLM:deepseek_v41 row "
+                                                          r"serves model_type 'deepseek_v41' only"):
                     self.install(run)
                 self.assertEqual(self.hooked(run), [])
                 self.assertFalse(hasattr(run.model.model, "_steer_stack"))
@@ -716,7 +721,9 @@ class RealFiles(Dsv4Base):
     def test_dsv41_file_is_refused(self):
         self.use(DSV41)
         cfg = config(5120, 4, 40, model_type="deepseek_v41", v41=True)
-        with self.assertRaisesRegex(RuntimeError, "is DeepSeek-V4.1"):
+        # the V4.1 row serves it, and refuses this fake's older-layout layer class
+        with self.assertRaisesRegex(RuntimeError, r"is DeepseekV4DecoderLayer, not one of "
+                                                  r"\['DeepseekV4CudaDecoderLayer'\]"):
             self.install(runner(cfg=cfg, hf_model_type="deepseek_v41"))
         # on a DeepSeek-V4 model the V4.1 file is refused by its hint
         with self.assertRaisesRegex(RuntimeError, "DeepSeek-V4.1 file"):
@@ -734,8 +741,8 @@ def _dsv41_config():
 class Dsv41RealConfig(Dsv4Base):
     """DeepSeek-V4.1 on its real config.json: SGLang's own config class
     turns it into DeepseekV4ForCausalLM with model_type deepseek_v41 and
-    hc_pre_from_prev_sublayer, and the row refuses it before anything is
-    hooked."""
+    hc_pre_from_prev_sublayer; the V4.1 row is picked, and it refuses this
+    older-layout fake by its layer class before anything is hooked."""
 
     def test_refused_on_the_real_config(self):
         raw = json.load(open(_dsv41_config()))
@@ -769,7 +776,7 @@ class Dsv41RealConfig(Dsv4Base):
                                        hc_pre_from_prev_sublayer=cfg.hc_pre_from_prev_sublayer)
         run = runner(cfg=bb_cfg, hf_model_type=cfg.model_type)
         run.model_config.hf_config = cfg
-        with self.assertRaisesRegex(RuntimeError, "is DeepSeek-V4.1"):
+        with self.assertRaisesRegex(RuntimeError, r"not one of \['DeepseekV4CudaDecoderLayer'\]"):
             self.install(run)
         self.assertFalse(hasattr(run.model.model, "_steer_stack"))
 
@@ -834,8 +841,15 @@ def cpu_runtime():
                 (D, "check_cuda_graph_backend", lambda *a, **k: True),
                 (D, "dsa_use_prefill_cp", lambda fb: False),
                 (MOE, "is_tbo_enabled", lambda: False)):
+            if name in _GONE_ON_SOME_TREES and not hasattr(obj, name):
+                continue  # 15aa0b5a: the CP gate is is_cp_active(forward_batch), see _fb()
             st.enter_context(mock.patch.object(obj, name, val))
         yield
+
+
+# Names cpu_runtime stubs that a newer SGLang no longer has (the stub is then
+# not needed): deepseek_v4.dsa_use_prefill_cp is gone on 15aa0b5a.
+_GONE_ON_SOME_TREES = frozenset({"dsa_use_prefill_cp"})
 
 
 def _cfg():
@@ -954,9 +968,13 @@ def real_runner(partition=(NL,), rank=0, dtype=torch.float32, fused=True):
 
 
 def _fb():
+    # is_context_parallel_extend: read by layers/cp/utils.is_cp_active, the CP gate of the
+    # model's two-batch-overlap check on 15aa0b5a (one rank here: never CP)
     return types.SimpleNamespace(can_run_tbo=False, tbo_children=None, global_forward_mode=None,
                                  attn_cp_metadata=None, num_token_non_padded=None,
-                                 forward_mode=types.SimpleNamespace(is_idle=lambda: False))
+                                 forward_mode=types.SimpleNamespace(
+                                     is_idle=lambda: False,
+                                     is_context_parallel_extend=lambda: False))
 
 
 def run_model(run, x=None, proxy=None):

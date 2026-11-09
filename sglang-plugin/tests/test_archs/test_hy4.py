@@ -40,6 +40,7 @@ from glpfiles import good_meta, write_gguf  # noqa: E402
 
 from test_archs import (_trees, _parse, _cls, _fn, _src, _calls, _entry, _returns, _loops,
                          _layer_calls, unit_dirs, proj_ok, runner_of, spy_out)  # noqa: E402
+from test_archs import installed_stage_built, old_layout_trees, NOT_PORTED  # noqa: E402
 
 from weightless_sglang.archs import ARCH  # noqa: E402
 from weightless_sglang.install import install_steering  # noqa: E402
@@ -530,6 +531,7 @@ def hy_run(run, x):
 
 
 @unittest.skipUnless(HYM, f"SGLang's hunyuan_v4 model is not importable here ({HY_WHY})")
+@unittest.skipIf(installed_stage_built("srt/models/hunyuan_v4.py", {"HYV4DecoderLayer"}), NOT_PORTED)
 class RealHy4(RealBase):
     def setUp(self):
         super().setUp()
@@ -590,10 +592,11 @@ class RealHy4(RealBase):
 # ---------------------------------------------------------------- structure
 
 
-HY4_TREES = _trees("srt/models/hunyuan_v4.py")
+HY4_TREES = old_layout_trees("srt/models/hunyuan_v4.py", {"HYV4DecoderLayer"})
 
 
-@unittest.skipUnless(HY4_TREES, "no SGLang package with models/hunyuan_v4.py found")
+@unittest.skipUnless(HY4_TREES, "no SGLang package with models/hunyuan_v4.py and the older layer "
+                                f"layout found (on the others: {NOT_PORTED})")
 class StructureHy4(unittest.TestCase):
     def trees(self):
         return [(t, _parse(t, "srt/models/hunyuan_v4.py")) for t in HY4_TREES]

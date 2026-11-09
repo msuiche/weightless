@@ -1,10 +1,23 @@
 """The GLM-5.3-Flash row (``Glm5NextForConditionalGeneration``), CPU only.
 
-The site is ``layer.layer_communicator.mhc.mlp_combine``: the widened mHC
-stream [T, hc_mult x hidden], steered with r=None on every steered layer,
-the last one before its hc_contract. Under pipeline parallelism each rank
-steers the file's layers in its own [start_layer, end_layer), by absolute
-layer id, and hands the steered stream on.
+The site is the layer's feed-forward post-combine: the widened mHC stream
+[T, hc_mult x hidden], steered with r=None on every steered layer, the last
+one before its hc_contract. On the older SGLang layout it is
+``layer.layer_communicator.mhc.mlp_combine``; on the stage-boundary layout
+(upstream #41554 / #41750) it is the ``MHCState.apply_post`` call inside the
+FFN boundary's ``_FfnUpdate.update`` (never the attention update's). Under
+pipeline parallelism each rank steers the file's layers in its own
+[start_layer, end_layer), by absolute layer id, and hands the steered stream
+on.
+
+- ``RealModel``: the real Glm5NextForConditionalGeneration built by its own
+  __init__ from WEIGHTLESS_TEST_GLM_CONFIG (width shrunk, sglang_tiny.py),
+  on whichever layout this SGLang has: install, the edit at the site, the
+  stream the next layer and the contract receive, alpha 0, the fired count,
+  three pipeline ranks with the ranks read the way the runner gives them.
+- ``BoundaryFakes`` / the boundary golden: the handler on the stage-boundary
+  layout with stand-ins named like SGLang's classes (any interpreter).
+- ``StructureBoundary``: what the row relies on in the stage-boundary trees.
 
 - Fakes shaped like SGLang's classes (the first section) and the row on
   them: install, the partitions, the edit, refusals, diagnostics.
@@ -48,9 +61,12 @@ import glpfiles  # noqa: E402  (sets up the import paths)
 from glpfiles import good_meta, write_gguf  # noqa: E402
 
 from test_archs import _trees, _parse, _cls, _fn, _src, _calls, unit_dirs  # noqa: E402
+from test_archs import stage_built  # noqa: E402
+from test_archs import sglang_tiny as tiny  # noqa: E402
 
 from weightless_sglang import core as wcore  # noqa: E402
-from weightless_sglang.archs import ARCH, SPECIAL  # noqa: E402
+from weightless_sglang.archs import ARCH, BOUNDARY_SITE, SPECIAL  # noqa: E402
+from weightless_sglang.archs import glm5next as wglm  # noqa: E402
 from weightless_sglang.core import layer_verdict  # noqa: E402
 from weightless_sglang.install import install_steering  # noqa: E402
 
@@ -757,6 +773,229 @@ class GoldenGLM(unittest.TestCase):
         self.assertEqual(h_out.hexdigest(), self.OUTPUT_SHA256,
                          "the GLM handler's output bits changed")
 
+    def run_handler_boundary(self, x, alpha):
+        """The same edit through the stage-boundary layout: the FFN update's
+        apply_post output, hc_post the identity, not the last layer."""
+        handler, _ = SPECIAL["glm_mhc_combine"]
+        self.assertEqual(BOUNDARY_SITE["glm_mhc_combine"], wglm.SITE_BOUNDARY)
+        cfg = types.SimpleNamespace(hidden_size=self.HIDDEN, hc_mult=self.HC, mhc=True,
+                                    num_hidden_layers=45)
+        owner = torch.nn.Module()
+        stack = torch.zeros(45, 1, self.W)
+        stack[self.LAYER, 0] = self.direction()
+        owner.register_buffer("_steer_stack", stack, persistent=False)
+        owner.register_buffer("_steer_alpha", torch.tensor(float(alpha)), persistent=False)
+        owner.config = cfg
+        layer, upd = boundary_layer(self.LAYER, hidden=self.HIDDEN, hc=self.HC,
+                                    hc_post=lambda h, r, a, b: h)
+        site = wcore.make_site(owner, self.LAYER, kernel="torch", width=self.W)
+        undo = handler(layer, site, layer_id=self.LAYER, backbone=owner, row=ARCH[GLM])
+        try:
+            return upd.update(x, None)
+        finally:
+            undo()
+
+    def test_recorded_bits_on_the_boundary_layout(self):
+        """The stage-boundary site gives the bits recorded on the
+        communicator site, for the same stream."""
+        h_out = hashlib.sha256()
+        for T in (1, 600):
+            x = self.stream(T)
+            for alpha in (0.0, 1.0, 2.0):
+                out = self.run_handler_boundary(x, alpha)
+                h_out.update(out.view(torch.int16).numpy().tobytes())
+        self.assertEqual(h_out.hexdigest(), self.OUTPUT_SHA256,
+                         "the GLM handler's output bits on the stage-boundary layout differ")
+
+
+# ---------------------------------------------------------------- the stage-boundary layout, fakes
+# Stand-ins named like SGLang's layer_boundary classes (residual/mhc.py,
+# stage.py): an MHCState with apply_post / clear_coefficients, its
+# _AttnUpdate and _FfnUpdate, and the two StageBoundary objects whose
+# declarations hold them. _FfnUpdate.update follows SGLang's call for call.
+
+
+@dataclasses.dataclass
+class _BState:
+    hc_mult: int
+    hc_post: object
+    is_last_layer: bool = False
+    h_res: object = None
+    h_post: object = None
+
+    def apply_post(self, hidden_states, residual):
+        return self.hc_post(hidden_states, residual, self.h_res, self.h_post)
+
+    def clear_coefficients(self):
+        self.h_res = None
+        self.h_post = None
+
+
+BMHCState = type("MHCState", (_BState,), {})
+
+
+class _AttnUpdate:
+    is_plain_add = False
+    applied_at_exit = False
+
+    def __init__(self, state):
+        self.state = state
+
+    def update(self, hidden_states, residual):
+        return self.state.apply_post(hidden_states, residual)
+
+
+class _FfnUpdate:
+    is_plain_add = False
+    applied_at_exit = True
+
+    def __init__(self, state):
+        self.state = state
+
+    def update(self, hidden_states, residual):
+        hidden_states = self.state.apply_post(hidden_states, residual)
+        self.state.clear_coefficients()
+        if self.state.is_last_layer:
+            hidden_states = hc_contract(hidden_states, self.state.hc_mult)
+        return hidden_states
+
+
+class StageBoundary:
+    def __init__(self, update):
+        self.declaration = types.SimpleNamespace(update=update)
+
+
+def boundary_layer(layer_id, *, hidden=8, hc=4, last=False, hc_post=None, attn_state=None,
+                   ffn_update_cls=_FfnUpdate):
+    """(layer, its FFN update): a stand-in GLM layer on the stage-boundary layout."""
+    state = BMHCState(hc_mult=hc, hc_post=hc_post or (lambda h, r, a, b: h.repeat(1, hc) + r),
+                      is_last_layer=last)
+    upd = ffn_update_cls(state)
+    layer = Glm5NextDecoderLayer.__new__(Glm5NextDecoderLayer)
+    nn.Module.__init__(layer)
+    layer.layer_id, layer.hidden_size, layer.is_nextn = layer_id, hidden, False
+    layer.is_linear_attn = is_kda_layer(layer_id)
+    layer.attn_boundary = StageBoundary(_AttnUpdate(attn_state or state))
+    layer.ffn_boundary = StageBoundary(upd)
+    return layer, upd
+
+
+class BoundaryFakes(GlmBase):
+    """The handler on the stage-boundary layout (any interpreter)."""
+
+    def runner(self, mutate=None):
+        run = runner((45,), 0)
+        bb = run.model.model
+        for i in range(45):
+            layer, _ = boundary_layer(i, last=i == 44)
+            if mutate:
+                mutate(i, layer)
+            bb.layers[i] = layer
+        return run
+
+    def test_install_wraps_the_ffn_update_only(self):
+        self.write()
+        run = self.runner()
+        rec = self.install(run)
+        bb = run.model.model
+        self.assertEqual((rec["site"], rec["layout"]), (wglm.SITE_BOUNDARY, "stage-boundary"))
+        self.assertEqual(rec["local_layer_ids"], list(STEERED))
+        wrapped = [i for i in range(45) if "update" in vars(bb.layers[i].ffn_boundary.declaration.update)]
+        self.assertEqual(wrapped, list(STEERED))
+        self.assertFalse(any("update" in vars(bb.layers[i].attn_boundary.declaration.update)
+                             for i in range(45)))
+        self.assertIn(f"site={wglm.SITE_BOUNDARY} ", self.log)
+        self.assertIn("layout=stage-boundary ", self.log)
+        for undo in run._weightless_steer_handles:
+            undo()
+        self.assertFalse(any("update" in vars(bb.layers[i].ffn_boundary.declaration.update)
+                             or "apply_post" in vars(bb.layers[i].ffn_boundary.declaration.update.state)
+                             for i in range(45)))
+
+    def test_the_ffn_post_combine_is_edited_and_the_attention_update_is_not(self):
+        alpha = 2.0
+        self.write(alpha=str(alpha))
+        run = self.runner()
+        self.install(run)
+        bb = run.model.model
+        layer = bb.layers[7]
+        upd = layer.ffn_boundary.declaration.update
+        x = torch.randn(3, 8, dtype=torch.float64, generator=torch.Generator().manual_seed(1))
+        r = torch.randn(3, 32, dtype=torch.float64, generator=torch.Generator().manual_seed(2))
+        pre = x.repeat(1, 4) + r
+        d = bb._steer_stack[7, 0].double()
+        got = upd.update(x, r)
+        want = pre - alpha * (pre @ d).unsqueeze(-1) * d
+        self.assertTrue(torch.allclose(got, want, atol=1e-6))
+        # the attention update reaches the same apply_post: untouched
+        a = layer.attn_boundary.declaration.update.update(x, r)
+        self.assertTrue(torch.equal(a, pre))
+        # the last layer: edited on the wide stream, then contracted
+        last = bb.layers[44].ffn_boundary.declaration.update
+        d44 = bb._steer_stack[44, 0].double()
+        out = last.update(x, r)
+        self.assertTrue(torch.allclose(out, hc_contract(pre - alpha * (pre @ d44).unsqueeze(-1) * d44, 4),
+                                       atol=1e-6))
+
+    def test_apply_post_must_run_exactly_once_per_ffn_update(self):
+        self.write()
+
+        class Twice(_FfnUpdate):
+            def update(self, hidden_states, residual):
+                self.state.apply_post(hidden_states, residual)
+                return self.state.apply_post(hidden_states, residual)
+
+        class Never(_FfnUpdate):
+            def update(self, hidden_states, residual):
+                return self.state.hc_post(hidden_states, residual, None, None)
+
+        for cls, n in ((Twice, 2), (Never, 0)):
+            with self.subTest(cls.__name__):
+                Named = type("_FfnUpdate", (cls,), {})
+
+                def mutate(i, layer, _N=Named):
+                    st = layer.ffn_boundary.declaration.update.state
+                    layer.ffn_boundary = StageBoundary(_N(st))
+
+                run = self.runner(mutate)
+                self.install(run)
+                upd = run.model.model.layers[5].ffn_boundary.declaration.update
+                with self.assertRaisesRegex(wcore.SiteError, f"called apply_post {n} times"):
+                    upd.update(torch.zeros(2, 8), torch.zeros(2, 32))
+
+    def test_refusals(self):
+        self.write()
+        other = BMHCState(hc_mult=4, hc_post=None)
+        cases = [
+            ("not mHC's update", "not mHC's _FfnUpdate",
+             lambda i, L: setattr(L, "ffn_boundary", StageBoundary(_AttnUpdate(
+                 L.ffn_boundary.declaration.update.state)))),
+            ("two states", "do not share one MHCState",
+             lambda i, L: setattr(L, "attn_boundary", StageBoundary(_AttnUpdate(other)))),
+            ("no state", "not an MHCState",
+             lambda i, L: setattr(L.ffn_boundary.declaration.update, "state", None)),
+            ("hc_mult", "hc_mult 2",
+             lambda i, L: setattr(L.ffn_boundary.declaration.update.state, "hc_mult", 2)),
+            ("half a pair", "its ffn_boundary is",
+             lambda i, L: setattr(L, "ffn_boundary", None)),
+            ("already wrapped", "already wrapped",
+             lambda i, L: setattr(L.ffn_boundary.declaration.update, "update",
+                                  L.ffn_boundary.declaration.update.update)),
+            ("nextn", "NEXTN", lambda i, L: setattr(L, "is_nextn", True)),
+        ]
+        for name, pattern, mut in cases:
+            with self.subTest(name):
+                run = self.runner(lambda i, L, _m=mut: _m(i, L) if i == 9 else None)
+                with self.assertRaisesRegex(RuntimeError, pattern):
+                    self.install(run)
+
+    def test_neither_layout_is_refused(self):
+        self.write()
+        run = runner((45,), 0)
+        del run.model.model.layers[3].layer_communicator
+        with self.assertRaisesRegex(RuntimeError, "neither layer_communicator"):
+            self.install(run)
+
 
 # ---------------------------------------------------------------- SGLang's real classes
 
@@ -885,7 +1124,8 @@ def real_pipeline(runs, x):
     return out
 
 
-@unittest.skipUnless(HAVE_SGLANG, "SGLang's GLM model is not importable here")
+@unittest.skipUnless(HAVE_SGLANG, "SGLang's GLM model with communicator_mhc is not importable here "
+                                  "(on the stage-boundary layout RealModel covers the row)")
 class RealLayers(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -1012,16 +1252,23 @@ class RealLayers(unittest.TestCase):
 
 
 MODEL_FILE = "srt/models/glm5_next.py"
+GLM_LAYERS = {"Glm5NextDecoderLayer"}
+OLD_TREES = [t for t in _trees(MODEL_FILE, "srt/layers/communicator_mhc.py")
+             if not stage_built(t, MODEL_FILE, GLM_LAYERS)]
+STAGE_TREES = [t for t in _trees(MODEL_FILE, "srt/layers/layer_boundary/residual/mhc.py")
+               if stage_built(t, MODEL_FILE, GLM_LAYERS)]
 
 
-@unittest.skipUnless(_trees(MODEL_FILE), "no SGLang package with models/glm5_next.py found")
+@unittest.skipUnless(OLD_TREES, "no SGLang package with models/glm5_next.py on the communicator "
+                                "layout found (StructureBoundary reads the stage-boundary trees)")
 class Structure(unittest.TestCase):
-    """Pins, per SGLang tree, the code paths the GLM row depends on. A change
-    in any of them fails here, before a GPU is touched."""
+    """Pins, per SGLang tree on the older (communicator) layout, the code paths
+    the GLM row depends on. A change in any of them fails here, before a GPU
+    is touched."""
 
     def trees(self):
         return [(t, _parse(t, "srt/models/glm5_next.py"), _parse(t, "srt/layers/communicator_mhc.py"))
-                for t in _trees(MODEL_FILE)]
+                for t in OLD_TREES]
 
     def test_model_loop_calls_each_layer_and_unpacks_three(self):
         for t, g, _ in self.trees():
@@ -1148,3 +1395,294 @@ class Structure(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+# ---------------------------------------------------------------- the real model, either layout
+
+
+GLM_CFG = tiny.config_path("glm")
+HID = 64  # the real config with hidden_size 64: the mHC stream is 4 x 64 = 256 wide
+
+
+def _mhc_state(layer):
+    if tiny.NEW_LAYOUT:
+        return layer.ffn_boundary.declaration.update.state
+    return layer.layer_communicator.mhc
+
+
+@unittest.skipIf(tiny.WHY, f"this SGLang cannot build the real models here ({tiny.WHY})")
+@unittest.skipUnless(GLM_CFG, "set WEIGHTLESS_TEST_GLM_CONFIG to a GLM-5.3-Flash config.json")
+class RealModel(unittest.TestCase):
+    """SGLang's real Glm5NextForConditionalGeneration, built by its own
+    __init__ (sglang_tiny.py), on this SGLang's layout. The runner carries
+    the rank attributes on the older layout (as that ModelRunner does) and
+    none on the stage-boundary layout (the plugin reads get_parallel())."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        p = mock.patch.dict(os.environ, {}, clear=False)
+        p.start()
+        self.addCleanup(p.stop)
+        for k in [k for k in os.environ if k.startswith("WEIGHTLESS_STEER_")]:
+            os.environ.pop(k)
+        self.write("2.0")
+
+    def write(self, alpha):
+        m = good_meta(layers=STEERED, alpha=alpha)
+        m["controlvector.model_hint"] = "glm5_next"
+        path = os.path.join(self.tmp.name, f"glm-{alpha}.gguf")
+        write_gguf(path, m, unit_dirs(STEERED, 4 * HID, seed=3))
+        os.environ["WEIGHTLESS_STEER_PATH"] = path
+
+    def build(self, dtype=torch.float32, rank=0, size=1, steer=True, mdir=None):
+        ctx = tiny.Context(pp_rank=rank, pp_size=size)
+        model, bb, ctx = tiny.build("glm", GLM_CFG, hidden=HID, dtype=dtype, ctx=ctx)
+        run = tiny.runner_of(model, "glm5_next", dtype,
+                             ranks=None if tiny.NEW_LAYOUT else (0, 1, rank, size))
+        rec = None
+        if steer:
+            if mdir:
+                os.environ["WEIGHTLESS_STEER_MANIFEST_DIR"] = mdir
+            with ctx, redirect_stderr(io.StringIO()) as err:
+                rec = install_steering(run, source="env")
+            self.log = err.getvalue()
+            os.environ.pop("WEIGHTLESS_STEER_MANIFEST_DIR", None)
+        return bb, ctx, run, rec
+
+    def x(self, T=5, dtype=torch.float32):
+        return torch.randn(T, HID, generator=torch.Generator().manual_seed(T)).to(dtype)
+
+    def test_install(self):
+        bb, ctx, run, rec = self.build()
+        self.assertEqual((rec["row"], rec["width"], rec["num_layers"]), (GLM, 4 * HID, 45))
+        self.assertEqual(rec["local_layer_ids"], list(STEERED))
+        self.assertEqual(rec["full_attn_layers"], [i for i in STEERED if i % 4 == 3])
+        if tiny.NEW_LAYOUT:
+            self.assertEqual((rec["site"], rec["layout"], rec["rank_source"]),
+                             (wglm.SITE_BOUNDARY, "stage-boundary", "get_parallel"))
+            upd = [bb.layers[i].ffn_boundary.declaration.update for i in range(45)]
+            self.assertEqual([i for i in range(45) if "update" in vars(upd[i])], list(STEERED))
+            self.assertEqual([i for i in range(45) if "apply_post" in vars(upd[i].state)], list(STEERED))
+            self.assertFalse(any("update" in vars(bb.layers[i].attn_boundary.declaration.update)
+                                 for i in range(45)))
+            self.assertEqual([type(u).__name__ for u in upd[:1]], ["_FfnUpdate"])
+        else:
+            self.assertEqual((rec["site"], rec["layout"], rec["rank_source"]),
+                             ("mhc.mlp_combine", "layer-output", "runner"))
+            self.assertEqual([i for i in range(45) if "mlp_combine" in vars(_mhc_state(bb.layers[i]))],
+                             list(STEERED))
+
+    def test_edit_reaches_the_next_layer_and_the_last_contract(self):
+        """Spy each layer's hc_post (its last call per layer is the FFN
+        post-combine: the stream before the edit) and hc_attn_pre (the stream
+        the layer reads). Layer i+1 reads layer i's stream with the edit:
+        (1 - alpha) along d, unchanged across d; the last layer's stream is
+        contracted after the edit, then normed."""
+        from sglang.kernels.ops.layernorm.mhc import hc_contract as sglang_hc_contract
+        alpha = 2.0
+        bb, ctx, run, _ = self.build(steer=False)
+        pre, seen = {}, {}
+        for i in range(45):
+            st = _mhc_state(bb.layers[i])
+
+            def spy_post(*a, _i=i, _f=st.hc_post):
+                out = _f(*a)
+                pre[_i] = out
+                return out
+
+            def spy_in(x, *a, _i=i, _f=st.hc_attn_pre):
+                seen[_i] = x
+                return _f(x, *a)
+
+            st.hc_post, st.hc_attn_pre = spy_post, spy_in
+        with ctx, redirect_stderr(io.StringIO()):
+            install_steering(run, source="env")
+        y = tiny.run_backbone("glm", bb, ctx, x=self.x())
+        stack = bb._steer_stack.double()
+        for i in STEERED:
+            d = stack[i, 0]
+            p = pre[i].double()
+            if i < 44:
+                post = seen[i + 1].double()
+            else:
+                post = p - alpha * (p @ d).unsqueeze(-1) * d
+                with ctx:
+                    want = bb.norm(sglang_hc_contract(post.float(), 4))
+                self.assertTrue(torch.allclose(want, y, rtol=1e-4, atol=1e-4), float((want - y).abs().max()))
+            tol = 1e-5 * (1 + float(p.norm(dim=-1).max()))
+            self.assertLess(float((post @ d - (1 - alpha) * (p @ d)).abs().max()), tol, i)
+            e = torch.randn(4 * HID, dtype=torch.float64, generator=torch.Generator().manual_seed(i))
+            e = e - (e @ d) * d
+            self.assertLess(float((post @ e - p @ e).abs().max()), tol, i)
+        self.assertTrue(torch.equal(seen[1], pre[0]))  # layer 0 is not steered
+
+    def test_alpha_zero_is_bitwise_stock_and_alpha_two_is_not(self):
+        x = self.x(dtype=torch.bfloat16)
+        bb, ctx, _, _ = self.build(torch.bfloat16, steer=False)
+        stock = tiny.run_backbone("glm", bb, ctx, x=x)
+        self.write("0")
+        bb, ctx, _, rec = self.build(torch.bfloat16)
+        self.assertEqual(rec["alpha"], 0.0)
+        self.assertTrue(torch.equal(tiny.run_backbone("glm", bb, ctx, x=x), stock))
+        self.write("2.0")
+        bb, ctx, _, _ = self.build(torch.bfloat16)
+        self.assertFalse(torch.equal(tiny.run_backbone("glm", bb, ctx, x=x), stock))
+
+    def test_every_site_fires_once_per_forward(self):
+        bb, ctx, run, _ = self.build()
+        for T in (5, 1, 0):
+            with self.subTest(tokens=T):
+                y = tiny.run_backbone("glm", bb, ctx, x=self.x(T))
+                self.assertEqual(tuple(y.shape), (T, HID))
+                fired = run._weightless_steer_check.fired
+                self.assertEqual(sorted(fired), list(STEERED))
+                self.assertEqual(set(fired.values()), {1})
+
+    def test_three_pipeline_ranks(self):
+        """Production's partition 16,15,14: each rank steers its own layers
+        (1-15, 16-30, 31-44), writes its own manifest and boot line with its
+        pp_rank, and the three ranks in turn give the one-rank bits."""
+        x = self.x(7)
+        bb, ctx, _, _ = self.build()
+        ref = tiny.run_backbone("glm", bb, ctx, x=x)
+        expect = [list(range(1, 16)), list(range(16, 31)), list(range(31, 45))]
+        with mock.patch.dict(os.environ, {"SGLANG_PP_LAYER_PARTITION": "16,15,14"}):
+            ranks = []
+            for r in range(3):
+                mdir = os.path.join(self.tmp.name, f"m{r}")
+                bb_r, ctx_r, run_r, rec = self.build(rank=r, size=3, mdir=mdir)
+                self.assertEqual(rec["local_layer_ids"], expect[r])
+                self.assertEqual((rec["pp_rank"], rec["pp_size"], rec["tp_size"]), (r, 3, 1))
+                self.assertEqual(rec["rank_source"], "get_parallel" if tiny.NEW_LAYOUT else "runner")
+                self.assertIn(f"pp_rank={r} ", self.log)
+                self.assertIn(f"layers={expect[r][0]}..{expect[r][-1]} ", self.log)
+                man = json.load(open(os.path.join(mdir, f"weightless-manifest-{os.getpid()}.json")))
+                self.assertEqual((man["pp_rank"], man["pp_size"], man["hooked_layers"]),
+                                 (r, 3, expect[r]))
+                ranks.append((bb_r, ctx_r))
+            out = None
+            for r, (bb_r, ctx_r) in enumerate(ranks):
+                out = (tiny.run_backbone("glm", bb_r, ctx_r, x=x) if r == 0 else
+                       tiny.run_backbone("glm", bb_r, ctx_r, proxy=out))
+                if r < 2:
+                    self.assertEqual(sorted(out.tensors), ["hidden_states"])  # the stream only
+                    self.assertEqual(tuple(out["hidden_states"].shape), (7, 4 * HID))
+        self.assertTrue(torch.equal(out, ref))
+
+    @unittest.skipUnless(tiny.NEW_LAYOUT, "the stage-boundary layout only")
+    def test_an_ffn_update_without_exactly_one_post_combine_fails_closed(self):
+        from sglang.srt.layers.layer_boundary.residual import mhc as M
+
+        def twice(self_, hidden_states, residual):
+            self_.state.apply_post(hidden_states, residual)
+            return self_.state.apply_post(hidden_states, residual)
+
+        with mock.patch.object(M._FfnUpdate, "update", twice):
+            bb, ctx, run, _ = self.build()
+            with self.assertRaisesRegex(wcore.SiteError, "called apply_post 2 times"):
+                tiny.run_backbone("glm", bb, ctx, x=self.x())
+
+
+@unittest.skipUnless(STAGE_TREES, "no SGLang package with models/glm5_next.py on the stage-boundary "
+                                  "layout found (WEIGHTLESS_TEST_SGLANG_TREES)")
+class StructureBoundary(unittest.TestCase):
+    """Pins, per SGLang tree on the stage-boundary layout, what the GLM row
+    relies on there."""
+
+    def trees(self):
+        return [(t, _parse(t, MODEL_FILE), _parse(t, "srt/layers/layer_boundary/residual/mhc.py"))
+                for t in STAGE_TREES]
+
+    def test_layer_declares_mhc_residual_ops_with_its_terminal(self):
+        for t, g, _ in self.trees():
+            with self.subTest(tree=t):
+                init = _src(_fn(_cls(g, "Glm5NextDecoderLayer"), "__init__"))
+                for want in ("self.layer_id = layer_id", "self.is_nextn = is_nextn",
+                             "self.is_linear_attn = config.is_kda_layer(layer_id)",
+                             "terminal = layer_id == (1 if is_nextn else config.num_hidden_layers) - 1",
+                             "residual = MHCState(", "hc_post=self.hc_post", "is_last_layer=terminal",
+                             ").residual_ops()",
+                             "self.attn_boundary, self.ffn_boundary = append_stages(",
+                             "declare_attn(read=residual.attn_readout, update=residual.attn_update)",
+                             "update=residual.ffn_update"):
+                    self.assertIn(want, init)
+                self.assertNotIn("layer_communicator", init)
+
+    def test_layer_forward_returns_two_after_the_ffn_finish(self):
+        for t, g, _ in self.trees():
+            with self.subTest(tree=t):
+                fwd = _fn(_cls(g, "Glm5NextDecoderLayer"), "forward")
+                rets = [_src(n.value) for n in ast.walk(fwd) if isinstance(n, ast.Return)]
+                self.assertEqual(rets, ["(hidden_states, topk_indices)"])
+                self.assertEqual(len(_calls(fwd, "finish")), 2)  # the attention's and the FFN's
+                self.assertIn("hidden_states = self.ffn_boundary.finish(hidden_states, forward_batch)",
+                              _src(fwd))
+
+    def test_model_loop_and_pipeline(self):
+        for t, g, _ in self.trees():
+            with self.subTest(tree=t):
+                fwd = _fn(_cls(g, "Glm5NextModel"), "forward")
+                loops = [n for n in ast.walk(fwd) if isinstance(n, ast.For)]
+                self.assertEqual(len(loops), 1)
+                self.assertEqual(_src(loops[0].iter), "range(normal_start_layer, normal_end_layer)")
+                calls = [n for n in ast.walk(loops[0]) if isinstance(n, ast.Assign)
+                         and isinstance(n.value, ast.Call) and _src(n.value.func) == "layer"]
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(_src(calls[0].targets[0]), "(hidden_states, topk_indices)")
+                s = _src(fwd)
+                # the only other way through the layers is two-batch overlap, refused by the plugin
+                self.assertEqual(len(_calls(fwd, "model_forward_stages")), 1)
+                self.assertIn("forward_batch.can_run_tbo", s)
+                self.assertIn("return residual_batch.to_pp(hidden_states, forward_batch)", s)
+                self.assertIn("self.layers[self.start_layer].attn_boundary.from_pp(", s)
+
+    def test_ffn_update_runs_the_post_combine_once_then_the_contract(self):
+        for t, _, m in self.trees():
+            with self.subTest(tree=t):
+                st = _cls(m, "MHCState")
+                self.assertEqual([_src(d) for d in st.decorator_list], ["dataclass"])  # no slots
+                self.assertEqual(_src(_fn(st, "apply_post")).splitlines()[-1].strip(),
+                                 "return self.hc_post(hidden_states, residual, self.h_res, self.h_post)")
+                self.assertIn("ffn_update=_FfnUpdate(self)", _src(_fn(st, "residual_ops")))
+                self.assertIn("attn_update=_AttnUpdate(self)", _src(_fn(st, "residual_ops")))
+                ffn = _cls(m, "_FfnUpdate")
+                self.assertIn("applied_at_exit = True", _src(ffn))
+                upd = _fn(ffn, "update")
+                ap, cc, hc = (_calls(upd, "apply_post"), _calls(upd, "clear_coefficients"),
+                              _calls(upd, "hc_contract"))
+                self.assertEqual((len(ap), len(cc), len(hc)), (1, 1, 1))
+                self.assertEqual(_src(ap[0].func), "self.state.apply_post")
+                self.assertLess(ap[0].lineno, cc[0].lineno)
+                self.assertLess(ap[0].lineno, hc[0].lineno)
+                self.assertIn("if self.state.is_last_layer:", _src(upd))
+                # the attention update reaches the same apply_post: the site must not wrap it alone
+                self.assertEqual(_src(_fn(_cls(m, "_AttnUpdate"), "update")).splitlines()[-1].strip(),
+                                 "return self.state.apply_post(hidden_states, residual)")
+
+    def test_no_read_across_the_layer_boundary_before_the_write(self):
+        """The next layer reads the streams the FFN update wrote: an mHC
+        attention input cannot apply a previous producer's update itself."""
+        for t, _, m in self.trees():
+            with self.subTest(tree=t):
+                ua = _src(_fn(_cls(m, "_AttnReadout"), "update_and_read"))
+                self.assertIn("raise NotImplementedError", ua)
+                users = [fn.name for fn in _cls(m, "MHCState").body if isinstance(fn, ast.FunctionDef)
+                         and "hc_ffn_post_pre" in _src(fn)]
+                self.assertEqual(users, ["update_and_read_ffn_input"])  # inside one layer
+
+    def test_the_exit_applies_the_update_and_writes_the_stream(self):
+        for t, _, _ in self.trees():
+            with self.subTest(tree=t):
+                ex = _parse(t, "srt/layers/layer_boundary/exit.py")
+                pol = _cls(ex, "ExitPolicy")
+                cn = _src(_fn(pol, "_complete_now"))
+                self.assertIn("if residual is not None and update.applied_at_exit:", cn)
+                self.assertIn("hidden_states = update.update(hidden_states, residual)", cn)
+                ro = _src(_fn(pol, "_record_output"))
+                self.assertIn("if update.applied_at_exit:", ro)
+                self.assertIn("return stream.write(hidden_states)", ro)
+                fac = _parse(t, "srt/layers/layer_boundary/factories.py")
+                ap = [n for n in fac.body if isinstance(n, ast.FunctionDef) and n.name == "append_stages"][0]
+                # shallow copies: the plan and the declaration hold the same update object
+                self.assertIn("declarations = [replace(d) for d in declarations]", _src(ap))

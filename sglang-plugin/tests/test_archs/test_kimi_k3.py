@@ -747,7 +747,11 @@ class StructureKimiK3(unittest.TestCase):
                 self.assertIn("self.model = KimiK3LinearModel(",
                               _src(_fn(_cls(m, "KimiK3LinearForCausalLM"), "__init__")))
                 minit = _src(_fn(_cls(m, "KimiK3LinearModel"), "__init__"))
-                self.assertIn("self.layers, self.start_layer, self.end_layer = make_layers(", minit)
+                # make_pp_layers (newer trees) is make_layers with the pipeline rank and size
+                # read from get_parallel() (utils/common.py)
+                self.assertTrue("self.layers, self.start_layer, self.end_layer = make_layers(" in minit
+                                or "self.layers, self.start_layer, self.end_layer = make_pp_layers("
+                                in minit, minit[:200])
                 self.assertIn("KimiK3DecoderLayer(", minit)
                 self.assertEqual(set(wrap.layers), {"KimiK3DecoderLayer"})
                 linit = _src(_fn(_cls(m, "KimiK3DecoderLayer"), "__init__"))

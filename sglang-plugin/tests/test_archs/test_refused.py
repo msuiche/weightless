@@ -11,6 +11,11 @@ CPU only.
   folder in WEIGHTLESS_TEST_SGLANG_TREES, os.pathsep separated) that pins
   why: no Ouro model, Inkling's deferred short convolution, no
   ``DeepseekV4ForConditionalGeneration`` class.
+- DeepSeek-V4.1 is no longer refused: the name DeepseekV41ForCausalLM is
+  (SGLang has no such class; it serves V4.1 as DeepseekV4ForCausalLM), and
+  the V4.1 row accepts the published 1017 file there while a file for the
+  FFN write (ffn_out_pre_residual) is still refused for deepseek_v41
+  (test_dsv41.py has the row's own tests).
 """
 import ast
 import io
@@ -138,8 +143,9 @@ class RefusedClasses(unittest.TestCase):
                                r"DeepseekV4ForCausalLM.*-ffn file"),
             "KimiLinearForCausalLM": ("kimi_linear", r"SGLang's KimiLinearForCausalLM is the Kimi "
                                                      r"Linear model .*not Kimi-K3"),
-            "DeepseekV41ForCausalLM": ("deepseek_v41", r"DeepSeek-V4.1 is not supported: .*"
-                                                       r"forward_hc_pre_from_prev"),
+            "DeepseekV41ForCausalLM": ("deepseek_v41", r"SGLang has no DeepseekV41ForCausalLM "
+                                                       r"class: configs/deepseek_v41.py rewrites .*"
+                                                       r"DeepseekV4ForCausalLM:deepseek_v41"),
         }
         self.assertEqual(set(REFUSED), set(expect))
         self.assertEqual(set(REFUSED) & set(ARCH), set())  # a refused class has no row
@@ -158,6 +164,47 @@ class RefusedClasses(unittest.TestCase):
                 self.assertFalse(hasattr(run, "_weightless_steer_installed"))
                 self.assertEqual([i for i, layer in enumerate(bb.layers)
                                   if layer._forward_hooks or layer._forward_pre_hooks], [])
+
+
+class DeepSeekV41NoLongerRefused(unittest.TestCase):
+    """The V4.1 model, served as SGLang serves it (DeepseekV4ForCausalLM,
+    model_type deepseek_v41), on the V4.1 row's fake (test_dsv41.py)."""
+
+    setUp = RefusedClasses.setUp
+    install = RefusedClasses.install
+
+    @property
+    def f(self):
+        from test_archs import test_dsv41
+        return test_dsv41
+
+    def test_the_1017_file_is_accepted(self):
+        path = glpfiles.find_glp("glp.deepseek-v41-flash-1017-GLP-39-L1-39-a0.75.gguf")
+        if path is None:
+            self.skipTest("the DeepSeek-V4.1-Flash-1017 GLP file is not under "
+                          "WEIGHTLESS_TEST_GLP_DIR")
+        os.environ["WEIGHTLESS_STEER_PATH"] = path
+        rec = self.install(self.f.runner(hidden=5120))
+        self.assertEqual(rec["row"], "DeepseekV4ForCausalLM:deepseek_v41")
+        self.assertEqual(rec["model_class"], "DeepseekV4ForCausalLM")
+        self.assertEqual((rec["local_layer_ids"], rec["width"], rec["alpha"], rec["hook_point"]),
+                         (list(range(1, 40)), 5120, 0.75, "residual_stream_post_layer"))
+
+    def test_a_file_for_the_ffn_write_is_refused_for_deepseek_v41(self):
+        layers = tuple(range(1, 40))
+        m = good_meta(layers=layers, alpha="1.0")
+        m["controlvector.model_hint"] = "deepseek_v41"
+        m["glp.hook_point"] = "ffn_out_pre_residual"
+        rng = np.random.default_rng(0)
+        path = os.path.join(self.tmp.name, "ffn.gguf")
+        write_gguf(path, m, {f"direction.{i}": (rng.standard_normal(16).astype(np.float32), 0)
+                             for i in layers})
+        os.environ["WEIGHTLESS_STEER_PATH"] = path
+        run = self.f.runner()
+        with self.assertRaisesRegex(RuntimeError, r"glp.hook_point='ffn_out_pre_residual', which "
+                                                  r"the DeepSeek-V4.1 row does not serve"):
+            self.install(run)
+        self.assertFalse(hasattr(run.model.model, "_steer_stack"))
 
 
 # ---------------------------------------------------------------- the SGLang trees
