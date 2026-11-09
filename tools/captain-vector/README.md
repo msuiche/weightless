@@ -230,11 +230,15 @@ neuron-explorer code is used in this repository:
 One addition, borrowed from [maceip/ghostline](https://github.com/maceip/ghostline)
 (MIT) — reimplemented for GLP vectors; no ghostline code is used in this
 repository. Ghostline runs a contrastive harm-direction guard in front of
-agent tool calls: read the residual stream, project the span against
-calibrated directions, subtract a live baseline of ordinary commands, and
-refuse what crosses the alarm line (`excess_threshold`). A GLP vector is the
-same scalar read backwards: `probe` makes every shipped vector a detector
-for free.
+agent tool calls: a *paired local judge model* reads the tool-call text,
+projects the span against calibrated directions in the judge's own residual
+stream, subtracts a live baseline of ordinary commands, and refuses what
+crosses the alarm line (`excess_threshold`). `probe` is a different machine
+answering a different question: it reads the *same model the vector steers*
+at the vector's own hook and answers "is the component present in this
+model's stream" — an in-model readout, not a paired judge, and not a
+wrapper away from one. What it borrows is the threshold machinery:
+benign-class alarm calibration and live-baseline subtraction.
 
 ```sh
 captain-vector probe VEC.gguf --model M \
