@@ -175,7 +175,9 @@ are two independent axes. GLP occupies the projective, runtime-native
 quadrant; the baked adapter is its portable shadow for stacks that only
 speak LoRA.
 
-Deeper: [`FAQ.md`](FAQ.md) (answers to the questions people actually ask —
+Deeper: [`docs/MANUAL.md`](docs/MANUAL.md) (**the operator's manual — serve
+a model with GLP on vLLM, SGLang or Tensorfold, each recipe ending in a
+verifiable boot**), [`FAQ.md`](FAQ.md) (answers to the questions people actually ask —
 backdoor auditability, vector maintenance under retraining, effective range,
 MoE/loop coverage, dosage, termination), [`docs/spec/GLP.md`](docs/spec/GLP.md) (the
 format contract),

@@ -7,6 +7,13 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 ## 2026-11-09
 
 ### Added
+- **`docs/MANUAL.md` — the GLP operator's manual.** One page per engine
+  (vLLM plugin, SGLang plugin, Tensorfold Dual-Spark) taking a reader from
+  zero to a verifiable steered boot: vector selection with hook-point
+  labels, install and env vars, the boot lines that prove steering (and
+  that no line means stock), the alpha-0 stock arm, tuning guidance, and a
+  fail-closed troubleshooting table. Distribution docs for the
+  RiNGSiDE/spark-ds41f adoption path.
 - **captain-vector 0.7.0: `probe` — the direction as a detector.** Score
   prompts by their coefficient along a shipped GLP vector (`h·d̂` at its
   hook, the same `capture()` the derivation uses), calibrate an alarm line
