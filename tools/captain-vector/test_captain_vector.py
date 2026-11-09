@@ -1557,5 +1557,44 @@ with tempfile.TemporaryDirectory() as td:
     except SystemExit as e:
         check("runtime dirs: rank-k refused", "rank-k" in str(e))
 
+# --- 0.7.0: probe (direction as detector) ------------------------------------
+
+# score_captures: pooled coefficient over the covered-layer intersection
+e0 = torch.zeros(8); e0[0] = 1.0
+e1 = torch.zeros(8); e1[1] = 1.0
+caps = {1: torch.tensor([[3.0, 1.0] + [0.0] * 6, [1.0, -2.0] + [0.0] * 6]),
+        2: torch.tensor([[0.0, 4.0] + [0.0] * 6, [0.0, 2.0] + [0.0] * 6])}
+s = cv.score_captures(caps, {1: e0, 2: e1})
+check("probe: pooled score is the mean over covered layers",
+      abs(float(s[0]) - (3.0 + 4.0) / 2) < 1e-5 and abs(float(s[1]) - (1.0 + 2.0) / 2) < 1e-5,
+      str(s.tolist()))
+s = cv.score_captures(caps, {1: e0, 7: e1})   # layer 7 not captured: skipped
+check("probe: intersection semantics", abs(float(s[0]) - 3.0) < 1e-5)
+try:
+    cv.score_captures(caps, {7: e1})
+    check("probe: empty intersection refuses", False)
+except ValueError as e:
+    check("probe: empty intersection refuses", "no layer in common" in str(e))
+
+# alarm_line: ghostline's excess_threshold, pure math
+sep_benign = [-1.0, -0.5, -0.2, 0.1, 0.2]
+sep_harmful = [1.0, 1.5, 2.0, 2.5, 3.0]
+line = cv.alarm_line(sep_benign, sep_harmful, 0.01)
+check("probe: separated classes give tpr 1.0", line["tpr"] == 1.0, str(line))
+check("probe: threshold sits inside the gap",
+      max(sep_benign) <= line["threshold"] <= min(sep_harmful) or line["threshold"] < min(sep_harmful),
+      str(line["threshold"]))
+check("probe: best-Youden finds perfect separation", line["j"] == 1.0, str(line["j"]))
+ovl = cv.alarm_line([0.0, 0.5, 1.0, 1.5], [0.5, 1.0, 1.5, 2.0], 0.01)
+check("probe: overlap gives partial separation, not a perfect line",
+      ovl["tpr"] == 0.5 and 0.0 < ovl["j"] < 1.0 and 0.0 <= ovl["fpr_j"] < 1.0, str(ovl))
+one = cv.alarm_line([0.1], [0.9], 0.01)
+check("probe: single-element classes work", one["tpr"] == 1.0 and one["threshold"] == 0.1)
+try:
+    cv.alarm_line([], [1.0], 0.01)
+    check("probe: empty class refuses", False)
+except ValueError as e:
+    check("probe: empty class refuses", "both classes" in str(e))
+
 print(f"\n  {len(fails)} failure(s)" + (": " + ", ".join(fails) if fails else ""))
 sys.exit(1 if fails else 0)

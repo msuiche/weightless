@@ -53,7 +53,7 @@ _no_grad = torch.no_grad if torch is not None else lambda: (lambda f: f)
 # gguf package), because that is where a bad file hurts. The torch import
 # above stays mandatory for derivation itself.
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 # Internal --hook names to the GLP.md hook-point strings. An unknown hook must
 # fail loud here rather than ship a file whose hook_point lies about where the
@@ -2391,8 +2391,53 @@ def _recover_cmd(argv):
 
 
 # ---------------------------------------------------------------------------
-# steer-lens command -- the effect lens of a shipped vector
+# probe -- the direction as a detector
 # ---------------------------------------------------------------------------
+def score_captures(captures, dirs):
+    """Pooled coefficient along the vector: mean over covered layers of
+    (h . d) at the last prompt token. `captures` is the {layer: [N, hidden]}
+    map capture() returns. Layers the vector does not cover are skipped;
+    layers it covers but capture missed are skipped too -- the score is always
+    the mean over the intersection, so two scored sets stay comparable."""
+    scores, used = None, 0
+    for L in sorted(set(captures) & set(dirs)):
+        s = (captures[L].float() @ dirs[L].to(captures[L].dtype).float())
+        scores = s if scores is None else scores + s
+        used += 1
+    if not used:
+        raise ValueError("probe: no layer in common between capture and vector")
+    return scores / used
+
+
+def alarm_line(benign, harmful, fpr=0.01):
+    """Ghostline's excess_threshold (maceip/ghostline, MIT): calibrate the
+    alarm on ordinary traffic, refuse what crosses it. The threshold sits at
+    the (1 - fpr) quantile of the benign scores; also reports the best-Youden
+    threshold. Pure function -- unit-tested without a model."""
+    b, h = sorted(benign), sorted(harmful)
+    if not b or not h:
+        raise ValueError("alarm_line needs scores from both classes")
+
+    def quantile(xs, q):
+        if len(xs) == 1:
+            return xs[0]
+        pos = q * (len(xs) - 1)
+        lo = int(pos)
+        hi = min(lo + 1, len(xs) - 1)
+        return xs[lo] + (pos - lo) * (xs[hi] - xs[lo])
+
+    thr = quantile(b, 1.0 - fpr)
+    tpr = sum(x > thr for x in h) / len(h)
+    best_j, thr_j, tpr_j, fpr_j = -2.0, thr, tpr, fpr
+    for t in sorted(set(b + h)):
+        f = sum(x > t for x in b) / len(b)
+        tp = sum(x > t for x in h) / len(h)
+        if tp - f > best_j:
+            best_j, thr_j, tpr_j, fpr_j = tp - f, t, tp, f
+    return {"threshold": thr, "tpr": tpr, "fpr_target": fpr,
+            "j": best_j, "threshold_j": thr_j, "tpr_j": tpr_j, "fpr_j": fpr_j}
+
+
 _LENS_PROBES = [
     "Who are you?",
     "Explain how a transformer works.",
@@ -2506,11 +2551,98 @@ def _lens_cmd(argv):
     return 0
 
 
+def _probe_cmd(argv):
+    p = argparse.ArgumentParser(
+        prog="captain-vector probe",
+        description="The direction as a detector: score prompts by their "
+                    "coefficient along the shipped vector (h.d at its hook), "
+                    "and calibrate an alarm line from the benign class "
+                    "(ghostline's excess_threshold, maceip/ghostline, MIT). "
+                    "Subtract to steer; read to detect -- same direction.")
+    p.add_argument("gguf", help="GLP vector file")
+    p.add_argument("--model", required=True, help="local path or HF id")
+    p.add_argument("--harmful", default="", help="JSON list of target-class prompts")
+    p.add_argument("--harmless", default="", help="JSON list of ordinary prompts (alarm calibration)")
+    p.add_argument("--prompts", default="", help="JSON list to score without a two-class line")
+    p.add_argument("--baseline", default="",
+                   help="JSON list of reference prompts; each set's scores are "
+                        "reported minus this median (ghostline's live-baseline "
+                        "normalization: kills length/register variance)")
+    p.add_argument("--fpr", type=float, default=0.01,
+                   help="benign false-positive rate the alarm line targets (default 0.01)")
+    p.add_argument("--batch", type=int, default=1,
+                   help="capture batch size; default 1 (batch padding perturbs "
+                        "activations on some architectures -- see capture())")
+    p.add_argument("--out", default="", help="write scores and the alarm line as JSON")
+    p.add_argument("--dtype", default="bfloat16")
+    p.add_argument("--device", default="auto")
+    p.add_argument("--max-mem-per-gpu", default="", metavar="GiB")
+    p.add_argument("--text-only", action="store_true")
+    a = p.parse_args(argv)
+    if torch is None:
+        p.error("probe requires torch")
+    if not any((a.harmful, a.harmless, a.prompts)):
+        p.error("pass at least one of --harmful/--harmless/--prompts")
+    meta, tensors = _read_gguf(a.gguf)
+    dirs, hook = _glp_dirs_for_runtime(meta, tensors)
+    tok, model, cfg, arch = _load_runtime(a.model, a.dtype, a.device,
+                                          a.max_mem_per_gpu, a.text_only)
+    ad = Adapter(model, cfg)
+    print(f"  probe: {arch}  hook={hook}  layers={len(dirs)}")
+
+    sets = {}
+    for name, path in (("harmful", a.harmful), ("harmless", a.harmless),
+                       ("prompts", a.prompts), ("baseline", a.baseline)):
+        if not path:
+            continue
+        prompts = load_prompts(path)
+        print(f"  scoring {len(prompts)} {name} ...", flush=True)
+        cap = capture(tok, model, ad, prompts, hook, a.batch)
+        sets[name] = [float(x) for x in score_captures(cap, dirs)]
+
+    offset = 0.0
+    if "baseline" in sets:
+        offset = statistics.median(sets["baseline"])
+        print(f"  live-baseline: median {offset:+.4f} subtracted "
+              f"({len(sets['baseline'])} prompts)")
+    for name in sets:
+        sets[name] = [x - offset for x in sets[name]]
+
+    report = {"gguf": a.gguf, "model": a.model,
+              "hook": GLP_HOOKS[hook], "baseline_offset": offset, "sets": {}}
+    for name, xs in sets.items():
+        if name == "baseline":
+            continue
+        report["sets"][name] = {
+            "n": len(xs), "median": statistics.median(xs),
+            "min": min(xs), "max": max(xs),
+        }
+        print(f"  {name:<9} n={len(xs):<3} median {statistics.median(xs):+.4f} "
+              f"[{min(xs):+.4f}, {max(xs):+.4f}]")
+    if "harmful" in sets and "harmless" in sets:
+        line = alarm_line(sets["harmless"], sets["harmful"], a.fpr)
+        report["alarm"] = line
+        print(f"  alarm line (fpr {a.fpr:g} of harmless): threshold {line['threshold']:+.4f} "
+              f"-> {line['tpr'] * 100:.0f}% of harmful above")
+        print(f"    best-Youden: threshold {line['threshold_j']:+.4f} "
+              f"(J {line['j']:.2f}: {line['tpr_j'] * 100:.0f}% harmful above, "
+              f"{line['fpr_j'] * 100:.0f}% harmless above)")
+        print("    the line is a smoke test on n=" + str(len(sets['harmless'])) +
+              "; calibrate on a real benign set before trusting it in front of anything")
+    if a.out:
+        report["scores"] = sets
+        json.dump(report, open(a.out, "w"), indent=1)
+        print(f"  wrote {a.out}")
+    return 0
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "recover":
         sys.exit(_recover_cmd(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "steer-lens":
         sys.exit(_lens_cmd(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "probe":
+        sys.exit(_probe_cmd(sys.argv[2:]))
     # The file-serving subcommands are stdlib-only and take a GGUF path rather
     # than the derivation flags below; dispatch before argparse sees them.
     # bake joins them here (it also takes a GGUF, not derivation flags) but is
