@@ -4,6 +4,23 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-11-09
+
+### Added
+- **captain-vector 0.7.0: `probe` — the direction as a detector.** Score
+  prompts by their coefficient along a shipped GLP vector (`h·d̂` at its
+  hook, the same `capture()` the derivation uses), calibrate an alarm line
+  from the benign class (`--fpr`, default 1%, with the best-Youden
+  threshold beside it), and optionally subtract a live baseline of
+  reference prompts (`--baseline`). Subtract-to-steer and read-to-detect
+  are the same direction: `probe` turns every published vector into a
+  detector, and a post-steering score proves the component is gone from
+  the stream rather than masked in the output. Idea credit:
+  [maceip/ghostline](https://github.com/maceip/ghostline) (MIT) and its
+  RepE tool-call guard — `excess_threshold` calibration and live-baseline
+  normalization, reimplemented for GLP vectors with no ghostline code
+  used.
+
 ## 2026-11-08 (SGLang plugin, Thireus fork)
 
 ### Added

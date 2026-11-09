@@ -225,6 +225,33 @@ neuron-explorer code is used in this repository:
   instead of re-running the model. Idea credit: neuron-explorer's
   keep-everything rollout records.
 
+## 0.7.0: probe — the direction as a detector
+
+One addition, borrowed from [maceip/ghostline](https://github.com/maceip/ghostline)
+(MIT) — the threshold machinery only; no ghostline code is used in this
+repository. `probe` scores prompts by their coefficient along the vector at
+its own hook, in the same model the vector steers.
+
+```sh
+captain-vector probe VEC.gguf --model M \
+    --harmful harmful.json --harmless ordinary.json [--baseline ref.json]
+```
+
+- **Score.** Each prompt is captured at the vector's hook (the same
+  `capture()` the derivation uses) and scored as the mean of `h·d̂` over the
+  layers the vector covers. Subtract-to-steer and read-to-detect are the
+  same direction at the same site, so a probe score proves the component is
+  present — and a post-steering score proves it is *gone* from the stream,
+  not merely masked in the output text.
+- **Alarm line.** With `--harmful` and `--harmless`, the threshold sits at
+  the `--fpr` (default 1%) quantile of the harmless scores, with the
+  hit rate on the harmful class and the best-Youden threshold reported
+  beside it. Idea credit: ghostline's `excess_threshold` calibration.
+- **`--baseline`.** Optional reference-prompt set; every score is reported
+  minus its median, so a long or unusually registered prompt cannot
+  inflate its own coefficient. Idea credit: ghostline's live-baseline
+  subtraction across ordinary reference commands.
+
 - `captain_vector.py` — the library and its CLI (single file on purpose)
 - `apply_transformers.py` — experiment-time helper: applies a GLP GGUF to any
   HF decoder model via forward hooks (torch only, transformers not imported)
