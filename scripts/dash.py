@@ -50,7 +50,7 @@ always plain.
 Examples:
     python3 scripts/dash.py                                   # glm53-flash on the rig
     python3 scripts/dash.py http://spark-4687.local:8888      # DSV4 lane
-    python3 scripts/dash.py https://<modal-endpoint> --once   # cloud lane snapshot
+    python3 scripts/dash.py http://<endpoint-host>:<port> --once   # one snapshot
 """
 
 from __future__ import annotations

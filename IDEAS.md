@@ -29,52 +29,25 @@ proxy; refusals pivot mid-generation — see refusal-research/METHODOLOGY's
 - Done when: for one published vector (e.g. GLP-41 Inkling, α=0.25), the
   probe curve's knee matches the α chosen by the full-length ladder.
 
-### 2. Fix the K3 hotfix driver's ungated proxy [offline]
-
-`modal/k3_serve_driver.py` (~line 304) has every torchrun rank bind a
-`:8000` TCP proxy, so 7 of 8 local ranks die on `EADDRINUSE` and torchrun
-tears the job down. The plugin lane's copy already carries the fix
-(`modal/k3_plugin_serve_driver.py` ~line 312): gate the proxy on
-`LOCAL_RANK == 0`. Port the gate back.
-
-- Done when: a 2-node torchrun boot logs zero `EADDRINUSE` and exactly
-  one proxy (validation on us — it's a 16-GPU boot).
-
-### 3. Single-token judge for the plugin eval drivers [offline+endpoint]
-
-The Modal eval drivers (`modal/eval_*_plugin.py`) score with a regex
-classifier; its hard cases (DEFLECT, ARGUMENTATIVE) are where an
-LLM-judge helps — but a judge that returns JSON costs 5× the tokens of a
-single constrained verdict token. Add a judge mode: `guided_choice` over
-the verdict set + `logprobs` for a confidence, thinking off, question
-last in the prompt. Keep the regex scorer the default; the judge is an
-option for the edge cases.
-
-- Done when: verdict agreement with the regex scorer ≥ its
-  inter-scorer agreement on a saved `modal/out-*-plugin-test/` arm, at
-  ~1/5 the judge tokens.
-
 ---
 
 ## Bigger builds
 
-### 4. Serve a wizard lane on the plugin instead of the hotfix [rig/Modal]
+### 2. Serve a wizard lane on the plugin instead of the hotfix [rig]
 
 All ten arch adapters in `vllm-plugin/weightless_steer/archs/` are
-GPU-validated on Modal (2026-09-18/19; numbers in `BENCHMARK.md`), but
-the live lanes still boot the string-patched hotfixes
-(`patches/hotfix-*.py`). Migrate one wizard lane end-to-end: pip-install
-`weightless-steer` into the lane's image (or PYTHONPATH +
-`modal/sitecustomize.py`-style registration), keep the fail-closed
-contract (a boot asked for steering never serves unsteered), and
-reproduce the lane's hotfix reference numbers.
+GPU-validated (numbers in `BENCHMARK.md`), but the live lanes still boot
+the string-patched hotfixes (`patches/hotfix-*.py`). Migrate one wizard
+lane end-to-end: pip-install `weightless-steer` into the lane's image
+(or PYTHONPATH + a `sitecustomize.py` shim for registration), keep the
+fail-closed contract (a boot asked for steering never serves unsteered),
+and reproduce the lane's hotfix reference numbers.
 
-- Where: `vllm-plugin/`, `modal/cloud_serve_glm53.py` (the validated
-  pattern), the lane's `recipe/`.
+- Where: `vllm-plugin/`, the lane's `recipe/`.
 - Done when: the lane serves steered with zero hotfix files and its
   numbers land in the hotfix row's envelope on the lane's own suite.
 
-### 5. Per-request controls (milestone 2) [Modal]
+### 3. Per-request controls (milestone 2) [rig]
 
 The plugin's `control_plane.py` turns one step's scheduled requests into
 per-request α rows and layer gates — but per-request serving is refused
