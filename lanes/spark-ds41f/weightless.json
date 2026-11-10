@@ -1,0 +1,54 @@
+{
+  "schema": "weightless/lane/1",
+  "name": "spark-ds41f",
+  "description": "DeepSeek-V4.1-Flash on DGX Spark (TP4 ring or TP3 triangle, TileLang, one-shot RoCE collectives). GLP spec_version 3 fold-site steering: the weightless served name runs beside the stock one.",
+  "homepage": "https://github.com/christopherowen/spark-ds41f",
+  "pin": {
+    "ref": "main"
+  },
+  "glp": {
+    "placement": "config",
+    "config": {
+      "path": "config/cluster.json",
+      "key": "glp",
+      "fields": {
+        "repo": "repo",
+        "revision": "revision",
+        "file": "file",
+        "sha256": "sha256",
+        "served_model_name": "served_model_name"
+      }
+    },
+    "note": "The recipe pins repo/revision/file/sha256 in config/cluster.json and its doctor validates the vector on every node before launch. The default serves msuiche/DeepSeek-V4.1-Flash-1017-abliterated-cyber-GLP-27-L11-37-a3.5 (GLP spec 3, L11-37, alpha 3.5)."
+  },
+  "commands": {
+    "check": [
+      "bin/spark",
+      "doctor"
+    ],
+    "up": [
+      "bin/spark",
+      "--cluster-config",
+      "config/cluster.json",
+      "cluster",
+      "start",
+      "--apply"
+    ],
+    "status": [
+      "bin/spark",
+      "status"
+    ],
+    "verify": [
+      "bin/spark",
+      "bench"
+    ]
+  },
+  "verify": {
+    "probe": {
+      "stock_model": "deepseek-v4.1-flash",
+      "steered_model": "deepseek-v4.1-flash-weightless",
+      "note": "A/B one refusal-class prompt across the two served names; the weightless name is the steered arm."
+    }
+  },
+  "last_verified": "2026-11-09"
+}
