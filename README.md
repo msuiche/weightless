@@ -177,7 +177,9 @@ speak LoRA.
 
 Deeper: [`docs/MANUAL.md`](docs/MANUAL.md) (**the operator's manual — serve
 a model with GLP on vLLM, SGLang or Tensorfold, each recipe ending in a
-verifiable boot**), [`FAQ.md`](FAQ.md) (answers to the questions people actually ask —
+verifiable boot**), [`docs/LANE.md`](docs/LANE.md) (the `weightless.json`
+lane convention — deploy third-party recipes with GLP; lanes live in
+[`lanes/`](lanes/)), [`FAQ.md`](FAQ.md) (answers to the questions people actually ask —
 backdoor auditability, vector maintenance under retraining, effective range,
 MoE/loop coverage, dosage, termination), [`docs/spec/GLP.md`](docs/spec/GLP.md) (the
 format contract),
