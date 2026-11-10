@@ -7,6 +7,18 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 ## 2026-11-09
 
 ### Added
+- **`docs/LANE.md` + `lanes/` — the `weightless.json` lane convention and
+  its first lane.** Deployment support for third-party serving recipes
+  without hosting them: a lane file (`schema weightless/lane/1`) declares
+  the vector placement (`glp` section — `config`/`env`/`self`), the
+  recipe's own commands (`check`/`up`/`status`/`verify`), and the
+  verification probe. Lane files live in this repo (`lanes/<name>/`) as the
+  primary path — support lands without waiting on recipe maintainers — and
+  a recipe may carry its own `weightless.json` at its root as an override.
+  Hook enforcement stays with the GGUF (`glp.hook_point`) and the engine
+  loader, deliberately not duplicated in the lane file. First lane:
+  `lanes/spark-ds41f/` (GLP spec-3 fold site on
+  [christopherowen/spark-ds41f](https://github.com/christopherowen/spark-ds41f)).
 - **`docs/MANUAL.md` — the GLP operator's manual.** One page per engine
   (vLLM plugin, SGLang plugin, Tensorfold Dual-Spark) taking a reader from
   zero to a verifiable steered boot: vector selection with hook-point

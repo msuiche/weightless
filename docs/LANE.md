@@ -1,10 +1,11 @@
 # weightless.json — the lane convention (v1)
 
-One file a serving recipe carries so any GLP-aware launcher can deploy it
-with a vector. The recipe owns its launch machinery; the lane file owns the
-contract between that machinery and GLP. This is how weightless supports
-engines it does not host: the recipe repo keeps its lane current in the same
-commits that change its launch flow, and the launcher never goes stale.
+One file that tells a GLP-aware launcher how to deploy a serving recipe with
+a vector. Lane files live in this repo (`lanes/<name>/weightless.json`) —
+that is the primary path, and how weightless supports engines it does not
+host without waiting on anyone. A recipe repo may carry its own
+`weightless.json` at its root as an override; the recipe then owns its
+launch contract in the same commits that change its launch flow.
 
 Design rules, inherited from the GLP spec:
 
@@ -21,7 +22,8 @@ Design rules, inherited from the GLP spec:
 
 ## The file
 
-`weightless.json` at the recipe repo root:
+`weightless.json` — here at `lanes/<name>/weightless.json`, or at the
+recipe repo root when the recipe maintains its own:
 
 ```json
 {
@@ -118,5 +120,6 @@ The convention has two locations:
 3. Keep the file in the same commits that change the launch flow. A lane
    file that lies is worse than none.
 
-Worked first example: the spark-ds41f lane
-(`christopherowen/spark-ds41f`, GLP spec-3 fold site).
+Worked first example: the spark-ds41f lane in this repo
+([`lanes/spark-ds41f/weightless.json`](../lanes/spark-ds41f/weightless.json)),
+GLP spec-3 fold site on `christopherowen/spark-ds41f`.
