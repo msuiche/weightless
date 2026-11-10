@@ -1,0 +1,34 @@
+{
+  "schema": "weightless/lane/1",
+  "name": "x00byte-dual-spark",
+  "description": "DeepSeek-V4.1-Flash-1017 on 2x DGX Spark (Tensorfold dual-rank), GLP spec_version 3 fold steering via the patch in x00byte/DeepSeek-V4.1-Flash-1017-Dual-Spark#1.",
+  "homepage": "https://github.com/x00byte/DeepSeek-V4.1-Flash-1017-Dual-Spark",
+  "pin": {
+    "ref": "main",
+    "upstream": "msuiche/DeepSeek-V4.1-Flash-1017-Dual-Spark",
+    "note": "Points at the fork carrying the GLP patch until x00byte/DeepSeek-V4.1-Flash-1017-Dual-Spark#1 merges upstream; repoint homepage/ref then."
+  },
+  "glp": {
+    "placement": "env",
+    "env": {
+      "path": "GLP_FILE",
+      "alpha": "GLP_ALPHA",
+      "extra": {
+        "NO_DRAFTS": "1"
+      }
+    },
+    "note": "The launcher mounts GLP_FILE read-only at /glp/control.gguf and sets TF_DSV41_GLP; GLP_ALPHA overrides the file's glp.alpha_default (empty = file's). NO_DRAFTS=1 is required while steering: the DSpark drafter has no calibrated directions."
+  },
+  "commands": {
+    "check": ["python3", "scripts/cluster.py", "check"],
+    "up": ["python3", "scripts/cluster.py", "up"],
+    "status": ["python3", "scripts/cluster.py", "status"]
+  },
+  "verify": {
+    "probe": {
+      "stock_model": "deepseek-flash",
+      "note": "SERVED_NAME from cluster.env; A/B a refusal-class prompt with GLP_ALPHA=0 (stock arm) against the file's default."
+    }
+  },
+  "last_verified": "2026-11-09"
+}

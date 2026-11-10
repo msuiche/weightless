@@ -1,0 +1,29 @@
+{
+  "schema": "weightless/lane/1",
+  "name": "ringside-glm53",
+  "description": "GLM-5.3-Flash NVFP4 on 4x DGX Spark (switchless ring, b12x kernels). GLP-44 steering via the recipe's own SWITCHLESS_WEIGHTLESS_DIR variant; TP4 only.",
+  "homepage": "https://github.com/othexmr/GLM-5.3-Flash-NVFP4-2x-4x-DGX-Sparks-RiNGSiDE",
+  "pin": {
+    "ref": "main"
+  },
+  "glp": {
+    "placement": "self",
+    "self": {
+      "prepare": ["python3", "-B", "launch/options/weightless/prepare.py", "--out", "{vector_dir}"],
+      "site_key": "SWITCHLESS_WEIGHTLESS_DIR",
+      "note": "prepare.py fetches the pinned GLP-44 vector (revision ef85b016, sha256 0ccce6b7...), rebuilds the patched model.py, and writes DIR/control.gguf + DIR/model.py + receipt. Set SWITCHLESS_WEIGHTLESS_DIR=DIR in the TP4 site file; every rank mounts DIR read-only and gets WEIGHTLESS_STEER_PATH=/opt/weightless/control.gguf, WEIGHTLESS_STEER_ALPHA=2.0, WEIGHTLESS_STEER_HOOK=post_layer."
+    },
+    "note": "Steering is TP4-only and off by default; the rank stops on any vector/alpha/hook/layer/topology mismatch (fail-closed)."
+  },
+  "commands": {
+    "check": ["python3", "fabric/preflight_tp4.py", "--rank", "0"],
+    "render": ["python3", "-B", "launch/compose.py", "--profile", "tp4", "--site", "site.env"],
+    "up": ["launch/up.sh", "--profile", "tp4", "--site", "site.env", "--go"],
+    "down": ["launch/down.sh", "--profile", "tp4", "--site", "site.env", "--go"]
+  },
+  "verify": {
+    "boot_line": "weightless GLP steering active",
+    "note": "Every rank must log it at boot; its absence means the stock profile is serving."
+  },
+  "last_verified": "2026-11-09"
+}
