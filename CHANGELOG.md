@@ -6,6 +6,17 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 
 ## 2026-11-09
 
+### Removed
+- **The Modal cloud lanes.** The CLI now serves local inference only:
+  `modal/` (cloud_serve drivers, plugin eval drivers, sitecustomize shims,
+  chat templates and ~58 MB of saved cloud artifacts), the GLM-5.3 743B and
+  Kimi K3 cloud lane definitions in `setup.py`, the `cloud_chain` /
+  `quick_serve_cloud` deploy paths, the wizard's Deploy menu, and
+  `patches/hotfix-glm53-modal-residual.py` (its only consumer was the
+  deleted cloud driver) are gone. README lane rows for the two clouds were
+  removed; validation records that ran on Modal stay as provenance. Lanes
+  deploy on the rig or via `lanes/` recipes.
+
 ### Added
 - **`docs/LANE.md` + `lanes/` — the `weightless.json` lane convention and
   its first lane.** Deployment support for third-party serving recipes

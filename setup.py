@@ -152,23 +152,6 @@ LANES = [
          hotfix="hotfix-glm53-steering-projective.py",
          extra_patches=["vendor/sparse_attn_indexer_kpool_sm121.py"],
          port=8080),
-    dict(name="GLM-5.3 743B — Modal cloud (8x B200, 1M ctx, GLP-77 α=1.0)",
-         # Cloud lane: deploys via modal/cloud_serve.py and delivers an
-         # endpoint URL. The on-prem 4x DGX recipe remains in recipe/glm53xl/.
-         # 1M ctx needs B200:8 (MLA KV is TP-replicated, ~90 GB/rank at 1M);
-         # H200:8 tops out ~880K — GLM53XL_GPU=H200:8 MAX_MODEL_LEN=880000.
-         cloud="modal",
-         modal_app="modal/cloud_serve.py",
-         cloud_weights="~465 GB",
-         cloud_boot="60 min cold (first boot compiles; ~20 min warm)",
-         example="recipe/glm53xl/.env.glm53xl.example",
-         target="recipe/glm53xl/.env.glm53xl",
-         steer_key="WEIGHTLESS_STEER_PATH",
-         structure_test="tests/structure/test-glm53xl-steering-structure.py",
-         vector_repo="msuiche/GLM-5.3-abliterated-cyber-GLP-77",
-         model_repo="RadixArk/GLM-5.3-NVFP4",
-         steer_modes=None,
-         port=8000),
     dict(name="Inkling-Small TP=2 serving — 2x DGX Spark, day-0 vLLM v0.28.0",
          example="recipe/inkling/.env.inkling.example",
          target="recipe/inkling/.env.inkling",
@@ -223,22 +206,6 @@ LANES = [
          docker_image="vllm/vllm-openai:v0.28.0",
          image_key="NEMOTRON_IMAGE",
          port=8083),
-    dict(name="Kimi K3 2.9T — Modal cloud (2x H200:8 PP2xTP8, GLP-92 α=1.0)",
-         # Cloud lane: deploys via modal/cloud_serve_k3.py and delivers an
-         # endpoint URL. The weights are ~1.56 TB (MXFP4 experts, no smaller
-         # checkpoint exists); first ensure_weights run is the long pole.
-         # Shape switches at deploy time: K3_GPU, MAX_MODEL_LEN (default
-         # 65536), WEIGHTLESS_STEER_ALPHA.
-         cloud="modal",
-         modal_app="modal/cloud_serve_k3.py",
-         cloud_weights="~1.56 TB",
-         cloud_boot="45 min",
-         steer_key="WEIGHTLESS_STEER_PATH",
-         structure_test="tests/structure/test-k3-steering-structure.py",
-         vector_repo="msuiche/Kimi-K3-abliterated-cyber-GLP-92-L1-92-a1.0",
-         model_repo="moonshotai/Kimi-K3",
-         steer_modes=None,
-         port=8000),
     dict(name="Muse-Glimmer-30B NVFP4 TP=1 — single DGX Spark",
          # Stock vLLM 0.28.0 serves muse_glimmer + its ATEM tool/reasoning
          # parsers + the DFlash block-diffusion drafter natively; multimodal
@@ -394,10 +361,6 @@ def detect_state():
         ]
     lines = []
     for lane in LANES:
-        if lane.get("cloud"):
-            label = lane["name"].split(" — ")[0]
-            lines.append(f"{label}: cloud lane (Modal) — pick it to deploy")
-            continue
         path = os.path.join(HERE, lane["target"])
         label = lane["name"].split(" — ")[0]
         if not os.path.exists(path):
@@ -617,7 +580,7 @@ def read_lane_env():
     used to prefill wizard prompts and the diagnose ssh target."""
     vals = {}
     for lane in LANES:
-        if "target" not in lane:  # pure cloud lanes ship no env file
+        if "target" not in lane:  # lanes without an env file
             continue
         path = os.path.join(HERE, lane["target"])
         if not os.path.exists(path):
@@ -705,8 +668,6 @@ def asset_commands(lane_idx, values, ssh_host=None):
     if DEMO:
         return []
     lane = LANES[lane_idx]
-    if lane.get("cloud"):
-        return []  # cloud assets live on Modal volumes, not the rig
     env = lane_env(lane_idx, values)
     user = values.get("user", os.environ.get("USER", ""))
     cache = env.get("HF_CACHE", f"/home/{user}/.cache/huggingface")
@@ -747,13 +708,13 @@ def asset_commands(lane_idx, values, ssh_host=None):
                   'unset HF_HUB_OFFLINE TRANSFORMERS_OFFLINE; '
                   '"$HOME/.cache/weightless-hf/bin/hf" download ' + quoted + '; }')
     if not local_model:
-        revision = (env.get("DSPARK_REVISION") if lane_idx in (0, 11)
-                    else env.get("MODEL_REVISION") if lane_idx in (7, 9) else None)
+        revision = (env.get("DSPARK_REVISION") if lane_idx in (0, 10)
+                    else env.get("MODEL_REVISION") if lane_idx in (6, 7) else None)
         args = [repo, "--cache-dir", cache]
         if revision:
             args += ["--revision", revision]
         add(f"download model weights: {repo}", dl(args))
-    if lane_idx == 9 and env.get("SPECULATIVE_MODE", "dflash") == "dflash":
+    if lane_idx == 7 and env.get("SPECULATIVE_MODE", "dflash") == "dflash":
         # The DFlash drafter is a separate repo the serve command references
         # by id; prefetch it too so the boot stays offline-first.
         drafter = env.get("DRAFTER_MODEL_ID")
@@ -781,7 +742,7 @@ def asset_commands(lane_idx, values, ssh_host=None):
         label = worker or "head"
         # HF_HOME-based launchers resolve hub/models--..., while TP2 and the
         # GLM template lookup use models--... directly at the cache root.
-        if lane_idx in (0, 2, 3, 5, 11) and not local_model:
+        if lane_idx in (0, 2, 3, 4, 10) and not local_model:
             link = f"{node_cache}/hub/{model_dir}"
             source = f"{node_cache}/{model_dir}"
             add(f"expose HF hub cache on {label}",
@@ -797,8 +758,7 @@ def asset_commands(lane_idx, values, ssh_host=None):
             add(f"pull Docker image on {label}: {image}", "docker pull " + q(image), worker)
         # Qwen and GLM XL mount a directory, so dereference snapshot symlinks
         # when materializing weights; cache-relative links break in /models.
-        weights = (env["MODELS"] + "/Qwen3.8-27B-NVFP4" if lane_idx == 1 else
-                   env["WEIGHTS_WORKERS" if worker else "WEIGHTS_HEAD"] if lane_idx == 4 else None)
+        weights = (env["MODELS"] + "/Qwen3.8-27B-NVFP4" if lane_idx == 1 else None)
         if weights:
             root = f"{node_cache}/{model_dir}"
             add(f"stage mounted model directory on {label}: {weights}",
@@ -993,7 +953,7 @@ def deploy_commands(lane_idx, values, ssh_host=None):
         workers = [w for w in (values.get(k) for k in
                                ("worker-ip", "worker2-ip", "worker3-ip")) if w]
         sync_steps[-1:-1] = harden_steps(head, workers)
-        if lane_idx == 5:
+        if lane_idx == 4:
             worker = values.get("worker-ip", "<worker-ip>")
             staged = " ".join(f"{remote}/{f}" for f in lane["recipe_files"] if f.startswith("files/"))
             sync_steps.insert(-1, ("sync Inkling patches to worker",
@@ -1088,10 +1048,7 @@ DEPLOY_MAP = {
         ("recipe/glm53/start-glm53-flash-dspark.sh", "dspark-glm53/start-glm53-flash-dspark.sh"),
         ("patches/hotfix-glm53-steering-projective.py", "dspark-glm53/patches/hotfix-glm53-steering-projective.py"),
         ("patches/vendor/sparse_attn_indexer_kpool_sm121.py", "dspark-glm53/patches/sparse_attn_indexer_kpool_sm121.py")],
-    4: [("recipe/glm53xl/.env.glm53xl", "dspark-glm53xl/.env.glm53xl"),
-        ("recipe/glm53xl/start-glm53xl-dspark.sh", "dspark-glm53xl/start-glm53xl-dspark.sh"),
-        ("patches/hotfix-glm53xl-steering-projective.py", "dspark-glm53xl/patches/hotfix-glm53xl-steering-projective.py")],
-    5: [("recipe/inkling/.env.inkling", "dspark-inkling/.env.inkling"),
+    4: [("recipe/inkling/.env.inkling", "dspark-inkling/.env.inkling"),
         ("recipe/inkling/start-inkling-sm121.sh", "dspark-inkling/start-inkling-sm121.sh"),
         ("patches/hotfix-inkling-steering-projective.py", "dspark-inkling/hotfix-inkling-steering-projective.py"),
         ("patches/hotfix-inkling-gb10-load-reclaim.py", "dspark-inkling/hotfix-inkling-gb10-load-reclaim.py"),
@@ -1099,27 +1056,29 @@ DEPLOY_MAP = {
         ("recipe/inkling/files/fa4_rel_attention-sm121.py", "dspark-inkling/files/fa4_rel_attention-sm121.py"),
         ("recipe/inkling/files/inkling-model-gb10.py", "dspark-inkling/files/inkling-model-gb10.py"),
         ("recipe/inkling/files/inkling-model-gb10-steered.py", "dspark-inkling/files/inkling-model-gb10-steered.py")],
-    6: [("recipe/glm53tp2/.env.glm53tp2", "dspark-glm53tp2/.env.glm53tp2"),
+    5: [("recipe/glm53tp2/.env.glm53tp2", "dspark-glm53tp2/.env.glm53tp2"),
         ("recipe/glm53tp2/start-glm53-flash-tp2.sh", "dspark-glm53tp2/start-glm53-flash-tp2.sh"),
         ("patches/hotfix-glm53-steering-projective.py", "dspark-glm53tp2/patches/hotfix-glm53-steering-projective.py"),
         ("patches/vendor/sparse_attn_indexer_kpool_sm121.py", "dspark-glm53tp2/patches/sparse_attn_indexer_kpool_sm121.py")],
-    7: [("recipe/nemotron35/.env.nemotron35", "nemotron35-glp/recipe/nemotron35/.env.nemotron35"),
+    6: [("recipe/nemotron35/.env.nemotron35", "nemotron35-glp/recipe/nemotron35/.env.nemotron35"),
         ("recipe/nemotron35/serve-nemotron35.sh", "nemotron35-glp/recipe/nemotron35/serve-nemotron35.sh"),
         ("patches/hotfix-nemotron35-steering-projective.py", "nemotron35-glp/patches/hotfix-nemotron35-steering-projective.py")],
-    9: [("recipe/museglimmer/.env.museglimmer", "museglimmer/recipe/museglimmer/.env.museglimmer"),
+    7: [("recipe/museglimmer/.env.museglimmer", "museglimmer/recipe/museglimmer/.env.museglimmer"),
         ("recipe/museglimmer/serve-museglimmer.sh", "museglimmer/recipe/museglimmer/serve-museglimmer.sh")],
-    11: [("recipe/anemll/.env.dsv4vx", "dspark-visionexp/.env.dsv4vx"),
+    9: [("recipe/anemll/.env.dsv4vx", "dspark-visionexp/.env.dsv4vx"),
          ("recipe/anemll/docker-compose.dsv4.yml", "dspark-visionexp/docker-compose.dsv4.yml"),
          ("recipe/anemll/start-deepseek-v4-flash-visionexp-dspark.sh", "dspark-visionexp/start-deepseek-v4-flash-visionexp-dspark.sh"),
          ("patches/hotfix-dsv4-steering-projective.py", "dspark-visionexp/patches/hotfix-dsv4-steering-projective.py")],
-    12: [("recipe/dsv4vl/.env.dsv4vl", "dspark-dsv4vl/.env.dsv4vl"),
+    10: [("recipe/dsv4vl/.env.dsv4vl", "dspark-dsv4vl/.env.dsv4vl"),
          ("recipe/dsv4vl/docker-compose.dsv4vl.yml", "dspark-dsv4vl/docker-compose.dsv4vl.yml"),
          ("recipe/dsv4vl/start-dsv4-vl-dspark.sh", "dspark-dsv4vl/start-dsv4-vl-dspark.sh"),
          ("patches/hotfix-dsv4vl-steering-projective.py", "dspark-dsv4vl/patches/hotfix-dsv4vl-steering-projective.py")],
 }
-CONTAINER_GREP = {0: "deepseek", 1: "qwen38", 2: "qwen38fn", 3: "glm53", 4: "glm5xl",
-                  5: "inkling-sm121", 6: "glm53tp2", 7: "nemotron35", 9: "museglimmer",
-                  11: "visionexp", 12: "vision-vl"}
+
+
+CONTAINER_GREP = {0: "deepseek", 1: "qwen38", 2: "qwen38fn", 3: "glm53",
+                  4: "inkling-sm121", 5: "glm53tp2", 6: "nemotron35", 7: "museglimmer",
+                  9: "visionexp", 10: "vision-vl"}
 
 
 def current_lanes(output):
@@ -1161,8 +1120,6 @@ def park_other_lanes(io, lane_idx, values, ssh_host):
     A failed probe, declined park or failed removal always blocks the boot."""
     if DEMO:
         return True
-    if LANES[lane_idx].get("cloud"):
-        return True  # cloud lanes deploy to Modal; nothing to park on the rig
     try:
         running = detect_current_lanes(values, ssh_host)
         old_lanes = {idx for idx, _ in running if idx != lane_idx}
@@ -1919,60 +1876,6 @@ class TuiIO:
 
 # ---------------------------------------------------------------- chains
 
-def cloud_chain(io, lane_idx):
-    """Modal cloud lane: deploy, then return the endpoint — that's the whole
-    deliverable. No rig access, no parking, no client rewiring (the user can
-    point omp/Hermes at the URL afterwards if they want)."""
-    lane = LANES[lane_idx]
-    app_path = os.path.join(HERE, lane["modal_app"])
-    weights_note = lane.get("cloud_weights", "~465 GB")
-    boot_note = lane.get("cloud_boot", "30 min")
-    io.header(lane["name"])
-    io.info("─" * 60)
-    steps = [
-        ("check Modal auth", ["modal", "profile", "current"]),
-        (f"ensure weights on the volume (idempotent, {weights_note} first time)",
-         ["modal", "run", "--detach", app_path + "::ensure_weights"]),
-        ("verify the GLP directions on the volume (never re-derives)",
-         ["modal", "run", app_path + "::ensure_dirs"]),
-        ("deploy the serving app", ["modal", "deploy", app_path]),
-    ]
-    if DEMO:
-        io.info("demo: cloud lane plan printed; nothing executed")
-    for desc, argv in steps:
-        io.info("$ " + shlex.join(argv))
-        if DEMO:
-            continue
-        if not io.confirm(f"run: {desc}?", True):
-            io.warn("aborted — re-run the wizard to continue")
-            return
-        if desc.startswith("ensure weights"):
-            io.info("detached; first download takes a while on Modal "
-                    "bandwidth — `modal app logs` to watch")
-            continue
-        r = subprocess.run(argv, capture_output=True, text=True)
-        if r.returncode != 0:
-            io.err(f"FAILED ({r.returncode}): {(r.stderr or r.stdout)[-400:]}")
-            return
-        if desc.startswith("check Modal"):
-            io.ok(r.stdout.strip())
-        if desc.startswith("deploy"):
-            m = re.search(r"https://\S+\.modal\.(?:run|direct)",
-                          r.stdout + r.stderr)
-            if m:
-                base = m.group(0).rstrip("/")
-                io.ok(f"deployed: {base}")
-                io.info("OpenAI-compatible endpoint: " + base + "/v1")
-                io.warn(f"cold start loads {weights_note} — first request can "
-                        f"take up to {boot_note}; the endpoint 503s while "
-                        "booting")
-            else:
-                io.warn("deployed, but the endpoint URL was not in the "
-                        "output — check `modal app list`")
-    if DEMO:
-        return 0
-
-
 def lane_chain(io, lane_idx):
     lane = LANES[lane_idx]
     if lane.get("blocked"):
@@ -1982,8 +1885,6 @@ def lane_chain(io, lane_idx):
         io.info("See " + lane.get("blocked_doc", "the lane README") +
                 " for the unblock conditions.")
         return 0
-    if lane.get("cloud"):
-        return cloud_chain(io, lane_idx)
     example = os.path.join(HERE, lane["example"])
     target = os.path.join(HERE, lane["target"])
     io.header(lane["name"])
@@ -2254,56 +2155,10 @@ def configure_serve_clients(io, base, model, values=None, ssh_host=None, lane_ke
             io.warn(f"lane watchdog install skipped: {exc}")
 
 
-def quick_serve_cloud(io, lane_idx):
-    """Non-interactive Modal deploy for cloud lanes: weights → dirs → deploy.
-
-    Same modal commands as the wizard's cloud_chain, but ensure_weights runs
-    in the foreground instead of --detach: deploying against a half-cached
-    snapshot makes the serve container fail its boot and burn GPU on
-    restarts. WEIGHTLESS_STEER_ALPHA rides through the environment."""
-    lane = LANES[lane_idx]
-    app_path = os.path.join(HERE, lane["modal_app"])
-    weights_note = lane.get("cloud_weights", "~465 GB")
-    boot_note = lane.get("cloud_boot", "30 min")
-    io.header(lane["name"])
-    steps = [
-        ("check Modal auth", ["modal", "profile", "current"]),
-        (f"ensure weights on the volume ({weights_note} first time)",
-         ["modal", "run", app_path + "::ensure_weights"]),
-        ("verify the GLP directions on the volume (never re-derives)",
-         ["modal", "run", app_path + "::ensure_dirs"]),
-    ]
-    for desc, argv in steps:
-        io.info("$ " + shlex.join(argv))
-        if subprocess.call(argv) != 0:
-            io.err(f"FAILED: {desc}")
-            return 1
-    argv = ["modal", "deploy", app_path]
-    io.info("$ " + shlex.join(argv))
-    r = subprocess.run(argv, capture_output=True, text=True)
-    print(r.stdout, r.stderr, sep="", end="")
-    if r.returncode != 0:
-        io.err(f"FAILED ({r.returncode}): modal deploy")
-        return r.returncode
-    m = re.search(r"https://\S+\.modal\.(?:run|direct)", r.stdout + r.stderr)
-    if not m:
-        io.warn("deployed, but the endpoint URL was not in the output — "
-                "check `modal app list`")
-        return 0
-    base = m.group(0).rstrip("/")
-    io.ok(f"deployed: {base}")
-    io.info("OpenAI-compatible endpoint: " + base + "/v1")
-    io.warn(f"cold start loads {weights_note} — first request can take up to "
-            f"{boot_note}; the endpoint 503s while booting")
-    return 0
-
-
 def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
     """`setup.py serve <lane>` — non-interactive lane switch for the rig.
 
-    Cloud lanes deploy to Modal instead (quick_serve_cloud) and skip all rig
-    steps. For rig lanes the lane's saved env is used as-is (the wizard owns
-    env edits). Parks
+    The lane's saved env is used as-is (the wizard owns env edits). Parks
     whatever is serving — wizard lanes via CONTAINER_GREP plus known external
     stacks, which CONTAINER_GREP cannot see (a MiaAI dsv41-exl3 container
     holds :8888 invisibly to park_other_lanes) — syncs the recipe, boots, and
@@ -2355,7 +2210,8 @@ def quick_serve(io, lane_arg, skip_assets=False, skip_wait=False):
         io.err("NOT DEPLOYABLE — " + lane["blocked"])
         return 1
     if lane.get("cloud"):
-        return quick_serve_cloud(io, lane_idx)
+        io.err("cloud lanes were removed; this CLI serves local inference only")
+        return 2
     if not os.path.exists(os.path.join(HERE, lane["target"])):
         io.err(f"no saved env at {lane['target']} — run the wizard once first")
         return 1
@@ -2811,25 +2667,18 @@ def splash_cli(io):
     box(io, "local setup", detect_state())
 
 
-def pick_lane(io, cloud):
-    """Submenu for Serve (local rig lanes) / Deploy (cloud lanes). Returns the
-    LANES index, or None on Back. Empty categories say so and bounce back."""
-    picked = [(i, l) for i, l in enumerate(LANES) if bool(l.get("cloud")) == cloud]
-    if not picked:
-        io.info("no lanes in this category")
-        return None
+def pick_lane(io):
+    """Submenu for serving lanes. Returns the LANES index, or None on Back."""
+    picked = list(enumerate(LANES))
     items = []
     for i, l in picked:
         name = re.sub(r" serving$", "", l["name"].split(" — ")[0])
-        if cloud:
-            items.append(f"{name} — Modal")
-        elif os.path.exists(os.path.join(HERE, l["target"])):
+        if os.path.exists(os.path.join(HERE, l["target"])):
             items.append(f"{name} — configured")
         else:
             items.append(f"{name} — not configured")
     items.append("Back")
-    verb = "Deploy" if cloud else "Serve"
-    sel = io.menu(f"{verb} which lane:  (full chain: env → assets → deploy → clients/tests)",
+    sel = io.menu("Serve which lane:  (full chain: env → assets → deploy → clients/tests)",
                   items=items)
     if sel == len(items) - 1:
         return None
@@ -2844,22 +2693,17 @@ def run(io):
     while True:
         choice = io.menu("What to do:", idle=getattr(io, "animate_logo", None), items=[
             "Serve — a lane on the rig (env → assets → deploy → clients/tests)",
-            "Deploy — a cloud lane (Modal)",
             "Watch — live lane metrics (prefill/decode, queue, KV, spec decode)",
             "Configure — agent clients (omp / hermes) + endpoint smoke suite",
             "Endpoint — layered diagnosis + remote container status",
         ])
         if choice == 0:
-            idx = pick_lane(io, cloud=False)
+            idx = pick_lane(io)
             if idx is not None:
                 return lane_chain(io, idx)
         elif choice == 1:
-            idx = pick_lane(io, cloud=True)
-            if idx is not None:
-                return lane_chain(io, idx)
-        elif choice == 2:
             return dash_chain(io)
-        elif choice == 3:
+        elif choice == 2:
             return tests_chain(io)
         else:
             return diagnose_chain(io)

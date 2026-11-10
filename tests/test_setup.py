@@ -125,14 +125,14 @@ class SetupTests(unittest.TestCase):
             self.assertEqual(setup.served_context("http://localhost/v1", "glm53-flash"), 262144)
 
     def test_inkling_env_matches_client_window(self):
-        lane = setup.LANES[5]
+        lane = setup.LANES[4]
         text = (ROOT / lane["example"]).read_text()
         self.assertIn("MAX_MODEL_LEN=65536", text)
         self.assertIn("GPU_MEMORY_UTILIZATION=0.78", text)
         self.assertTrue(lane["steering_supported"])
 
     def test_inkling_deploy_stages_combined_patch_on_both_nodes_before_boot(self):
-        steps = setup.deploy_commands(5, {"user": "tester", "head-ip": "head", "worker-ip": "worker"})
+        steps = setup.deploy_commands(4, {"user": "tester", "head-ip": "head", "worker-ip": "worker"})
         transfers = [args for _, args in steps if args[0] == "scp"]
         self.assertTrue(any(any("inkling-model-gb10-steered.py" in arg for arg in args) for args in transfers))
         worker = next(i for i, (desc, _) in enumerate(steps) if desc == "sync Inkling patches to worker")
@@ -313,35 +313,35 @@ class AssetAndParkingTests(unittest.TestCase):
         self.assertEqual(setup.validate_lane_env(setup.LANES[1], env), ([], []))
 
     def test_nemotron35_single_node_lane(self):
-        lane = setup.LANES[7]
+        lane = setup.LANES[6]
         self.assertEqual(lane["steer_key"], "WEIGHTLESS_GLP")
-        env = setup.lane_env(7, self.values)
+        env = setup.lane_env(6, self.values)
         self.assertEqual(env["NEMOTRON_IMAGE"], "vllm/vllm-openai:v0.28.0")
         self.assertEqual(env["SPECULATIVE_MODE"], "none")  # MTP is not steered
         self.assertIn("/home/tester/.cache/huggingface/", env["WEIGHTLESS_GLP"])
-        plan = setup.asset_commands(7, self.values, "head.local")
+        plan = setup.asset_commands(6, self.values, "head.local")
         commands = "\n".join(shlex.join(argv) for _, argv in plan)
         self.assertIn("nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4", commands)
         self.assertIn("--revision cc84af2fe71647d87f4486c064f320e1e7535243", commands)
         self.assertIn("Nemotron-3.5-Lightning-30B-A3B-abliterated-GLP-51-L1-51-a1.0.gguf",
                       commands)
         self.assertNotIn("rsync model cache", commands)  # single node
-        deploy = setup.deploy_commands(7, self.values, "head.local")
+        deploy = setup.deploy_commands(6, self.values, "head.local")
         text = "\n".join(shlex.join(argv) for _, argv in deploy)
         self.assertIn("nemotron35-glp/recipe/nemotron35", text)
         self.assertIn("nemotron35-glp/patches", text)
         self.assertIn("serve-nemotron35.sh", deploy[-1][1][-1])
-        self.assertEqual(setup.CONTAINER_GREP[7], "nemotron35")
-        self.assertIn((7, "nemotron35"),
+        self.assertEqual(setup.CONTAINER_GREP[6], "nemotron35")
+        self.assertIn((6, "nemotron35"),
                       setup.current_lanes("nemotron35\ninkling-sm121\n"))
 
     def test_museglimmer_single_node_lane(self):
-        lane = setup.LANES[9]
+        lane = setup.LANES[7]
         self.assertFalse(lane["steering_supported"])  # no GLP vector exists yet
-        env = setup.lane_env(9, self.values)
+        env = setup.lane_env(7, self.values)
         self.assertEqual(env["MUSE_IMAGE"], "vllm/vllm-openai:v0.28.0")
         self.assertEqual(env["SPECULATIVE_MODE"], "dflash")
-        plan = setup.asset_commands(9, self.values, "head.local")
+        plan = setup.asset_commands(7, self.values, "head.local")
         commands = "\n".join(shlex.join(argv) for _, argv in plan)
         self.assertIn("nvidia/Muse-Glimmer-30B-NVFP4", commands)
         self.assertIn("--revision f45fad5689e9a4d937f7e872fbec20c4e8a74154", commands)
@@ -350,21 +350,21 @@ class AssetAndParkingTests(unittest.TestCase):
         self.assertIn("--revision e8192f3a8f617f74be2ce220360c89ef4789f39f",
                       commands)
         self.assertNotIn("rsync model cache", commands)  # single node
-        deploy = setup.deploy_commands(9, self.values, "head.local")
+        deploy = setup.deploy_commands(7, self.values, "head.local")
         text = "\n".join(shlex.join(argv) for _, argv in deploy)
         self.assertIn("museglimmer/recipe/museglimmer", text)
         self.assertNotIn("hotfix", text)  # stock vLLM serves the arch natively
         self.assertIn("serve-museglimmer.sh", deploy[-1][1][-1])
-        self.assertEqual(setup.CONTAINER_GREP[9], "museglimmer")
-        self.assertIn((9, "museglimmer"),
+        self.assertEqual(setup.CONTAINER_GREP[7], "museglimmer")
+        self.assertIn((7, "museglimmer"),
                       setup.current_lanes("museglimmer\ninkling-sm121\n"))
 
     def test_saved_env_overrides_cache_workers_image_and_disabled_steering(self):
-        path = Path(self.tmp.name) / setup.LANES[6]["target"]
+        path = Path(self.tmp.name) / setup.LANES[5]["target"]
         path.write_text('HF_CACHE="/srv/hf cache" # custom mount\nWORKER_HF_CACHE=/srv/worker-hf\n'
                         'WORKER_HOST=198.51.100.8\nMODEL=RedHatAI/GLM-5.3-Flash-NVFP4\n'
                         'GLM53_IMAGE=custom/image:pin\nWEIGHTLESS_STEER_PATH=\n')
-        plan = setup.asset_commands(6, self.values, "head.local")
+        plan = setup.asset_commands(5, self.values, "head.local")
         commands = "\n".join(argv[-1] for _, argv in plan)
         self.assertIn("/srv/hf cache", commands)
         self.assertIn("/srv/worker-hf", commands)
@@ -394,7 +394,7 @@ class AssetAndParkingTests(unittest.TestCase):
         dialog = Mock()
         with patch.object(setup, "hf_token", return_value=""), \
              patch.object(setup.subprocess, "run") as run:
-            self.assertFalse(setup.prepare_assets(dialog, 6, self.values, "head.local"))
+            self.assertFalse(setup.prepare_assets(dialog, 5, self.values, "head.local"))
         run.assert_not_called()
         self.assertIn("HF_TOKEN", dialog.err.call_args.args[0])
 
@@ -403,7 +403,7 @@ class AssetAndParkingTests(unittest.TestCase):
         dialog.confirm.return_value = True
         with patch.object(setup, "hf_token", return_value="secret-token"), \
              patch.object(setup.subprocess, "run", return_value=Mock(returncode=1)) as run:
-            self.assertFalse(setup.prepare_assets(dialog, 6, self.values, "head.local"))
+            self.assertFalse(setup.prepare_assets(dialog, 5, self.values, "head.local"))
         run.assert_called_once()
         self.assertEqual(run.call_args.kwargs["input"], "secret-token\n")
         self.assertNotIn("secret-token", str(run.call_args.args))
@@ -415,7 +415,7 @@ class AssetAndParkingTests(unittest.TestCase):
         hf = bindir / "hf"
         hf.write_text('#!/bin/sh\nprintf "%s\\n" "$HF_TOKEN" "$@"\n')
         hf.chmod(0o755)
-        command = setup.asset_commands(6, self.values, "head.local")[0][1][-1]
+        command = setup.asset_commands(5, self.values, "head.local")[0][1][-1]
         token = "token with spaces; $(false) `false`"
         result = subprocess.run(["sh", "-c", command], input=token + "\n", text=True,
                                 capture_output=True, env=dict(os.environ, HOME=self.tmp.name))
@@ -425,16 +425,16 @@ class AssetAndParkingTests(unittest.TestCase):
 
     def test_detection_disambiguates_lanes_and_parking_only_targets_other_lanes(self):
         running = setup.current_lanes("qwen38\nqwen38fn\nvllm-glm53tp2\nglm53\nnginx\n")
-        self.assertEqual(running, [(1, "qwen38"), (2, "qwen38fn"), (6, "vllm-glm53tp2"), (3, "glm53")])
-        self.assertEqual(setup.park_commands(6, [(6, "vllm-glm53tp2")], self.values), [])
-        self.assertEqual(setup.park_commands(6, [], self.values), [])
-        cmds = setup.park_commands(6, [(2, "qwen38fn")], self.values, "head.local")
+        self.assertEqual(running, [(1, "qwen38"), (2, "qwen38fn"), (5, "vllm-glm53tp2"), (3, "glm53")])
+        self.assertEqual(setup.park_commands(5, [(5, "vllm-glm53tp2")], self.values), [])
+        self.assertEqual(setup.park_commands(5, [], self.values), [])
+        cmds = setup.park_commands(5, [(2, "qwen38fn")], self.values, "head.local")
         self.assertEqual(cmds[0][1][-1], "docker rm -f qwen38fn")
 
     def test_detection_failure_is_not_treated_as_idle(self):
         with patch.object(setup.subprocess, "run", return_value=Mock(returncode=255)), \
              patch.object(setup.subprocess, "call") as call:
-            self.assertFalse(setup.park_other_lanes(Mock(), 6, self.values, "head.local"))
+            self.assertFalse(setup.park_other_lanes(Mock(), 5, self.values, "head.local"))
         call.assert_not_called()
 
     def test_switch_from_four_nodes_parks_all_old_ranks_only_after_confirmation(self):
@@ -444,7 +444,7 @@ class AssetAndParkingTests(unittest.TestCase):
                 dialog.confirm.return_value = accepted
                 with patch.object(setup, "detect_current_lanes", return_value=[(3, "glm53")]) as detect, \
                      patch.object(setup.subprocess, "call", return_value=0) as call:
-                    self.assertEqual(setup.park_other_lanes(dialog, 6, self.values, "head.local"), accepted)
+                    self.assertEqual(setup.park_other_lanes(dialog, 5, self.values, "head.local"), accepted)
                 self.assertEqual(detect.call_count, 4)
                 self.assertEqual(call.call_count, 4 if accepted else 0)
                 self.assertIs(dialog.confirm.call_args.args[1], False)
@@ -454,9 +454,9 @@ class AssetAndParkingTests(unittest.TestCase):
     def test_park_failure_blocks_boot(self):
         dialog = Mock()
         dialog.confirm.return_value = True
-        with patch.object(setup, "detect_current_lanes", return_value=[(5, "inkling-sm121")]), \
+        with patch.object(setup, "detect_current_lanes", return_value=[(4, "inkling-sm121")]), \
              patch.object(setup.subprocess, "call", return_value=1) as call:
-            self.assertFalse(setup.park_other_lanes(dialog, 6, self.values, "head.local"))
+            self.assertFalse(setup.park_other_lanes(dialog, 5, self.values, "head.local"))
         call.assert_called_once()
 
     def test_surviving_worker_discovers_the_rest_of_the_old_lane(self):
@@ -466,7 +466,7 @@ class AssetAndParkingTests(unittest.TestCase):
             return [(3, "glm53")] if worker else []
         with patch.object(setup, "detect_current_lanes", side_effect=detect) as probe, \
              patch.object(setup.subprocess, "call", return_value=0) as call:
-            self.assertTrue(setup.park_other_lanes(dialog, 6, self.values, "head.local"))
+            self.assertTrue(setup.park_other_lanes(dialog, 5, self.values, "head.local"))
         self.assertEqual(probe.call_count, 4)
         self.assertEqual(call.call_count, 3)
 
@@ -493,7 +493,7 @@ class AssetAndParkingTests(unittest.TestCase):
                      patch.object(setup, "park_other_lanes", side_effect=park), \
                      patch.object(setup.subprocess, "call", side_effect=execute), \
                      patch.object(setup, "tests_chain", return_value=0):
-                    self.assertEqual(setup.lane_chain(dialog, 6), 0 if assets_ok and park_ok else 1)
+                    self.assertEqual(setup.lane_chain(dialog, 5), 0 if assets_ok and park_ok else 1)
                 self.assertEqual(events[0], "assets")
                 if assets_ok and park_ok:
                     self.assertEqual(events[-2:], ["park", "boot"])
@@ -511,10 +511,10 @@ class AssetAndParkingTests(unittest.TestCase):
                 if existing:
                     alias.mkdir(parents=True)
                     (alias / "config.json").write_text("old")
-                env = setup.lane_env(5, self.values)
+                env = setup.lane_env(4, self.values)
                 env["HF_CACHE"] = cache
                 with patch.object(setup, "lane_env", return_value=env):
-                    plan = setup.asset_commands(5, self.values, "head.local")
+                    plan = setup.asset_commands(4, self.values, "head.local")
                 command = next(argv[-1] for desc, argv in plan if desc == "expose HF hub cache on head")
                 for _ in range(2):
                     result = subprocess.run(["sh", "-c", command], capture_output=True, text=True)
@@ -539,7 +539,7 @@ class AssetAndParkingTests(unittest.TestCase):
                 self.assertEqual(setup.detect_current_lanes(self.values, "head.local"), [])
                 self.assertTrue(setup.park_other_lanes(dialog, idx, self.values, "head.local"))
                 self.assertEqual(setup.lane_chain(dialog, idx), 0)
-            setup.remote_preflight(dialog, 6, self.values, "head.local")
+            setup.remote_preflight(dialog, 5, self.values, "head.local")
             setup.remote_diagnose(dialog, "head.local")
             setup.diagnose_chain(dialog, "http://head.local/v1")
         for mock in (run, call, popen, urlopen):
