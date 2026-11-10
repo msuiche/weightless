@@ -9,8 +9,10 @@ commits that change its launch flow, and the launcher never goes stale.
 Design rules, inherited from the GLP spec:
 
 - **Fail closed.** A lane that cannot be verified before launch is a launch
-  that does not happen. Wrong hook, vector sha mismatch, missing check
-  command — all hard errors, never fallbacks.
+  that does not happen. Vector sha mismatch, missing check command, a check
+  that fails — all hard errors, never fallbacks. Hook mismatches are the
+  engine loader's refusal, not the lane file's: the vector declares its
+  `glp.hook_point` and the reader refuses what it does not implement.
 - **The recipe's own commands run.** The launcher never reimplements a
   recipe's build, check, or boot logic; it renders GLP inputs and invokes
   what the lane file declares.
@@ -28,8 +30,7 @@ Design rules, inherited from the GLP spec:
   "description": "DeepSeek-V4.1-Flash on 4x DGX Spark (TileLang, ring), GLP spec-3 fold steering",
   "homepage": "https://github.com/christopherowen/spark-ds41f",
   "pin": {"ref": "main", "recommended_revision": "<40-hex>"},
-  "vector": {
-    "hooks": ["hc_fold_pre_engram"],
+  "glp": {
     "placement": "config",
     "config": {
       "path": "config/cluster.json",
@@ -59,10 +60,10 @@ Design rules, inherited from the GLP spec:
 | `description` | one line. |
 | `pin.ref` | git ref the lane is developed against. |
 | `pin.recommended_revision` | optional 40-hex the lane author last verified. The launcher records what it used. |
-| `vector.hooks` | `glp.hook_point` values this lane serves. A vector naming anything else refuses before launch. |
-| `vector.placement` | how the vector reaches the engine: `config` (the recipe reads it from a config file the launcher renders), `env` (the launcher sets environment variables), or `self` (the recipe fetches it given repo/revision/file/sha256 from its own config, which the launcher verifies and may set). |
-| `vector.config` | for `config`/`self`: the file and key, and the field names the recipe expects (`repo`, `revision`, `file`, `sha256` — all four required). |
-| `vector.env` | for `env`: variable names for the resolved local file path and alpha, e.g. `{"path": "GLP_FILE", "alpha": "GLP_ALPHA"}`. |
+| `glp` | the GLP steering section. The file is sectioned on purpose — future sections (model, auth, …) extend it without a schema bump. |
+| `glp.placement` | how the vector reaches the engine: `config` (the recipe reads it from a config file the launcher renders), `env` (the launcher sets environment variables), or `self` (the recipe fetches it given repo/revision/file/sha256 from its own config, which the launcher verifies and may set). |
+| `glp.config` | for `config`/`self`: the file and key, and the field names the recipe expects (`repo`, `revision`, `file`, `sha256` — all four required). |
+| `glp.env` | for `env`: variable names for the resolved local file path and alpha, e.g. `{"path": "GLP_FILE", "alpha": "GLP_ALPHA"}`. |
 | `commands.check` | preflight the recipe already owns (config validation, offline vector check). Runs before `up`; non-zero exit aborts. |
 | `commands.up` / `down` / `status` | the recipe's own verbs. Only `up` is required. |
 | `verify.boot_line` | a string or regex that must appear in the boot logs of a steered launch. Its absence means stock — and the launcher says so instead of claiming steering. |
@@ -76,9 +77,10 @@ Design rules, inherited from the GLP spec:
    the exact revision in `lane.lock.json`.
 2. Read `weightless.json`; refuse unknown schema.
 3. Resolve the vector: download from HF (gated flows need the token as
-   always), verify sha256 against the lane's or the catalog's record, and
-   verify `glp.hook_point` ∈ `vector.hooks` — mismatch refuses here, before
-   any node is touched.
+   always) and verify sha256 against the lane's or the catalog's record.
+   Hook enforcement belongs to the vector's own metadata and the engine's
+   loader (`glp.hook_point` in the file; a reader refuses a hook it does not
+   implement), so the lane file deliberately does not duplicate it.
 4. Place the vector: render `config` fields / export `env` vars / verify
    `self` fields, per `placement`.
 5. Run `commands.check`; non-zero aborts.
@@ -92,23 +94,25 @@ Design rules, inherited from the GLP spec:
 whatever the user added locally. The registry is a link list with freshness
 dates, not a fork of anyone's recipe.
 
-## Where the file lives: recipe repo first, community fallback
+## Where the file lives: weightless first, recipe-repo override
 
-The convention has two locations, in strict precedence:
+The convention has two locations:
 
-1. **The recipe repo** (`weightless.json` at its root) — authoritative. The
-   recipe author maintains it in the same commits that change the launch
-   flow, so it cannot silently rot the way a copy elsewhere does.
-2. **A community copy** (`lanes/community/<name>.json` in this repo) — for
-   recipes that have not adopted the file yet. Stamped `community: true`
-   and `last_verified: <date>`; the launcher warns on both, and the file is
-   deleted when the recipe's own `weightless.json` lands. A community copy
-   is a seed, never a fork of the recipe's contract.
+1. **This repo** (`lanes/<name>/weightless.json`) — the primary path, and
+   the one most lanes will ever use. Support for a third-party recipe lands
+   here the day it is written, without waiting on the recipe's maintainers.
+   Each file carries `last_verified` and the upstream ref it was verified
+   against; the lane's own `check` command catches drift at launch time,
+   which is the honest answer to staleness.
+2. **The recipe repo** (`weightless.json` at its root) — an optional
+   override that wins whenever it exists, on the theory that the author
+   knows their own launch flow best. Recipe authors adopt it to own their
+   lane; nothing is required of them for the lane to work.
 
 ## What a recipe author needs to do
 
 1. Add `weightless.json` at the repo root (fields above; only `schema`,
-   `name`, `vector.hooks`, one placement, and `commands.up` are required).
+   `name`, one placement, and `commands.up` are required).
 2. Make the recipe read the vector from the declared placement (it almost
    always already does).
 3. Keep the file in the same commits that change the launch flow. A lane
