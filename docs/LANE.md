@@ -1,4 +1,4 @@
-# glp.lane.json — the lane convention (v1)
+# weightless.json — the lane convention (v1)
 
 One file a serving recipe carries so any GLP-aware launcher can deploy it
 with a vector. The recipe owns its launch machinery; the lane file owns the
@@ -19,11 +19,11 @@ Design rules, inherited from the GLP spec:
 
 ## The file
 
-`glp.lane.json` at the recipe repo root:
+`weightless.json` at the recipe repo root:
 
 ```json
 {
-  "schema": "glp.lane/1",
+  "schema": "weightless/lane/1",
   "name": "spark-ds41f",
   "description": "DeepSeek-V4.1-Flash on 4x DGX Spark (TileLang, ring), GLP spec-3 fold steering",
   "homepage": "https://github.com/christopherowen/spark-ds41f",
@@ -54,7 +54,7 @@ Design rules, inherited from the GLP spec:
 
 | field | meaning |
 |---|---|
-| `schema` | exactly `glp.lane/1`. Unrecognised value: refuse. |
+| `schema` | exactly `weightless/lane/1`. Unrecognised value: refuse. |
 | `name` | lane name, used in output and lock files. |
 | `description` | one line. |
 | `pin.ref` | git ref the lane is developed against. |
@@ -74,7 +74,7 @@ Design rules, inherited from the GLP spec:
 
 1. Clone the recipe at the pin (or `--ref`) into the lane workspace; record
    the exact revision in `lane.lock.json`.
-2. Read `glp.lane.json`; refuse unknown schema.
+2. Read `weightless.json`; refuse unknown schema.
 3. Resolve the vector: download from HF (gated flows need the token as
    always), verify sha256 against the lane's or the catalog's record, and
    verify `glp.hook_point` ∈ `vector.hooks` — mismatch refuses here, before
@@ -92,9 +92,22 @@ Design rules, inherited from the GLP spec:
 whatever the user added locally. The registry is a link list with freshness
 dates, not a fork of anyone's recipe.
 
+## Where the file lives: recipe repo first, community fallback
+
+The convention has two locations, in strict precedence:
+
+1. **The recipe repo** (`weightless.json` at its root) — authoritative. The
+   recipe author maintains it in the same commits that change the launch
+   flow, so it cannot silently rot the way a copy elsewhere does.
+2. **A community copy** (`lanes/community/<name>.json` in this repo) — for
+   recipes that have not adopted the file yet. Stamped `community: true`
+   and `last_verified: <date>`; the launcher warns on both, and the file is
+   deleted when the recipe's own `weightless.json` lands. A community copy
+   is a seed, never a fork of the recipe's contract.
+
 ## What a recipe author needs to do
 
-1. Add `glp.lane.json` at the repo root (fields above; only `schema`,
+1. Add `weightless.json` at the repo root (fields above; only `schema`,
    `name`, `vector.hooks`, one placement, and `commands.up` are required).
 2. Make the recipe read the vector from the declared placement (it almost
    always already does).
