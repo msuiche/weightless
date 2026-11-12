@@ -1596,5 +1596,51 @@ try:
 except ValueError as e:
     check("probe: empty class refuses", "both classes" in str(e))
 
+# --- 0.8.0: token-lens + firing-profile -------------------------------------
+
+# token_lens: cosine against unembedding rows finds the pointed token
+H = 8
+tab = torch.zeros(4, H)
+tab[0, 0] = 1.0   # "refusal-ish" row
+tab[1, 1] = 1.0   # control row
+tab[2] = torch.randn(H)
+tab[3] = torch.randn(H)
+d1 = torch.zeros(H); d1[0] = 1.0
+d2 = torch.zeros(H); d2[0] = 0.9; d2[1] = 0.1
+rep = cv.token_lens({1: cv._unit(d1), 2: cv._unit(d2)}, tab,
+                    {0: " I", 1: " the", 2: " x", 3: " y"},
+                    {" I": 0, " the": 1, " zzz": None})
+check("token-lens: pooled top row is the pointed token",
+      rep["pooled_top"][0][1] == " I" and rep["pooled_top"][0][0] > 0.9,
+      str(rep["pooled_top"][:2]))
+check("token-lens: watchlist cosines",
+      rep["watchlist"][" I"] > 0.9 and abs(rep["watchlist"][" the"]) < 0.2
+      and rep["watchlist"][" zzz"] is None,
+      str(rep["watchlist"]))
+check("token-lens: per-layer entries", len(rep["per_layer"]) == 2
+      and rep["per_layer"][0]["layer"] == 1 and rep["per_layer"][0]["top"][0][1] == " I")
+
+# firing_profile: prompt vs answer vs second-half coefficient summary
+T, H = 12, 8
+acts = torch.zeros(T, H)
+acts[0, 0] = 1.0    # prompt positions: coefficient 1
+acts[1, 0] = 1.0
+acts[2, 0] = 1.0
+acts[3, 0] = 1.0
+acts[4:, 0] = 0.0   # answer: zero coefficient
+acts[4:, 1] = 0.01
+d0 = torch.zeros(H); d0[0] = 1.0
+prof = cv.firing_profile({1: acts}, {1: d0}, [4])
+e = prof[0]
+check("firing-profile: prompt/answer split",
+      e["layer"] == 1 and e["prompt_med"] == 1.0 and e["answer_med"] == 0.0,
+      str(e))
+check("firing-profile: flare is zero for a self-limiting direction",
+      e["flare"] == 0.0, str(e["flare"]))
+acts2 = acts.clone(); acts2[8:, 0] = 2.0
+prof2 = cv.firing_profile({1: acts2}, {1: d0}, [4])
+check("firing-profile: flare fires when the push lands mid-answer",
+      prof2[0]["flare"] == 2.0, str(prof2[0]["flare"]))
+
 print(f"\n  {len(fails)} failure(s)" + (": " + ", ".join(fails) if fails else ""))
 sys.exit(1 if fails else 0)
