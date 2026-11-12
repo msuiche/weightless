@@ -225,6 +225,34 @@ neuron-explorer code is used in this repository:
   instead of re-running the model. Idea credit: neuron-explorer's
   keep-everything rollout records.
 
+## 0.8.0: token-lens + firing-profile
+
+Two readouts borrowed from the Beaker / Takehi et al. weight-space
+experiments (November 2026) — reimplemented as derive-time gates; no code
+from either project is used in this repository:
+
+- **`token-lens`: what the direction writes.** Weight tying makes the
+  embedding table the unembedding table, so a direction's cosine against a
+  token's row IS the logit push it makes on that token — the trick that
+  found neuron 573's "Wait" brake. `token-lens VEC.gguf` resolves the
+  pinned base checkpoint, cosines every direction against the vocab, and
+  prints the pooled top tokens, a refusal watchlist ("can", "won't",
+  "sorry", …) and per-layer peaks. Instant junk check: a refusal vector
+  should point at refusal tokens, and now you see it before any eval.
+- **`firing-profile`: where in the answer the direction fires.** The
+  abstain-edit failure made formal: a column edit pushes at every token,
+  so it only works if the feature fires at the right time — but our
+  capture reads the last prompt token and the hook fires at every
+  position. `firing-profile VEC.gguf --model M` generates continuations
+  and records `h·d̂` per position per layer: prompt median, answer median,
+  answer max, and **flare** — median |coef| in the answer's second half
+  relative to the prompt. Flare near 0 is self-limiting; flare near or
+  above 1 is the garbling shape (the push lands mid-answer, not at the
+  decision point). Idea credit: Beaker's firing-time analysis
+  ([withbeaker.ai/blog/weight-space-programming](https://www.withbeaker.ai/blog/weight-space-programming))
+  and Takehi et al.'s outcome-paired repetition direction
+  ([rikiyat.github.io/blog/weight-space-programming](https://rikiyat.github.io/blog/weight-space-programming)).
+
 ## 0.7.0: probe — the direction as a detector
 
 One addition, borrowed from [maceip/ghostline](https://github.com/maceip/ghostline)

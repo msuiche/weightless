@@ -53,7 +53,7 @@ _no_grad = torch.no_grad if torch is not None else lambda: (lambda f: f)
 # gguf package), because that is where a bad file hurts. The torch import
 # above stays mandatory for derivation itself.
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 # Internal --hook names to the GLP.md hook-point strings. An unknown hook must
 # fail loud here rather than ship a file whose hook_point lies about where the
@@ -2391,6 +2391,109 @@ def _recover_cmd(argv):
 
 
 # ---------------------------------------------------------------------------
+# token-lens -- what a direction writes, read off the unembedding
+# ---------------------------------------------------------------------------
+_LENS_WATCHLIST = (" I", " can", " cannot", " can't", " won", " won't",
+                   " sorry", " apologize", " unable", " assist", " help",
+                   " provide", " comply", " decline", " refuse", " guidelines",
+                   " policy", " harmful", " illegal", " responsible", " the",
+                   " and")
+
+
+def token_lens(dirs, table, vocab, watch_ids, topk=8):
+    """What the vector points at in output space: cosine of each direction
+    against the unembedding rows, pooled over layers, plus the watchlist.
+
+    dirs: {layer: unit tensor}. table: [vocab, hidden] unembedding rows
+    (weight tying: the embedding table IS the unembedding, so a direction's
+    cosine against a row is the logit push it makes on that token).
+    vocab: row -> display string. watch_ids: {display: row}.
+    Pure function, unit-tested without a model."""
+    pooled = torch.stack([_unit(d.float()) for _, d in sorted(dirs.items())]).mean(0)
+    pooled = _unit(pooled)
+    t = table.float()
+    tn = t / t.norm(dim=1, keepdim=True).clamp_min(1e-9)
+    cos = tn @ pooled
+    top = torch.topk(cos.abs(), min(topk, cos.numel()))
+    top_rows = sorted(
+        ((float(cos[i]), vocab[i]) for i in top.indices.tolist()),
+        key=lambda x: -abs(x[0]))
+    watch = {}
+    for display, row in watch_ids.items():
+        watch[display] = round(float(tn[row] @ pooled), 4) if row is not None else None
+    per_layer = []
+    for L, d in sorted(dirs.items()):
+        lc = tn @ _unit(d.float())
+        lt = torch.topk(lc.abs(), 3)
+        per_layer.append({
+            "layer": L,
+            "top": sorted(((float(lc[i]), vocab[i]) for i in lt.indices.tolist()),
+                          key=lambda x: -abs(x[0]))})
+    return {"pooled_top": top_rows, "watchlist": watch, "per_layer": per_layer}
+
+
+# ---------------------------------------------------------------------------
+# firing-profile -- where in the answer the direction fires
+# ---------------------------------------------------------------------------
+@_no_grad()
+def capture_positions(tok, model, ad, texts, hook):
+    """Per-position activations at the hook: {layer: [T_total, hidden]} over
+    full forward passes. capture() reads only the last prompt token; this
+    reads every position of every text (prompt + continuation), batched
+    one at a time so no padding perturbs the means."""
+    store, handles = {}, []
+
+    def mk(i):
+        def h(mod, args, out):
+            t, _ = Adapter.unwrap(out)
+            if t.dim() == 4:
+                t = t.flatten(2)
+            store.setdefault(i, []).append(t[0].detach().float().cpu())
+        return h
+
+    for i, layer in enumerate(ad.layers):
+        handles.append(ad.submodule(layer, hook).register_forward_hook(mk(i)))
+    try:
+        for text in texts:
+            enc = tok(text, return_tensors="pt", add_special_tokens=False)
+            enc = {k: v.to(model.device) for k, v in enc.items()}
+            model(**enc)
+    finally:
+        for h in handles:
+            h.remove()
+    return store
+
+
+def firing_profile(caps, dirs, prompt_lens):
+    """Where the direction fires, per layer and per answer.
+
+    caps: {layer: [T, hidden]} from capture_positions (one text, T = prompt +
+    continuation). dirs: {layer: direction}. prompt_lens: [T_prompt] so the
+    profile can split prompt from answer. Returns per layer: the coefficient
+    h.d over positions, summarized as (prompt_med, answer_med, answer_max,
+    flare) where flare = median |coef| over the answer's second half divided
+    by median |coef| over the prompt — a flare near or above 1 means the
+    direction keeps pushing mid-answer (the abstain-edit failure shape:
+    garbling risk at every token, not just at the decision point)."""
+    out = []
+    for L, d in sorted(dirs.items()):
+        if L not in caps:
+            continue
+        coef = (caps[L].float() @ _unit(d.float()))
+        n_p = int(prompt_lens[0])
+        p, a = coef[:n_p], coef[n_p:]
+        mid = max(1, len(a) // 2)
+        out.append({
+            "layer": L,
+            "prompt_med": float(p.median()),
+            "answer_med": float(a.median()) if len(a) else 0.0,
+            "answer_max": float(a.abs().max()) if len(a) else 0.0,
+            "flare": float(a[mid:].abs().median() / max(float(p.abs().median()), 1e-9)) if len(a) else 0.0,
+        })
+    return out
+
+
+# ---------------------------------------------------------------------------
 # probe -- the direction as a detector
 # ---------------------------------------------------------------------------
 def score_captures(captures, dirs):
@@ -2636,6 +2739,159 @@ def _probe_cmd(argv):
     return 0
 
 
+def _embed_table(snap, out=print):
+    """The unembedding matrix [vocab, hidden]: embed_tokens.weight when the
+    checkpoint ties embeddings (then the same table scores the next token),
+    else lm_head.weight. Refuses when neither is present."""
+    from safetensors import safe_open
+    index = _bake_weight_index(snap)
+    for name in ("model.embed_tokens.weight", "embed_tokens.weight",
+                 "transformer.wte.weight", "model.language_model.embed_tokens.weight"):
+        if name in index:
+            with safe_open(os.path.join(snap, index[name]), framework="pt") as f:
+                out(f"  unembedding: {name} (tied embedding table)")
+                return f.get_tensor(name).float()
+    for name in ("lm_head.weight", "model.lm_head.weight"):
+        if name in index:
+            with safe_open(os.path.join(snap, index[name]), framework="pt") as f:
+                out(f"  unembedding: {name} (untied output head)")
+                return f.get_tensor(name).float()
+    raise ValueError(f"{snap}: no embed_tokens or lm_head tensor found; "
+                     f"token-lens cannot read output space")
+
+
+def _token_lens_cmd(argv):
+    p = argparse.ArgumentParser(
+        prog="captain-vector token-lens",
+        description="What a GLP vector points at in output space: cosine of "
+                    "each direction against the unembedding rows (the weight-tying "
+                    "trick that found neuron 573's 'Wait' brake). Instant "
+                    "'what does this direction write' readout before any eval.")
+    p.add_argument("gguf", help="GLP vector file")
+    p.add_argument("--base", default="",
+                   help="base checkpoint (HF id in the local cache, hub cache "
+                        "dir, or snapshots/<sha>); default: resolved from the "
+                        "file's pinned base repo + revision")
+    p.add_argument("--revision", default="",
+                   help="override the pinned base revision (loud)")
+    p.add_argument("--tokens", default="",
+                   help="comma-separated watchlist; default: the refusal set")
+    p.add_argument("--topk", type=int, default=8)
+    p.add_argument("--out", default="", help="write the report as JSON")
+    a = p.parse_args(argv)
+    if torch is None:
+        p.error("token-lens requires torch")
+    meta, tensors = _read_gguf(a.gguf)
+    dirs, _ = _glp_dirs_for_runtime(meta, tensors)
+    pin = meta.get("general.base_model.0.version") or meta.get("glp.base_revision", "")
+    if not pin:
+        p.error("file carries no base revision pin; pass --base explicitly")
+    base = a.base or meta.get("glp.base_model")
+    if not base:
+        url = meta.get("general.base_model.0.repo_url", "")
+        if "/huggingface.co/" in url:
+            base = url.split("/huggingface.co/")[-1].strip("/")
+    if not base:
+        p.error("no base repo in metadata; pass --base explicitly")
+    snap, _ = _bake_resolve_base(base, pin, revision=a.revision or None)
+    table = _embed_table(snap)
+    from transformers import AutoTokenizer
+    tok = AutoTokenizer.from_pretrained(snap)
+    vocab = {i: tok.decode([i]) for i in range(table.shape[0])}
+    words = a.tokens.split(",") if a.tokens else list(_LENS_WATCHLIST)
+    watch_ids = {}
+    for w in words:
+        ids = tok.encode(w, add_special_tokens=False)
+        watch_ids[w] = ids[0] if ids else None
+    rep = token_lens(dirs, table, vocab, watch_ids, a.topk)
+    print(f"  token-lens: {len(dirs)} directions, table {table.shape[0]}x{table.shape[1]}")
+    print("  pooled direction, top-|cos| tokens:")
+    for c, t in rep["pooled_top"]:
+        print(f"    {c:+.4f}  {t!r}")
+    print("  refusal watchlist (pooled):")
+    for w, c in rep["watchlist"].items():
+        if c is not None:
+            print(f"    {c:+.4f}  {w!r}")
+    for e in rep["per_layer"]:
+        tops = "  ".join(f"{t!r}({c:+.2f})" for c, t in e["top"])
+        print(f"  L{e['layer']:<3} {tops}")
+    if a.out:
+        json.dump(rep, open(a.out, "w"), indent=1)
+        print(f"  wrote {a.out}")
+    return 0
+
+
+def _firing_profile_cmd(argv):
+    p = argparse.ArgumentParser(
+        prog="captain-vector firing-profile",
+        description="Where in the answer a GLP vector fires: h.d per position "
+                    "per layer over continuations, prompt vs answer vs the "
+                    "answer's second half. The abstain-edit failure detector: "
+                    "a direction whose coefficient flares mid-answer garbles "
+                    "at high alpha (it pushes everywhere, not at the decision "
+                    "point).")
+    p.add_argument("gguf", help="GLP vector file")
+    p.add_argument("--model", required=True, help="local path or HF id")
+    p.add_argument("--prompts", default="", help="JSON list (default: a small mixed set)")
+    p.add_argument("--harmless", default="", help="optional second JSON list for contrast")
+    p.add_argument("--max-new", type=int, default=128)
+    p.add_argument("--alpha", type=float, default=0.0,
+                   help="record coefficients under steering at this alpha "
+                        "(default 0: the model's natural firing profile)")
+    p.add_argument("--out", default="", help="write the profiles as JSON")
+    p.add_argument("--dtype", default="bfloat16")
+    p.add_argument("--device", default="auto")
+    p.add_argument("--max-mem-per-gpu", default="", metavar="GiB")
+    p.add_argument("--text-only", action="store_true")
+    a = p.parse_args(argv)
+    if torch is None:
+        p.error("firing-profile requires torch")
+    meta, tensors = _read_gguf(a.gguf)
+    dirs, hook = _glp_dirs_for_runtime(meta, tensors)
+    tok, model, cfg, arch = _load_runtime(a.model, a.dtype, a.device,
+                                          a.max_mem_per_gpu, a.text_only)
+    ad = Adapter(model, cfg)
+    prompt_sets = {}
+    if a.prompts:
+        prompt_sets["prompts"] = load_prompts(a.prompts)
+    else:
+        prompt_sets["prompts"] = [
+            "Write a short poem about the sea.",
+            "Explain step by step how to compute 17 * 23.",
+            "Summarize why the sky is blue in one sentence.",
+        ]
+    if a.harmless:
+        prompt_sets["harmless"] = load_prompts(a.harmless)
+    print(f"  firing-profile: {arch}  hook={hook}  layers={len(dirs)}  "
+          f"alpha={a.alpha:g} (recording only)")
+    handles = steer_hooks(ad, dirs, a.alpha, hook) if a.alpha else []
+    rows_out = {}
+    try:
+        for name, prompts in prompt_sets.items():
+            texts = generate(tok, model, prompts, a.max_new, batch_size=1)
+            rows = []
+            for prompt, completion in zip(prompts, texts):
+                rendered = render(tok, prompt)
+                full = rendered + completion
+                caps = capture_positions(tok, model, ad, [full], hook)
+                rows.append({"prompt": prompt[:60],
+                             "profile": firing_profile(caps, dirs, [len(tok(rendered).input_ids[0])])})
+            rows_out[name] = rows
+        for name, rows in rows_out.items():
+            print(f"  [{name}]")
+            for r in rows:
+                fl = max(e["flare"] for e in r["profile"]) if r["profile"] else 0.0
+                am = max(abs(e["answer_med"]) for e in r["profile"]) if r["profile"] else 0.0
+                print(f"    flare={fl:5.2f} max|answer_med|={am:7.4f}  {r['prompt']!r}")
+    finally:
+        for h in handles:
+            h.remove()
+    if a.out:
+        json.dump(rows_out, open(a.out, "w"), indent=1)
+        print(f"  wrote {a.out}")
+    return 0
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "recover":
         sys.exit(_recover_cmd(sys.argv[2:]))
@@ -2643,6 +2899,10 @@ def main():
         sys.exit(_lens_cmd(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "probe":
         sys.exit(_probe_cmd(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "token-lens":
+        sys.exit(_token_lens_cmd(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "firing-profile":
+        sys.exit(_firing_profile_cmd(sys.argv[2:]))
     # The file-serving subcommands are stdlib-only and take a GGUF path rather
     # than the derivation flags below; dispatch before argparse sees them.
     # bake joins them here (it also takes a GGUF, not derivation flags) but is
