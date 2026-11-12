@@ -17,13 +17,13 @@ The method and the measurements behind it are in the original write-up:
 
 The live DSV4 stack is the Anemll image (`ghcr.io/anemll/dspark-vllm-gx10:0.1.1`,
 vLLM 0.25.2) driven by the MiaAI 2x recipe, with our state on top vendored in
-`recipe/anemll/`; the Qwen lane (stock vLLM 0.27 image, GGUF or LoRA steering)
-lives in `recipe/qwen/`; the Qwen3.8-Flash-Next lane (day-0 image
-`vllm/vllm-openai:qwen38-flash-next`, GLP-47) lives in `recipe/qwen38fn/`;
+`lanes/anemll/`; the Qwen lane (stock vLLM 0.27 image, GGUF or LoRA steering)
+lives in `lanes/qwen/`; the Qwen3.8-Flash-Next lane (day-0 image
+`vllm/vllm-openai:qwen38-flash-next`, GLP-47) lives in `lanes/qwen38fn/`;
 the GLM-5.3-Flash lane (tonyd2wild's sm121-v8 patch stack on the day-0
 `vllm/vllm-openai:glm53-flash-arm64-cu130`, GLP-44)
-lives in `recipe/glm53/`; the GLM-5.3 743B lane (tonyd2wild's Int4-Int8Mix
-stack, GLP-77) lives in `recipe/glm53xl/`. The
+lives in `lanes/glm53/`; the GLM-5.3 743B lane (tonyd2wild's Int4-Int8Mix
+stack, GLP-77) lives in `lanes/glm53xl/`. The
 retired v027 stack's patch is kept for reference and as the fallback path.
 
 ![setup wizard — splash, local-state box, main menu](imgs/01-home.png)
@@ -97,7 +97,7 @@ The model weights are never redistributed — what this repo ships is the
   directions, derived by us and published under
   [`msuiche/`](https://huggingface.co/msuiche) (see
   [Steering artifacts](docs/VECTORS.md)). No model weights inside.
-- **The patch.** The installable plugin (`vllm-plugin/`, dist
+- **The patch.** The installable plugin (`plugins/vllm/`, dist
   `weightless-steer`): one adapter per architecture in
   `weightless_steer/archs/` shadows the model class in vLLM's
   `ModelRegistry`, installing the same projective hook with no container
@@ -106,7 +106,7 @@ The model weights are never redistributed — what this repo ships is the
   (`patches/hotfix-*.py`) are the per-lane mechanism the plugin replaces:
   still what the live rigs run today, kept as the fallback stack and as
   the semantic reference each adapter is pinned against by structure
-  tests (`tests/structure/`, `vllm-plugin/tests/`).
+  tests (`tests/structure/`, `plugins/vllm/tests/`).
 - **Quant-friendly.** The hook steers activations at runtime (the
   calibrated site per lane: post-layer residual where the runtime
   materialises it, the pre-fold FFN write on the DSV4 lane, 2026-09-04
@@ -260,17 +260,17 @@ drafting. Its launcher's `weightless` option mounts GLP-44 steering over layers
 
 | lane | hardware | model | steering | status |
 |---|---|---|---|---|
-| **DSV4 TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-0731, NVFP4 (166.9 GB) | projective cvec, live on 29 layers | **live** — `recipe/anemll/` |
-| **DSV4-Vision-Exp TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-Vision-Exp, FP8 original (202 GB) | projective cvec, L10–38 at α=1.0 (the -ffn hook relabel of [GLP-29 Vision-Exp](https://huggingface.co/msuiche/DeepSeek-V4-Flash-Vision-Exp-abliterated-cyber-GLP-29)) | **live (text-only)** — the 0.25.2 image's loader refuses the checkpoint's `vision.*`/`aligner` tensors, so this lane serves the vision-stripped FP8 tree (`strip_vision.py` output, staged at `$HF_CACHE/visionexp-text-fp8`); `recipe/anemll/` (`.env.dsv4vx` + `start-deepseek-v4-flash-visionexp-dspark.sh`). Vision-capable serving is the VL lane below |
-| **DSV4-Vision-Exp VL TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-Vision-Exp, FP8 unstripped (snapshot `6821d6ad`, vision enabled) | same -ffn GLP-29 relabel, L10–38 at α=1.0 (day-0 tree keeps the deferred mHC fold → `ffn_out_pre_residual`) | **first-boot-validated 2026-09-23 (2x DGX Spark, GB10)** — `recipe/dsv4vl/`; day-0 vLLM (0.28.1rc1 + PR #54566) on `vllm-upstream-vision:k2-topk512` (flashinfer 0.6.18 + DSV4 dual-prefill topk 192/256/512 backport, [msuiche/flashinfer](https://github.com/msuiche/flashinfer/tree/sm121-dsv4-prefill-topk512)); nospec; cold boot 8m24s; steering A/B green (α=0.0 base-like, α=1.0 cyber 4/4 comply, benign 4/4 both arms, ~13.4 tok/s single-stream both arms); vision smoke under steering green (image-token math 315∈[314,317], 111∈[110,113], mix, text-only, concurrency) |
-| **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | per-layer cvec, L10–58 at α=1.0 ([shipping artifact](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49)) | **hardware-validated** — `recipe/qwen/`; stock 4/32, GGUF 24/32, LoRA 24/32 on refusal32 (2026-08-22) |
-| **Qwen3.8-Flash-Next TP=2** | both Sparks over RoCE | Qwen3.8-Flash-Next-NVFP4 (~135 GB), day-0 image | per-layer cvec, L1–47 at α=1.0 ([GLP-47](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47)) | **hardware-validated 2026-09-01 (2x DGX Spark, GB10)** — `recipe/qwen38fn/`; steered live on the pair: refusal32 22/32 (stock 1/32), KV pool 35.3 GiB @ 262K native ctx; earlier cloud validation (2xB200): refusal32 1/32 → 26/32, benign 32/32; vector eval 81.2% refusal32 (vLLM lane, cos 0.9931 vs HF) |
+| **DSV4 TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-0731, NVFP4 (166.9 GB) | projective cvec, live on 29 layers | **live** — `lanes/anemll/` |
+| **DSV4-Vision-Exp TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-Vision-Exp, FP8 original (202 GB) | projective cvec, L10–38 at α=1.0 (the -ffn hook relabel of [GLP-29 Vision-Exp](https://huggingface.co/msuiche/DeepSeek-V4-Flash-Vision-Exp-abliterated-cyber-GLP-29)) | **live (text-only)** — the 0.25.2 image's loader refuses the checkpoint's `vision.*`/`aligner` tensors, so this lane serves the vision-stripped FP8 tree (`strip_vision.py` output, staged at `$HF_CACHE/visionexp-text-fp8`); `lanes/anemll/` (`.env.dsv4vx` + `start-deepseek-v4-flash-visionexp-dspark.sh`). Vision-capable serving is the VL lane below |
+| **DSV4-Vision-Exp VL TP=2** | both Sparks over dual-rail RoCE | DeepSeek-V4-Flash-Vision-Exp, FP8 unstripped (snapshot `6821d6ad`, vision enabled) | same -ffn GLP-29 relabel, L10–38 at α=1.0 (day-0 tree keeps the deferred mHC fold → `ffn_out_pre_residual`) | **first-boot-validated 2026-09-23 (2x DGX Spark, GB10)** — `lanes/dsv4vl/`; day-0 vLLM (0.28.1rc1 + PR #54566) on `vllm-upstream-vision:k2-topk512` (flashinfer 0.6.18 + DSV4 dual-prefill topk 192/256/512 backport, [msuiche/flashinfer](https://github.com/msuiche/flashinfer/tree/sm121-dsv4-prefill-topk512)); nospec; cold boot 8m24s; steering A/B green (α=0.0 base-like, α=1.0 cyber 4/4 comply, benign 4/4 both arms, ~13.4 tok/s single-stream both arms); vision smoke under steering green (image-token math 315∈[314,317], 111∈[110,113], mix, text-only, concurrency) |
+| **Qwen TP=1** | one Spark | Qwen3.8-27B-NVFP4 (~13.5 GB) | per-layer cvec, L10–58 at α=1.0 ([shipping artifact](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49)) | **hardware-validated** — `lanes/qwen/`; stock 4/32, GGUF 24/32, LoRA 24/32 on refusal32 (2026-08-22) |
+| **Qwen3.8-Flash-Next TP=2** | both Sparks over RoCE | Qwen3.8-Flash-Next-NVFP4 (~135 GB), day-0 image | per-layer cvec, L1–47 at α=1.0 ([GLP-47](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47)) | **hardware-validated 2026-09-01 (2x DGX Spark, GB10)** — `lanes/qwen38fn/`; steered live on the pair: refusal32 22/32 (stock 1/32), KV pool 35.3 GiB @ 262K native ctx; earlier cloud validation (2xB200): refusal32 1/32 → 26/32, benign 32/32; vector eval 81.2% refusal32 (vLLM lane, cos 0.9931 vs HF) |
 | **DSV4-Vision-Exp** (vector validation) | 4×H100 (tolmo) | DeepSeek-V4-Flash-Vision-Exp, FP8 (~168 GB) | per-layer cvec, L10–38 at α=1.0 ([GLP-29 Vision-Exp](https://huggingface.co/msuiche/DeepSeek-V4-Flash-Vision-Exp-abliterated-cyber-GLP-29)) | **vector-validated 2026-09-01** — refusal32 1/32 → 27/32 fresh (α=4 garbles — dose cliff), benign32 32/32 both arms; the 0731 GLP-29 keysdir vector transfers at 31/32 despite cos −0.32 (multi-directional refusal); Spark lane: the TP=2 row above |
 | **DSV4-Vision-Exp NVFP4** | 2×B200 (tolmo) | [msuiche/DeepSeek-V4-Flash-Vision-Exp-NVFP4](https://huggingface.co/msuiche/DeepSeek-V4-Flash-Vision-Exp-NVFP4) (176.5 GB, modelopt W4A4, experts-only) | same GLP-29 vectors | **boot-validated 2026-09-03 (stock vLLM 0.28.0, first vLLM boot of vision-exp)** — lossless MXFP4→NVFP4 transcode (byte-exact vs NVIDIA's recipe); NVFP4 ≈ FP8 ±1 item on refusal32, benign 32/32, capability 12/12, zero garbles; **steered-delivery delta vs the old HF-lane numbers is a lane effect (fp8 KV + kernels), not the quant** — FP8 control lands the same; `strip_vision.py` in-repo for stock-vLLM text boot; GB10 via modelopt_gb10_hybrid plugin |
-| **Inkling-Small TP=2** | both Sparks over RoCE | Inkling-Small-NVFP4 (159 GiB), stock vLLM 0.28.0, CUDA graphs on | per-layer cvec, L1–41 at **α=0.25** ([GLP-41](https://huggingface.co/msuiche/Inkling-Small-abliterated-cyber-GLP-41)) | **hardware-validated 2026-09-04 (2x DGX Spark, GB10)** — `recipe/inkling/`; real weights boot and serve with the load-reclaim + sm121 rel-attention hotfixes (78.3 GiB model, 21.4 GiB KV, 4/4 smoke); Modal lane: refusal32 0/32 stock (total lockdown) → 30/32 steered, benign32 30/32; **α=1.0 garbles everything — the most dose-sensitive model in the program**; first GLP for a Thinking Machines model |
+| **Inkling-Small TP=2** | both Sparks over RoCE | Inkling-Small-NVFP4 (159 GiB), stock vLLM 0.28.0, CUDA graphs on | per-layer cvec, L1–41 at **α=0.25** ([GLP-41](https://huggingface.co/msuiche/Inkling-Small-abliterated-cyber-GLP-41)) | **hardware-validated 2026-09-04 (2x DGX Spark, GB10)** — `lanes/inkling/`; real weights boot and serve with the load-reclaim + sm121 rel-attention hotfixes (78.3 GiB model, 21.4 GiB KV, 4/4 smoke); Modal lane: refusal32 0/32 stock (total lockdown) → 30/32 steered, benign32 30/32; **α=1.0 garbles everything — the most dose-sensitive model in the program**; first GLP for a Thinking Machines model |
 | **Hy4-preview** (vector validation) | 8×H200 (tolmo) | tencent/Hy4-preview-FP8 (770B / 49B active, ~770 GB), day-0 image | per-layer cvec, L1–77 at **α=2.0** ([GLP-77 Hy4](https://huggingface.co/msuiche/Hy4-preview-abliterated-cyber-GLP-77-L1-77-a2.0)) | **vector-validated 2026-09-02** — refusal32 1/32 → **24/32**, cyber32 15/32 → **31/32**, benign32 **32/32 at α=2.0** (collateral non-monotonic: worst at α=1.0–1.5, zero at full dose); no garble at any dose — most steer-tolerant arch in the program; **largest model with a published refusal vector**; caveat: refusal32 answers all run to the 4K cap at α=2.0 |
-| **GLM-5.3-Flash TP=4** | **four** Sparks over RoCE | GLM-5.3-Flash-NVFP4 (~50 GiB/rank), [othexmr's RiNGSiDE recipe](https://github.com/othexmr/GLM-5.3-Flash-NVFP4-2x-4x-DGX-Sparks-RiNGSiDE) (switchless ring NCCL + b12x kernels; previously the sm121-v8 patched day-0 image) | per-layer cvec, L1–44 at α=2.0 ([GLP-44](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44)) | **live in production since 2026-09-29** — `recipe/glm53/`; 1M context, 36 tok/s freeform → 53–64 tok/s structured/agentic with DFlash2 spec decode (acceptance is regime-dependent; steering costs none — measured, see below); vector eval 65.6% refusal32 at α=2.0; **α≥2.5 garbles this model** |
-| **GLM-5.3 743B TP=4** | **four** Sparks over RoCE | GLM-5.3 Int4-Int8Mix (~95.5 GiB/rank), tonyd2wild's stack (local image + sm12x overlay) | per-layer cvec, L1–77 at α=1.0 ([GLP-77](https://huggingface.co/msuiche/GLM-5.3-abliterated-cyber-GLP-77)) | **hotfix live-validated 2026-08-30** — `recipe/glm53xl/`; on stock vLLM 0.28.0 (8×H100, RadixArk/GLM-5.3-NVFP4): refusal32 1→10/32, cyber32 15→31/32; **the 4x-Spark GB10 lane itself remains untested** (needs the hardware); vector eval (8×H100, full-length): cyber32 32/32, refusal32 12/32 (37.5%; 6/32 answer-audited) at α=1.0, null arm = stock; **refusal on the 753B is much stickier than Flash — α>1 makes it WORSE** |
+| **GLM-5.3-Flash TP=4** | **four** Sparks over RoCE | GLM-5.3-Flash-NVFP4 (~50 GiB/rank), [othexmr's RiNGSiDE recipe](https://github.com/othexmr/GLM-5.3-Flash-NVFP4-2x-4x-DGX-Sparks-RiNGSiDE) (switchless ring NCCL + b12x kernels; previously the sm121-v8 patched day-0 image) | per-layer cvec, L1–44 at α=2.0 ([GLP-44](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44)) | **live in production since 2026-09-29** — `lanes/glm53/`; 1M context, 36 tok/s freeform → 53–64 tok/s structured/agentic with DFlash2 spec decode (acceptance is regime-dependent; steering costs none — measured, see below); vector eval 65.6% refusal32 at α=2.0; **α≥2.5 garbles this model** |
+| **GLM-5.3 743B TP=4** | **four** Sparks over RoCE | GLM-5.3 Int4-Int8Mix (~95.5 GiB/rank), tonyd2wild's stack (local image + sm12x overlay) | per-layer cvec, L1–77 at α=1.0 ([GLP-77](https://huggingface.co/msuiche/GLM-5.3-abliterated-cyber-GLP-77)) | **hotfix live-validated 2026-08-30** — `lanes/glm53xl/`; on stock vLLM 0.28.0 (8×H100, RadixArk/GLM-5.3-NVFP4): refusal32 1→10/32, cyber32 15→31/32; **the 4x-Spark GB10 lane itself remains untested** (needs the hardware); vector eval (8×H100, full-length): cyber32 32/32, refusal32 12/32 (37.5%; 6/32 answer-audited) at α=1.0, null arm = stock; **refusal on the 753B is much stickier than Flash — α>1 makes it WORSE** |
 | **Kimi K3 2.9T** (vector validation) | 2×H200:8 (PP=2 x TP=8, TCP fabric) | moonshotai/Kimi-K3 (~1.56 TB, MXFP4 experts), day-0 image | per-layer cvec, L1–92 at α=1.0 ([GLP-92](https://huggingface.co/msuiche/Kimi-K3-abliterated-cyber-GLP-92-L1-92-a1.0)) | **vector-validated 2026-09-04** — refusal32 1/32 → **31/32**, cyber32 17/32 → **32/32**, zero collateral (benign32 32/32, propaganda32 32/32) |
 
 **GLM-5.3-Flash needs 4 nodes — and a patched image.** At TP4 the NVFP4
@@ -284,14 +284,14 @@ KV-starved — [tonyd2wild's TP2 repo](https://github.com/tonyd2wild/GLM-5.3-Fla
 but stays out of scope for this wizard lane. The stock day-0 vendor image
 dies five different ways on GB10; the lane requires the sm121-v8 patch stack
 (`radixark/vllm-glm53-flash:sm121-v8` or a local v1→v8 build — details in
-`recipe/glm53/README.md`). If your `machines.txt` lists two nodes, this lane
+`lanes/glm53/README.md`). If your `machines.txt` lists two nodes, this lane
 cannot boot until two more are racked and cabled. The 743B lane needs the
 same four nodes plus tonyd2wild's Int4-Int8Mix weights (377.4 GiB) and stack
-(image + kernel overlay — `recipe/glm53xl/README.md`); its first real boot is
+(image + kernel overlay — `lanes/glm53xl/README.md`); its first real boot is
 the anchor test (the hotfix stages fail-closed before GPU time). On x86
 SM120 instead of Sparks, brandonmusic's EXL3/B12X build
 (`brandonmusic/GLM-5.3-Flash-tr3-4bpw`, custom vLLM fork) takes the same
-GLP-44 hotfix mechanics — see `recipe/glm53/README.md` (runtime-validated
+GLP-44 hotfix mechanics — see `lanes/glm53/README.md` (runtime-validated
 on 2x RTX PRO 6000: refusal32 1→15/32, cyber32 14→31/32).
 
 **DFlash2 spec decode and steering — measured, not assumed** (2026-08-30,
@@ -321,26 +321,26 @@ smaller, approximated model; we do not serve it. The steering *contract* in
 |---|---|
 | `weightless.py` | single front-door CLI: `weightless.py` (wizard), `weightless.py dash`, `weightless.py test`, `weightless.py validate|inspect|audit f.gguf` — dispatches to the scripts below |
 | `setup.py` | full-chain setup wizard (TUI or prompts, stdlib-only): lane pick → env file → steering validation → ssh deploy → omp provider + tests, plus a diagnose chain (DNS → TCP → HTTP → remote docker/GPU status, optional boot) |
-| `recipe/anemll/` | **live**: compose / start script / `.env.dsv4.example` for the MiaAI 2x clone, plus rebuild notes |
-| `recipe/qwen/` | Qwen TP=1 lane: serve script + `.env.qwen.example`; `STEER_MODE=gguf\|lora`, both hardware-validated |
-| `recipe/qwen38fn/` | Qwen3.8-Flash-Next TP=2 lane: head+worker start script + `.env.qwen38fn.example`; `--no-enable-prefix-caching` and `VLLM_PLE_CPU_OFFLOAD=1` are mandatory there |
-| `recipe/glm53/` | GLM-5.3-Flash TP=4 lane: head+3-worker start script + `.env.glm53.example`; needs 4 nodes and the sm121-v8 patched image, α=2.0 is calibrated (α≥2.5 garbles) |
-| `recipe/glm53xl/` | GLM-5.3 743B TP=4 lane: head+3-worker start script + `.env.glm53xl.example`; needs 4 nodes + tonyd2wild's Int4-Int8Mix weights/stack, α=1.0 is calibrated (higher makes refusal worse) |
+| `lanes/anemll/` | **live**: compose / start script / `.env.dsv4.example` for the MiaAI 2x clone, plus rebuild notes |
+| `lanes/qwen/` | Qwen TP=1 lane: serve script + `.env.qwen.example`; `STEER_MODE=gguf\|lora`, both hardware-validated |
+| `lanes/qwen38fn/` | Qwen3.8-Flash-Next TP=2 lane: head+worker start script + `.env.qwen38fn.example`; `--no-enable-prefix-caching` and `VLLM_PLE_CPU_OFFLOAD=1` are mandatory there |
+| `lanes/glm53/` | GLM-5.3-Flash TP=4 lane: head+3-worker start script + `.env.glm53.example`; needs 4 nodes and the sm121-v8 patched image, α=2.0 is calibrated (α≥2.5 garbles) |
+| `lanes/glm53xl/` | GLM-5.3 743B TP=4 lane: head+3-worker start script + `.env.glm53xl.example`; needs 4 nodes + tonyd2wild's Int4-Int8Mix weights/stack, α=1.0 is calibrated (higher makes refusal worse) |
 | `patches/hotfix-dsv4-steering-projective.py` | **live**: steering as a fail-closed boot hotfix for the 0.25.2 image (embedded GGUF reader) |
 | `patches/hotfix-qwen38-steering-projective.py` | the same steering for the Qwen lane: patches `qwen3_next.py` + `qwen3_5.py`, steers `hidden_states + residual` |
 | `patches/hotfix-qwen38fn-steering-projective.py` | the same steering for the Flash-Next lane: patches the day-0 image's `vllm/models/qwen3_8_flash_next/nvidia/model.py`, steers the materialized hyper-connection stream (10240 = 4×2560) |
 | `patches/hotfix-glm53-steering-projective.py` | the same steering for the GLM-5.3 lane: patches `vllm/models/glm5next/nvidia/model.py`, steers the materialized mHC stream (16384 = 4×4096); the last layer's in-decoder contract is deferred so L44 is covered |
 | `patches/hotfix-glm53xl-steering-projective.py` | the same steering for the GLM-5.3 743B lane: patches the overlay's `deepseek_v2.py` copy at staging (the mount is read-only), steers `hidden_states + residual` (decomposed convention, no HC widening) |
 | `patches/hotfix-glm53-exl3-steering-projective.py` | the GLM-5.3-Flash steering for brandonmusic's EXL3/B12X fork image (SM120): the fork's DFlash branch splits the decoder loop in two — the variant patches both (aux loop steers after the aux capture, pre-steer features) |
-| `vllm-plugin/` | the same steering as an installable vLLM plugin (dist `weightless-steer`, `vllm.general_plugins` entry point): one adapter per architecture in `weightless_steer/archs/` shadows the model class in `ModelRegistry` instead of rewriting files in the container — the successor to the hotfix fleet above. Eleven adapters today: `nemotron_h.py`, `glm5next.py`, `dsv4.py`, `dsv41.py`, `qwen38.py`, `qwen38fn.py`, `glm53xl.py`, `kimi_k3.py`, `ouro.py`, `inkling.py`, `hy4.py`. dsv41 is the fold-site adapter (GLP spec_version 3, `hc_fold_pre_engram`) serving DeepSeek-V4.1-Flash-1017 with the companion writer and off-is-stock discipline, first validated on the four-node DGX ring (spark-ds41f glp-specv3, PR christopherowen/spark-ds41f#738). glm5next **GPU-validated 2026-09-18** (Modal 4×H100, GLM-5.3-Flash NVFP4, compiled mode — cyber32 31/32 exactly the hotfix reference, benign32 clean, refusal32 2→9/32 vs 1→21/32 hotfix on a stiffer stock baseline; `modal/cloud_serve_glm53.py`); the other eight new adapters **GPU-validated 2026-09-19** on Modal (verification depth varies — full eval for dsv4/qwen38/qwen38fn/ouro/inkling, boot+smoke for hy4/glm53xl/kimi-k3; per-arch numbers in BENCHMARK.md, raw artifacts in `modal/out-<arch>-plugin-test/`). Design: `docs/vllm-plugin-design.md`, offline tests need neither GPU nor vLLM |
-| `sglang-plugin/` | the same steering as an installable SGLang plugin (dist `weightless-sglang`, `sglang.srt.plugins` entry point): an AFTER hook on `ModelRunner.load_model` installs the steering sites before CUDA-graph capture, with no SGLang source change, and reuses the vLLM plugin's loader and gates. One module per architecture in `weightless_sglang/archs/`: Qwen3.8-27B (one RTX 5090) and GLM-5.3-Flash (3x RTX PRO 6000, PP 3) **GPU-validated 2026-09-25/26**, seven more structure-tested on CPU, DeepSeek-V4.1-Flash among them (the post-layer hc copies, the spec_version 3 fold-site location; `residual_stream_post_layer` files and spec_version 3 `hc_fold_pre_engram` files with the companion attention writer). It serves both SGLang layer layouts, the older one and the stage boundaries (`sglang.srt.layers.layer_boundary`); on stage boundaries only those two rows are ported, CPU-validated on SGLang's real model classes. The edit runs as one fused Triton kernel by default, self-checked at start-up against a torch path that gives the same bits. Design: `docs/sglang-plugin-design.md`; offline tests need neither GPU nor SGLang |
+| `plugins/vllm/` | the same steering as an installable vLLM plugin (dist `weightless-steer`, `vllm.general_plugins` entry point): one adapter per architecture in `weightless_steer/archs/` shadows the model class in `ModelRegistry` instead of rewriting files in the container — the successor to the hotfix fleet above. Eleven adapters today: `nemotron_h.py`, `glm5next.py`, `dsv4.py`, `dsv41.py`, `qwen38.py`, `qwen38fn.py`, `glm53xl.py`, `kimi_k3.py`, `ouro.py`, `inkling.py`, `hy4.py`. dsv41 is the fold-site adapter (GLP spec_version 3, `hc_fold_pre_engram`) serving DeepSeek-V4.1-Flash-1017 with the companion writer and off-is-stock discipline, first validated on the four-node DGX ring (spark-ds41f glp-specv3, PR christopherowen/spark-ds41f#738). glm5next **GPU-validated 2026-09-18** (Modal 4×H100, GLM-5.3-Flash NVFP4, compiled mode — cyber32 31/32 exactly the hotfix reference, benign32 clean, refusal32 2→9/32 vs 1→21/32 hotfix on a stiffer stock baseline; `modal/cloud_serve_glm53.py`); the other eight new adapters **GPU-validated 2026-09-19** on Modal (verification depth varies — full eval for dsv4/qwen38/qwen38fn/ouro/inkling, boot+smoke for hy4/glm53xl/kimi-k3; per-arch numbers in BENCHMARK.md, raw artifacts in `modal/out-<arch>-plugin-test/`). Design: `docs/vllm-plugin-design.md`, offline tests need neither GPU nor vLLM |
+| `plugins/sglang/` | the same steering as an installable SGLang plugin (dist `weightless-sglang`, `sglang.srt.plugins` entry point): an AFTER hook on `ModelRunner.load_model` installs the steering sites before CUDA-graph capture, with no SGLang source change, and reuses the vLLM plugin's loader and gates. One module per architecture in `weightless_sglang/archs/`: Qwen3.8-27B (one RTX 5090) and GLM-5.3-Flash (3x RTX PRO 6000, PP 3) **GPU-validated 2026-09-25/26**, seven more structure-tested on CPU, DeepSeek-V4.1-Flash among them (the post-layer hc copies, the spec_version 3 fold-site location; `residual_stream_post_layer` files and spec_version 3 `hc_fold_pre_engram` files with the companion attention writer). It serves both SGLang layer layouts, the older one and the stage boundaries (`sglang.srt.layers.layer_boundary`); on stage boundaries only those two rows are ported, CPU-validated on SGLang's real model classes. The edit runs as one fused Triton kernel by default, self-checked at start-up against a torch path that gives the same bits. Design: `docs/sglang-plugin-design.md`; offline tests need neither GPU nor SGLang |
 | `patches/vendor/sparse_attn_indexer_kpool_sm121.py` | vendored SM121 indexer top-k fix (tonyd2wild's DFlash2 repo, provenance header inside): bind-mounted over the in-image file on every glm53 node — without it both published images hard-kill on decode past ~24K context |
 | `patches/reference/glm5next_b12x_exl3.py` | the EXL3 structure test's reference — the model file extracted from the published `verdictai/glm53-flash-exl3-k4` image (OCI layer sha256:7f03081e…) |
 | `patches/reference/deepseek_v2_glm53xl.py` | the 743B structure test's reference — tonyd2wild's kernel-overlay `deepseek_v2.py` (the file his stack actually serves); same anchors as vLLM v0.28.0 |
 | `patches/reference/qwen3_8_flash_next.py` | byte-identical copy of the day-0 image's model file — the Flash-Next structure test's reference (the `../vllm` checkout predates the arch) |
 | `patches/reference/glm5next.py` | the GLM-5.3 structure test's reference — from the day-0 PR source (vllm-project/vllm#53906); re-vendor against the image on first deploy |
 | `patches/0001-*.patch`, `0002-*.patch` | the hook + its vLLM-side test as git patches against v0.27.0 (fallback stack) |
-| `recipe/` (top level) | retired v027 stack: Dockerfiles + compose |
+| `lanes/` (top level) | retired v027 stack: Dockerfiles + compose |
 | `tests/structure/` | structural guard tests for the steering patches (`test-*-structure.py`, incl. `test-steering-structure.py` for the retired v027 overlay) |
 | `scripts/` | `dash.py` (below), `dspark-router.py`, `memory-watchdog-gpu.sh`, `probe-refusal.py` |
 | `scripts/dash.py` | live terminal view of any serving lane (stdlib only, ANSI colors on a terminal — brand pink/cyan, KV gauge green→yellow→red; `--no-color`/`NO_COLOR` for plain): `python3 scripts/dash.py <url>` for a live view, `--once` / `--json` for a scriptable snapshot — prefill/decode tok/s (computed-vs-admitted prefill, windowed headline + instant `now` + `peak`, per-request `stream` speed), engine steps/s and tokens/step, preemptions, queue depth, KV pressure against the lane's KV capacity, TTFT p50/p90, request lifecycle phases, mean prompt/output length, spec-decode acceptance rate/length and per-step wall time. Summed across the `engine` label (data-parallel lanes report the whole lane); keys `q`/`p`/`r`/`w` in the live view. `--bench` runs an active benchmark (warmup + 4 serial cases + a concurrency wave, each trial isolated by request counters — a busy lane or other traffic fails loudly; `--out report.json` never overwrites); `--save-baseline` blesses bench results or current rates as the lane's baseline, shown as `base N.NN×` ratios on later runs (store: `~/.cache/weightless/dash/baselines.json`, keyed by model\|ctx\|version). Also in the wizard menu ("Watch a lane") |
@@ -356,7 +356,7 @@ Real `.env` files are gitignored — only `*.example` templates are tracked.
 ## Steering (live stack)
 
 Off unless `WEIGHTLESS_STEER_PATH` is set. The env vars pass through
-`recipe/anemll/docker-compose.dsv4.yml` and the GGUF reader is embedded in
+`lanes/anemll/docker-compose.dsv4.yml` and the GGUF reader is embedded in
 the hotfix — nothing to build:
 
 ```sh
@@ -385,17 +385,17 @@ for this checkpoint; do not carry it to another model.
 
 ### Steering on SGLang
 
-The same GLP files and variables work on SGLang through `sglang-plugin/`;
-install it next to `vllm-plugin/` (which provides the loader) in the SGLang
+The same GLP files and variables work on SGLang through `plugins/sglang/`;
+install it next to `plugins/vllm/` (which provides the loader) in the SGLang
 environment:
 
 ```sh
-pip install ./vllm-plugin ./sglang-plugin
+pip install ./plugins/vllm ./plugins/sglang
 WEIGHTLESS_STEER_PATH=<vector.gguf> python -m sglang.launch_server --model-path <model>
 ```
 
 Each rank logs `weightless GLP steering active (sglang): ...`; no line means
-SGLang serves stock. Details: `sglang-plugin/README.md`.
+SGLang serves stock. Details: `plugins/sglang/README.md`.
 
 ## Steering artifacts (ours)
 
@@ -407,11 +407,11 @@ alpha values, validation results, and serving status.
 
 - **More model lanes.** The GLP spec and the fail-closed hotfix pattern are
   model-agnostic — DSV4 and Qwen3.8 are the starting lanes, not the scope.
-  The target is most good open models, one `recipe/` lane and one published
+  The target is most good open models, one `lanes/` lane and one published
   GLP vector each. Day-0 vectors for Qwen3.8-Flash-Next (GLP-47) and
   GLM-5.3-Flash (GLP-44) shipped 2026-08-27, GLM-5.3 743B (GLP-77) 2026-08-30;
-  their serving lanes are `recipe/qwen38fn/` (TP=2), `recipe/glm53/` (TP=4,
-  needs 4 nodes) and `recipe/glm53xl/` (TP=4, 4 nodes + the Int4-Int8Mix
+  their serving lanes are `lanes/qwen38fn/` (TP=2), `lanes/glm53/` (TP=4,
+  needs 4 nodes) and `lanes/glm53xl/` (TP=4, 4 nodes + the Int4-Int8Mix
   stack).
 - **Qwen LoRA cyber-holdout score** (run L): both Qwen steering arms match
   on refusal32; the LoRA arm still needs its cyber-holdout number before it
@@ -422,7 +422,7 @@ alpha values, validation results, and serving status.
 - [Abliteration without redistributing the model](https://www.msuiche.com/posts/autoresearch-abliteration-without-redistributing-the-model/) — our write-up of the steering internals (the method this repo packages)
 - [deepseek-ai/DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) — the model (MIT)
 - [tonyd2wild/DeepSeek-v4-Flash-0731-DSpark-1M-NVFP4-KV-2x-DGX-Spark](https://github.com/tonyd2wild/DeepSeek-v4-Flash-0731-DSpark-1M-NVFP4-KV-2x-DGX-Spark) — the original 2x DSpark NVFP4-KV recipe; its issue #18 is the spec-decode corruption we root-caused before migrating
-- [MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark) — the 2-node recipe we run (our state vendored in `recipe/anemll/`)
+- [MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark) — the 2-node recipe we run (our state vendored in `lanes/anemll/`)
 - [MiaAI-Lab/DeepSeek-v4-Flash-One-DGX-Spark](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-One-DGX-Spark) — single-Spark EXL3/REAP sibling (lane rejected — REAP pruning degrades the tail)
 - [Anemll's GX10 image](https://github.com/anemll) (`ghcr.io/anemll/dspark-vllm-gx10`) — the vLLM 0.25.2 runtime
 - [local-inference-lab/b12x](https://github.com/local-inference-lab/b12x) — the sparkinfer/b12x kernel stack inside the image
@@ -481,7 +481,7 @@ Parked, not deleted — the v0.27 git patch and its test remain under
 - Base image:
   `ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production`
   (registry is rate-limited for anonymous pulls — `docker login ghcr.io`
-  first). It has **no `gguf` module**: build `recipe/Dockerfile.gguf-dep`
+  first). It has **no `gguf` module**: build `lanes/Dockerfile.gguf-dep`
   and point `DSPARK_VLLM_IMAGE` at it. Never load a `.pt` instead — that
   goes through `torch.load` and bypasses every spec check in the reader.
 - Settled v027 config: context **1,032,192** (1,048,576 collapses prefill to

@@ -112,7 +112,7 @@ reproduces the reference stock exactly. Raw artifacts:
 `modal/out-dsv4-plugin-test/` (run 2; run 1 kept under
 `run1-thinking-on/` as protocol-broken evidence — the day-0 image defaults
 thinking ON and ignores `--chat-template`, see
-`vllm-plugin/README.md`).
+`plugins/vllm/README.md`).
 
 ### GLP-49 — Qwen3.8-27B (dense, 64 layers)
 
@@ -199,7 +199,7 @@ Served eager + gmu 0.95 (brandonmusic's published CUDA-graph config OOMs at
 Head-to-head vs dealignai's baked-weight CRACK (2026-08-29): dealignai 28/32
 vs our 21/32 on refusal32 at 400-tok; at 2000-tok dealignai drops to 19/32;
 cyber32 tied 31/32; benign and capability clean on both. Serving numbers for
-this lane are in the run log below and `recipe/glm53/README.md`.
+this lane are in the run log below and `lanes/glm53/README.md`.
 
 ### GLP-77 — GLM-5.3 flagship (753B / ~18B active, 78 layers)
 
@@ -1060,7 +1060,7 @@ and expect agent traffic (long prompts) to slow interactive streams.
 
 ## SGLang plugin
 
-`sglang-plugin/` on SGLang with no source change, CUDA graphs on, greedy.
+`plugins/sglang/` on SGLang with no source change, CUDA graphs on, greedy.
 
 **Qwen3.8-27B cost (2026-09-25).** `RadixArk/Qwen3.8-27B-NVFP4` on one RTX 5090,
 SGLang main `2f5c9ac4`, TP=1, GLP-49 (L10-58) and GLP-63 (L1-63) at α=1.0.

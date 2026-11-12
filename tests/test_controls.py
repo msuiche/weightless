@@ -2,7 +2,7 @@
 
 Stdlib only: the policy layer imports no torch and no vLLM, so these run
 anywhere. The torch-dependent row mapping is covered by
-vllm-plugin/tests/test_control_plane.py.
+plugins/vllm/tests/test_control_plane.py.
 
 Focus is the server alpha policy window. Alpha is the one request
 dimension that used to be unbounded while layers, schedule segments,

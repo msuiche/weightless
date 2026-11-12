@@ -437,7 +437,7 @@ inspect path (the `test-cvec-inspect` equivalent). `dir-steering/tools/f32_to_gl
 is a stdlib-only producer for ds4's own raw vectors.
 
 **vLLM (this repo)** —
-`recipe/overlay/vllm/models/deepseek_v4/nvidia/model.py`. `_load_gguf_control_vector()`
+`lanes/overlay/vllm/models/deepseek_v4/nvidia/model.py`. `_load_gguf_control_vector()`
 reads the file; the apply is in the layer loop. Enabled with
 `WEIGHTLESS_STEER_PATH=/path/to.gguf`, `WEIGHTLESS_STEER_ALPHA`, `WEIGHTLESS_STEER_LAYERS`.
 The live deployment is the Anemll 0.1.1 (vLLM 0.25.2) stack, where the same
@@ -456,7 +456,7 @@ baked in as a graph constant (alpha=1/2/4 produced byte-identical output);
 becomes a `KeyError` from a stale AOT artifact. All three failure modes look like
 "steering does nothing" rather than an error.
 
-**SGLang (this repo):** `sglang-plugin/` (package `weightless_sglang`). It reads
+**SGLang (this repo):** `plugins/sglang/` (package `weightless_sglang`). It reads
 the file with the vLLM plugin's `weightless_steer.container` and applies the
 same gates through `weightless_steer.core`, so the reader rules above are shared
 code, not a copy. It serves `residual_stream_post_layer` on every architecture

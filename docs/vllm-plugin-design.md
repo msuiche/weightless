@@ -1,11 +1,11 @@
 # Upstreaming GLP steering into vLLM: extension-point survey and recommended path
 
 Status: design doc for what shipped. Path (1) is the fleet: ten arch
-adapters in `vllm-plugin/`, every one GPU-validated on Modal
+adapters in `plugins/vllm/`, every one GPU-validated on Modal
 (2026-09-18/19), 223 offline tests. No upstream PR has been opened or is
 proposed here as a first step.
 
-SGLang counterpart: `sglang-plugin/`, with the same loader and gates and no
+SGLang counterpart: `plugins/sglang/`, with the same loader and gates and no
 SGLang source change; design in `docs/sglang-plugin-design.md`.
 
 Today we serve steered models through `patches/hotfix-*-steering-projective.py`:
@@ -226,7 +226,7 @@ Skeleton (as implemented — nemotron_h was the first lane; the fleet now
 covers all ten serving archs):
 
 ```
-vllm-plugin/
+plugins/vllm/
 ├── pyproject.toml                     # entry_points: [vllm.general_plugins]
 │                                      #   weightless_steer = weightless_steer.plugin:register
 ├── weightless_steer/

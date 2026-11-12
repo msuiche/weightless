@@ -395,5 +395,5 @@ upstream ever ships a projective mode, the `glp.mode` metadata already
 tells a conformant reader what to do — the format was designed for that
 day.
 
-SGLang needs no upstream change: `sglang-plugin/` installs through
+SGLang needs no upstream change: `plugins/sglang/` installs through
 SGLang's general-plugin entry point, before CUDA-graph capture.

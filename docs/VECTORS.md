@@ -14,7 +14,7 @@ verified against its pinned checkpoint revision.
   general-contrast variant from the same repo family — a *third-party*
   direction we reformatted, re-measured and repackaged (attribution in the
   file metadata); swapping is one `WEIGHTLESS_STEER_PATH` line. Wiring:
-  `recipe/anemll/README.md`.
+  `lanes/anemll/README.md`.
 - [`msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49`](https://huggingface.co/msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49)
   — **Qwen lane, GLP-49 (GGUF + LoRA).** The GGUF is canonical: per-layer
   diff of
@@ -24,7 +24,7 @@ verified against its pinned checkpoint revision.
   stock vLLM/peft/llama.cpp with no hotfix, matches the GGUF on NVFP4
   hardware (both 24/32 refusal32, 2026-08-22), but is still unscored on the
   cyber holdout and is valid only for checkpoint revision `1d4bf0f2ff60`
-  (`lora_A` embeds `W`). Wiring: `recipe/qwen/README.md`.
+  (`lora_A` embeds `W`). Wiring: `lanes/qwen/README.md`.
 - [`msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47`](https://huggingface.co/msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47)
   — **Qwen3.8-Flash-Next (`qwen4_exp`), GLP-47, day-0.** Per-layer
   difference-of-means over the widened hyper-connection stream (10240 =
@@ -33,7 +33,7 @@ verified against its pinned checkpoint revision.
   benign32 32/32 and capability12 12/12 (higher α over-projects — do not
   raise it; the shipped default is the measured peak). Direction verified
   engine-independent: a vLLM-lane capture reproduces it at cos 0.9931.
-  Serving lane: `recipe/qwen38fn/` (TP=2 on 2x Spark, day-0 image; the
+  Serving lane: `lanes/qwen38fn/` (TP=2 on 2x Spark, day-0 image; the
   hotfix steers the materialized hyper-connection stream).
 - [`msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44`](https://huggingface.co/msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44)
   — **GLM-5.3-Flash (`glm5_next`), GLP-44, day-0.** Per-layer dom over the
@@ -41,7 +41,7 @@ verified against its pinned checkpoint revision.
   Derived from the FP8-native canonical checkpoint (snapshot `3f1971b7`).
   refusal32 3.1% → 65.6% at α=2.0, benign/capability clean; **α=2.5+
   garbles everything** — the cliff is abrupt, stay at or below 2.0.
-  Serving lane: `recipe/glm53/` (TP=4 on **4x Spark**, NVFP4 quant on the
+  Serving lane: `lanes/glm53/` (TP=4 on **4x Spark**, NVFP4 quant on the
   sm121-v8 patched day-0 image; the hotfix steers the materialized mHC
   stream).
 - [`msuiche/GLM-5.3-abliterated-cyber-GLP-77`](https://huggingface.co/msuiche/GLM-5.3-abliterated-cyber-GLP-77)
@@ -53,7 +53,7 @@ verified against its pinned checkpoint revision.
   passing null arm; refusal32 moves 1/32 → 12/32 (37.5%; 6/32 answer-audited)
   — the 753B flagship's refusal is much stickier than Flash's, and **α>1
   makes it WORSE at full length** (do not raise it). Serving lane:
-  `recipe/glm53xl/` (TP=4 on 4x Spark, tonyd2wild's Int4-Int8Mix stack; the
+  `lanes/glm53xl/` (TP=4 on 4x Spark, tonyd2wild's Int4-Int8Mix stack; the
   hotfix steers `hidden_states + residual` on the `deepseek_v2` path).
 - [`msuiche/DeepSeek-V4.1-Flash-abliterated-cyber-GLP-39-L1-39-a0.5`](https://huggingface.co/msuiche/DeepSeek-V4.1-Flash-abliterated-cyber-GLP-39-L1-39-a0.5)
   — **DeepSeek-V4.1-Flash (`deepseek_v41`), GLP-39.** Per-layer dom over the
@@ -63,7 +63,7 @@ verified against its pinned checkpoint revision.
   Derived 2026-09-10 on Modal (4×H200, vLLM `dsv41-feat` capture lane):
   refusal32 4→24, cyber32 5→31, propaganda32 32/32, one benign classifier
   false positive. Research vector only — the arch loads in no vLLM release
-  and no 2×128 GB quant exists, so `recipe/dsv41/` fails closed.
+  and no 2×128 GB quant exists, so `lanes/dsv41/` fails closed.
 - [`msuiche/DeepSeek-V4.1-Flash-1017-abliterated-cyber-GLP-39-L1-39-a0.75`](https://huggingface.co/msuiche/DeepSeek-V4.1-Flash-1017-abliterated-cyber-GLP-39-L1-39-a0.75)
   — **DeepSeek-V4.1-Flash-1017, GLP-39.** Same hook over the same arch (the
   1017 config is byte-identical to the 0909 release), layers 1–39, α=0.75 —

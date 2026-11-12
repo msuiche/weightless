@@ -51,7 +51,7 @@ Symptom → likely cause, in the order to check:
    (baked LoRA merge), base checkpoint fine, bake proven bit-exact. The
    fork's breakable-graph path is value-sensitive; do not retry-loop it.
    Fix: serve glm5next with stock vLLM ≥0.30 (upstream since PR #53906,
-   verified 0.31.0) — no breakable path. See recipe/glm53 README.
+   verified 0.31.0) — no breakable path. See lanes/glm53 README.
 
 ## Spark wedges (silent freeze)
 
@@ -126,13 +126,13 @@ depth first. On the big MoE lanes, 17–30 tok/s single-stream is the design
 point, not a regression. Page-cache pressure stalls weight loads on boot —
 the deploy chain drops caches on all nodes before booting.
 
-## Steering on SGLang (`sglang-plugin/`)
+## Steering on SGLang (`plugins/sglang/`)
 
 First check the boot log: every rank prints
 `weightless GLP steering active (sglang): ...` when steering is on.
 
 - **No line, stock behaviour:** the plugin is not installed where
-  `sglang.launch_server` runs (install `vllm-plugin/` and `sglang-plugin/`
+  `sglang.launch_server` runs (install `plugins/vllm/` and `plugins/sglang/`
   there), or `SGLANG_PLUGINS` is set without `weightless_steer`.
 - **`kernel=torch (auto: torch path, because ...)`:** the fused kernel fell
   back (no Triton or CUDA, or the self-check failed). Steering works, at the
@@ -140,7 +140,7 @@ First check the boot log: every rank prints
   boot error.
 - **`has no SGLang steering adapter` or `is not supported:`:** the served
   class has no row, or is refused by name with the reason (table in
-  `sglang-plugin/README.md`).
+  `plugins/sglang/README.md`).
 - **`not validated at TP=`:** that row refuses TP > 1; serve it at TP=1 with
   `--pp-size` if it does not fit one GPU.
 - **`did not run in this forward` or `should hold the ... stream`:** the

@@ -35,7 +35,7 @@ proxy; refusals pivot mid-generation — see refusal-research/METHODOLOGY's
 
 ### 2. Serve a wizard lane on the plugin instead of the hotfix [rig]
 
-All ten arch adapters in `vllm-plugin/weightless_steer/archs/` are
+All ten arch adapters in `plugins/vllm/weightless_steer/archs/` are
 GPU-validated (numbers in `BENCHMARK.md`), but the live lanes still boot
 the string-patched hotfixes (`patches/hotfix-*.py`). Migrate one wizard
 lane end-to-end: pip-install `weightless-steer` into the lane's image
@@ -43,7 +43,7 @@ lane end-to-end: pip-install `weightless-steer` into the lane's image
 fail-closed contract (a boot asked for steering never serves unsteered),
 and reproduce the lane's hotfix reference numbers.
 
-- Where: `vllm-plugin/`, the lane's `recipe/`.
+- Where: `plugins/vllm/`, the lane's `lanes/`.
 - Done when: the lane serves steered with zero hotfix files and its
   numbers land in the hotfix row's envelope on the lane's own suite.
 
@@ -57,7 +57,7 @@ policy (`weightless_runtime/`), bind the control plane to the engine's
 batch metadata, and serve two concurrent requests at different α with
 measurably different steering.
 
-- Where: `vllm-plugin/weightless_steer/control_plane.py`, `core.py`,
+- Where: `plugins/vllm/weightless_steer/control_plane.py`, `core.py`,
   `weightless_runtime/`.
 - Done when: a two-request probe (same prompt, α=0 vs α=calibrated)
   returns stock vs steered output on one engine, on Modal, with the
@@ -74,7 +74,7 @@ research), **GLM-5.3-Flash EXL3** (the B12X fork's split decoder loop —
 see `patches/hotfix-glm53-exl3-steering-projective.py` for the two-loop
 trap), or the next day-0 arch vLLM ships.
 
-- Where: `vllm-plugin/weightless_steer/archs/`,
+- Where: `plugins/vllm/weightless_steer/archs/`,
   `docs/vllm-plugin-design.md`, `patches/hotfix-*.py` for sites.
 - Done when: offline suite passes plus a Modal boot shows
   `weightless GLP steering active` with the arch's published vector.
@@ -114,7 +114,7 @@ Native serving needs vllm-project/vllm PR #56201 (`dsv41-feat`) merged.
 Everything else exists: the EXL3 2.9bpw quant fits 2× DGX Spark (served
 on the rig via the external MiaAI stack), the GLP-39 vector is published
 and Modal-validated. When the PR lands: a `deepseek_v41` plugin adapter
-(new arch — engram layers, see `recipe/dsv41/`), then the lane.
+(new arch — engram layers, see `lanes/dsv41/`), then the lane.
 
 - Done when: a wizard lane boots DSV4.1-Flash steered on stock-ish vLLM.
 
@@ -137,7 +137,7 @@ The glm5next adapter de-fuses upstream's inter-layer `MHCFusedPostPreOp`
 behaviorally equivalent but NOT byte-identical to stock: measured
 2026-10-06 on stock vLLM 0.31.0, 0/12 greedy 400-token probes
 byte-identical, first divergence at tokens ~5–63, suite-level equivalence
-holds (numbers in `vllm-plugin/README.md`). A fusion-preserving steering
+holds (numbers in `plugins/vllm/README.md`). A fusion-preserving steering
 site — or an upstream split/fused kernel-equivalence guarantee — would make
 α=0 bit-exact. Parked; acceptance standard today is suite-level
 equivalence.

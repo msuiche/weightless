@@ -87,7 +87,7 @@ attention TP > 1. Extra knobs: `WEIGHTLESS_STEER_KERNEL` (`auto` = fused
 Triton with a start-up bit-exact self-check, `torch` fallback),
 `WEIGHTLESS_STEER_MANIFEST_DIR` (per-rank manifest: row, site, layers,
 alpha, file sha, kernel choice, and which sites ran inside each CUDA-graph
-capture). Details: `sglang-plugin/README.md`.
+capture). Details: `plugins/sglang/README.md`.
 
 ## Recipe 3 — Tensorfold (Dual-Spark, DeepSeek-V4.1)
 
@@ -155,6 +155,6 @@ data-dependent allocation — CUDA-graph safe) → validate the file fail-closed
 at load → make off byte-identical to stock → print a fired line at boot.
 The reader-conformance contract is [`spec/GLP.md`](spec/GLP.md) §"Reader
 conformance"; the canonical loader is
-`vllm-plugin/weightless_steer/container.py`; worked examples live in
-`vllm-plugin/weightless_steer/archs/`, `sglang-plugin/weightless_sglang/archs/`,
+`plugins/vllm/weightless_steer/container.py`; worked examples live in
+`plugins/vllm/weightless_steer/archs/`, `plugins/sglang/weightless_sglang/archs/`,
 and the Tensorfold PR linked in Recipe 3.

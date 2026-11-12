@@ -2,7 +2,7 @@
 """Hotfix: projective activation steering for GLM-5.3-Flash (NVFP4) on the
 sm121-patched day-0 image (``radixark/vllm-glm53-flash:sm121-v8`` — the
 stock ``vllm/vllm-openai:glm53-flash-arm64-cu130`` dies on GB10 without the
-patch stack; see recipe/glm53/README.md).
+patch stack; see lanes/glm53/README.md).
 
 Same intervention as the other lanes (spec in weightless/docs/spec/GLP.md):
 

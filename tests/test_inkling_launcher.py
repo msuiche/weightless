@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-LAUNCHER = ROOT / "recipe/inkling/start-inkling-sm121.sh"
+LAUNCHER = ROOT / "lanes/inkling/start-inkling-sm121.sh"
 MOCK = r'''#!/usr/bin/env python3
 import hashlib, json, os, pathlib, subprocess, sys
 name = pathlib.Path(sys.argv[0]).name

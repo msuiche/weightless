@@ -24,7 +24,7 @@ def main() -> int:
         return 0
     failures = 0
     checked = 0
-    for path in sorted(glob.glob(os.path.join(REPO, "recipe", "**", "*.yml"),
+    for path in sorted(glob.glob(os.path.join(REPO, "lanes", "**", "*.yml"),
                                  recursive=True)):
         try:
             doc = yaml.safe_load(open(path))

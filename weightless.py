@@ -50,6 +50,8 @@ COMMANDS = {
               "supply-chain audit of a control-vector GGUF [--json] [--expect-sha256 HEX]"),
     "bake": ([PY, os.path.join(HERE, "tools", "captain-vector", "captain_vector.py"), "bake"],
              "bake a GGUF vector into a rank-1 PEFT LoRA adapter (--base/--out required)"),
+    "lane": ([PY, os.path.join(HERE, "scripts", "lane.py")],
+             "deploy a third-party recipe with GLP: lane list | up <name> [--vector F] [--dry-run] | check <name>"),
 }
 
 

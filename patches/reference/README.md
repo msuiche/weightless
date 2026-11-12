@@ -63,7 +63,7 @@ tag; the text stack is the same file) at
 this repo 2026-09-19). This is the reference for
 `../hotfix-dsv4-steering-projective.py` (its four anchors all match) and for
 the plugin adapter pin in
-`vllm-plugin/tests/test_archs/test_dsv4.py`. On an image bump, re-pull and
+`plugins/vllm/tests/test_archs/test_dsv4.py`. On an image bump, re-pull and
 diff — drifted anchors are exactly what the fail-closed checks exist to
 catch.
 
@@ -104,7 +104,7 @@ https://raw.githubusercontent.com/vllm-project/vllm/v0.28.0/vllm/models/inkling/
 
 (md5 `a87183f109d3abeb283b1439568301cf`). This is the reference for
 `../hotfix-inkling-steering-projective.py` and for the plugin adapter
-`vllm-plugin/weightless_steer/archs/inkling.py`. NOTE: the local `../vllm`
+`plugins/vllm/weightless_steer/archs/inkling.py`. NOTE: the local `../vllm`
 checkout carries a v0.27-era inkling (`pending` annotated
 `tuple[torch.Tensor | None, InklingShortConv]`, no MoE `forward_partials`);
 v0.28.0 renamed the delta alias to `InklingDelta` (which also covers the
@@ -132,7 +132,7 @@ https://raw.githubusercontent.com/vllm-project/vllm/v0.28.0/vllm/model_executor/
 ```
 
 This is the structural reference for the qwen38 plugin adapter
-(`vllm-plugin/weightless_steer/archs/qwen38.py`): `Qwen3_5Model` inherits
+(`plugins/vllm/weightless_steer/archs/qwen38.py`): `Qwen3_5Model` inherits
 `Qwen3NextModel.forward` unchanged, so the adapter's copied layer loop pins
 against THIS file. The Modal preflight re-checks the same anchor against the
 image's own copy before any GPU spend; on an image bump, re-pull and diff.
@@ -150,7 +150,7 @@ file, pulled from `vllm/vllm-openai:hy4-preview` at
 kept there under `staging/srcdl/src/hy_v4/nvidia/model.py` and used as the
 fail-closed anchor reference for that lane's patcher). This is the reference
 for `../hotfix-hy4-steering-projective.py` and for the plugin adapter
-`vllm-plugin/weightless_steer/archs/hy4.py`.
+`plugins/vllm/weightless_steer/archs/hy4.py`.
 `ouro_v0260.py` is a **byte-identical** copy of
 `vllm/model_executor/models/ouro.py` at the vLLM v0.26.0 tag:
 
@@ -162,5 +162,5 @@ https://raw.githubusercontent.com/vllm-project/vllm/v0.26.0/vllm/model_executor/
 removed from upstream main in #49786 (~2h after the v0.26.0 image was
 built), so v0.26.0 is both the last carrying the arch and the pin target —
 this is the reference for `../hotfix-ouro-steering-projective.py` and for
-the plugin adapter `vllm-plugin/weightless_steer/archs/ouro.py` (whose
+the plugin adapter `plugins/vllm/weightless_steer/archs/ouro.py` (whose
 copied forward loop test_ouro.py pins against this file).

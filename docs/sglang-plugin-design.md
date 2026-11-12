@@ -1,6 +1,6 @@
 # Upstreaming GLP steering into SGLang: extension-point survey and recommended path
 
-Status: design doc for what ships in `sglang-plugin/`. Nine architectures have
+Status: design doc for what ships in `plugins/sglang/`. Nine architectures have
 a row; Qwen3.8-27B (one RTX 5090) and GLM-5.3-Flash (3x RTX PRO 6000,
 pipeline-parallel) are GPU-validated, the other seven are structure-tested on
 CPU. No SGLang change is needed, and none is proposed as a first step.
@@ -115,10 +115,10 @@ maintainers only if they want a named feature; per-request alpha (per-token
 alpha rows filled from the batch before each graph replay, like the vLLM
 "milestone 2" work) comes after that.
 
-Layout, mirroring `vllm-plugin/`:
+Layout, mirroring `plugins/vllm/`:
 
 ```
-sglang-plugin/
+plugins/sglang/
 ├── pyproject.toml            # entry point [sglang.srt.plugins]
 │                             #   weightless_steer = weightless_sglang.plugin:register
 ├── weightless_sglang/
@@ -229,7 +229,7 @@ path's 9.7 %; and GLM-5.3-Flash on 3x RTX PRO 6000 with PP 3, where alpha 0
 equals stock on 64 of 64 prompts, cyber32 delivery goes 8 → 31/32 with
 benign32 at 32/32, and decode stays within 5 % of stock.
 
-The CPU suite (`sglang-plugin/tests/`) checks the edit against the vLLM and HF
+The CPU suite (`plugins/sglang/tests/`) checks the edit against the vLLM and HF
 references, the recorded bits of the first release and of the GLM handler,
 every row on fakes and on SGLang's own layers and loops, and every published
 GLP file on its row and on every other row.
@@ -250,6 +250,6 @@ the sites after a weight reload from disk (which replaces the model object).
   `reduce_output`), `models/registry.py:32-45,154-157`.
 - SGLang plugin docs: `docs/docs/hardware-platforms/plugin.mdx` in the SGLang
   repository.
-- This repository: `sglang-plugin/README.md`,
-  `vllm-plugin/weightless_steer/core.py` and `archs/base.py` (the shared
+- This repository: `plugins/sglang/README.md`,
+  `plugins/vllm/weightless_steer/core.py` and `archs/base.py` (the shared
   loader and the vLLM site), `docs/vllm-plugin-design.md`, `docs/spec/GLP.md`.

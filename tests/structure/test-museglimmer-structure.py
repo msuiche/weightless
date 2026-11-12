@@ -38,7 +38,7 @@ import sys
 import tempfile
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
-RECIPE = REPO / "recipe/museglimmer"
+RECIPE = REPO / "lanes/museglimmer"
 EXAMPLE = RECIPE / ".env.museglimmer.example"
 SERVE = RECIPE / "serve-museglimmer.sh"
 
@@ -116,7 +116,7 @@ def main() -> int:
     # 2. setup.py lane wiring
     setup = load_setup()
     lane = next((l for l in setup.LANES if l.get("example", "").startswith(
-        "recipe/museglimmer/")), None)
+        "lanes/museglimmer/")), None)
     check(lane is not None, "setup.py LANES carries the museglimmer lane")
     if lane is not None:
         idx = setup.LANES.index(lane)

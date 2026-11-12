@@ -87,8 +87,8 @@ ANSI_RESET = "\033[0m"
 # start_script, hotfix (basename in patches/).
 LANES = [
     dict(name="DSV4 TP=2 serving — 2x DGX Spark, Anemll recipe",
-         example="recipe/anemll/.env.dsv4.example",
-         target="recipe/anemll/.env.dsv4",
+         example="lanes/anemll/.env.dsv4.example",
+         target="lanes/anemll/.env.dsv4",
          steer_key="WEIGHTLESS_STEER_PATH",
          steer_hook="ffn_out_pre_residual",
          structure_test="tests/structure/test-dsv4-hotfix-structure.py",
@@ -106,8 +106,8 @@ LANES = [
          watch_key="dsv4",
          port=8888),
     dict(name="Qwen TP=1 serving — single DGX Spark",
-         example="recipe/qwen/.env.qwen.example",
-         target="recipe/qwen/.env.qwen",
+         example="lanes/qwen/.env.qwen.example",
+         target="lanes/qwen/.env.qwen",
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="tests/structure/test-qwen-steering-structure.py",
          vector_repo="msuiche/Qwen3.8-27B-abliterated-cyber-GLP-49",
@@ -119,8 +119,8 @@ LANES = [
              ("lora", "lora — stock vLLM --enable-lora, no patch (validated)")],
          port=8078),
     dict(name="Qwen3.8-Flash-Next TP=2 serving — 2x DGX Spark, day-0 image",
-         example="recipe/qwen38fn/.env.qwen38fn.example",
-         target="recipe/qwen38fn/.env.qwen38fn",
+         example="lanes/qwen38fn/.env.qwen38fn.example",
+         target="lanes/qwen38fn/.env.qwen38fn",
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="tests/structure/test-qwen38fn-steering-structure.py",
          vector_repo="msuiche/Qwen3.8-Flash-Next-abliterated-cyber-GLP-47",
@@ -136,8 +136,8 @@ LANES = [
          extra_patches=["patch-qwen38fn-ple-fp8-nvfp4.py"],
          port=8079),
     dict(name="GLM-5.3-Flash TP=4 serving — 4x DGX Spark, day-0 image",
-         example="recipe/glm53/.env.glm53.example",
-         target="recipe/glm53/.env.glm53",
+         example="lanes/glm53/.env.glm53.example",
+         target="lanes/glm53/.env.glm53",
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="tests/structure/test-glm53-steering-structure.py",
          vector_repo="msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44",
@@ -153,8 +153,8 @@ LANES = [
          extra_patches=["vendor/sparse_attn_indexer_kpool_sm121.py"],
          port=8080),
     dict(name="Inkling-Small TP=2 serving — 2x DGX Spark, day-0 vLLM v0.28.0",
-         example="recipe/inkling/.env.inkling.example",
-         target="recipe/inkling/.env.inkling",
+         example="lanes/inkling/.env.inkling.example",
+         target="lanes/inkling/.env.inkling",
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="tests/structure/test-inkling-steering-structure.py",
          vector_repo="msuiche/Inkling-Small-abliterated-cyber-GLP-41",
@@ -175,8 +175,8 @@ LANES = [
                         "hotfix-inkling-sm121-relattn.py"],
          port=8082),
     dict(name="GLM-5.3-Flash TP=2 serving — 2x DGX Spark, sm121-v8, 128K",
-         example="recipe/glm53tp2/.env.glm53tp2.example",
-         target="recipe/glm53tp2/.env.glm53tp2",
+         example="lanes/glm53tp2/.env.glm53tp2.example",
+         target="lanes/glm53tp2/.env.glm53tp2",
          steer_key="WEIGHTLESS_STEER_PATH",
          structure_test="tests/structure/test-glm53-steering-structure.py",
          vector_repo="msuiche/GLM-5.3-Flash-abliterated-cyber-GLP-44",
@@ -192,8 +192,8 @@ LANES = [
          extra_patches=["vendor/sparse_attn_indexer_kpool_sm121.py"],
          port=8080),
     dict(name="Nemotron-3.5-Lightning TP=1 — single DGX Spark, NVFP4",
-         example="recipe/nemotron35/.env.nemotron35.example",
-         target="recipe/nemotron35/.env.nemotron35",
+         example="lanes/nemotron35/.env.nemotron35.example",
+         target="lanes/nemotron35/.env.nemotron35",
          steer_key="WEIGHTLESS_GLP",
          vector_repo="msuiche/Nemotron-3.5-Lightning-30B-A3B-abliterated-cyber-GLP-51-L1-51-a1.0",
          steer_modes=None,
@@ -211,8 +211,8 @@ LANES = [
          # parsers + the DFlash block-diffusion drafter natively; multimodal
          # (text+image in). No GLP vector exists for this arch yet, so the
          # wizard does not offer steering on this lane.
-         example="recipe/museglimmer/.env.museglimmer.example",
-         target="recipe/museglimmer/.env.museglimmer",
+         example="lanes/museglimmer/.env.museglimmer.example",
+         target="lanes/museglimmer/.env.museglimmer",
          steer_key="WEIGHTLESS_GLP",
          steer_modes=None,
          steering_supported=False,
@@ -240,9 +240,9 @@ LANES = [
          blocked=("vLLM #56201 (dsv41-feat) is unmerged — no native "
                   "recipe lane; serve via `serve dsv41-exl3` (MiaAI EXL3 "
                   "2.9bpw, rig-validated)"),
-         blocked_doc="recipe/dsv41/README.md",
-         example="recipe/dsv41/.env.dsv41.example",
-         target="recipe/dsv41/.env.dsv41",
+         blocked_doc="lanes/dsv41/README.md",
+         example="lanes/dsv41/.env.dsv41.example",
+         target="lanes/dsv41/.env.dsv41",
          steer_key="WEIGHTLESS_STEER_PATH",
          steer_hook="residual_stream_post_layer",
          vector_repo="msuiche/DeepSeek-V4.1-Flash-abliterated-cyber-GLP-39-L1-39-a0.5",
@@ -266,8 +266,8 @@ LANES = [
          # file is the -ffn relabel (hook_point=ffn_out_pre_residual, tensor
          # bytes intact — the 2026-09-04 transferred-vector pattern,
          # relabel_gguf.py).
-         example="recipe/anemll/.env.dsv4vx.example",
-         target="recipe/anemll/.env.dsv4vx",
+         example="lanes/anemll/.env.dsv4vx.example",
+         target="lanes/anemll/.env.dsv4vx",
          steer_key="WEIGHTLESS_STEER_PATH",
          steer_hook="ffn_out_pre_residual",
          structure_test="tests/structure/test-dsv4-hotfix-structure.py",
@@ -298,8 +298,8 @@ LANES = [
          # 2026-09-21 at vLLM 5ab628dd1), so the hook stays
          # ffn_out_pre_residual and the served vector is the same -ffn
          # relabel lane 11 uses.
-         example="recipe/dsv4vl/.env.dsv4vl.example",
-         target="recipe/dsv4vl/.env.dsv4vl",
+         example="lanes/dsv4vl/.env.dsv4vl.example",
+         target="lanes/dsv4vl/.env.dsv4vl",
          steer_key="WEIGHTLESS_STEER_PATH",
          steer_hook="ffn_out_pre_residual",
          structure_test="tests/structure/test-dsv4vl-hotfix-structure.py",
@@ -752,7 +752,7 @@ def asset_commands(lane_idx, values, ssh_host=None):
                 f"elif [ ! {q(link)} -ef {q(source)} ]; then "
                 f"rsync -a --progress --link-dest={q(source)} {q(source + '/')} {q(link + '/')}; fi", worker)
         if lane.get("local_image") and image == lane["docker_image"]:
-            add(f"verify recipe's locally built image on {label} (see recipe/glm53xl/README.md)",
+            add(f"verify recipe's locally built image on {label} (see lanes/glm53xl/README.md)",
                 "docker image inspect " + q(image), worker)
         else:
             add(f"pull Docker image on {label}: {image}", "docker pull " + q(image), worker)
@@ -962,12 +962,12 @@ def deploy_commands(lane_idx, values, ssh_host=None):
         return sync_steps
     lane = LANES[lane_idx]
     if lane.get("nodes", 1) == 1 and lane.get("remote_dir"):
-        # Single-node lanes: repo-shaped remote (recipe/<name>/, plus
+        # Single-node lanes: repo-shaped remote (lanes/<name>/, plus
         # patches/ when the lane ships a hotfix — the serve script resolves
         # it at ../../patches/).
         host = f"{user}@{ssh_host or values.get('head-ip', '<node-host>')}"
         remote = lane["remote_dir"]
-        recipe = os.path.dirname(lane["example"])  # recipe/<name>
+        recipe = os.path.dirname(lane["example"])  # lanes/<name>
         hotfix = lane.get("hotfix")
         steps = [
             (f"prepare {host}:{remote}/ (repo-shaped: recipe"
@@ -993,16 +993,16 @@ def deploy_commands(lane_idx, values, ssh_host=None):
     remote = "dspark-deploy"
     return [
         (f"prepare {host}:{remote}/",
-         ["ssh", host, f"mkdir -p {remote}/recipe/qwen {remote}/patches"]),
+         ["ssh", host, f"mkdir -p {remote}/lanes/qwen {remote}/patches"]),
         ("sync serve script + env",
-         ["scp", os.path.join(HERE, "recipe", "qwen", "serve-qwen38.sh"),
-          os.path.join(HERE, "recipe", "qwen", ".env.qwen"),
-          f"{host}:{remote}/recipe/qwen/"]),
+         ["scp", os.path.join(HERE, "lanes", "qwen", "serve-qwen38.sh"),
+          os.path.join(HERE, "lanes", "qwen", ".env.qwen"),
+          f"{host}:{remote}/lanes/qwen/"]),
         ("sync steering hotfix",
          ["scp", os.path.join(HERE, "patches", "hotfix-qwen38-steering-projective.py"),
           f"{host}:{remote}/patches/"]),
         ("boot the container",
-         ["ssh", host, f"bash {remote}/recipe/qwen/serve-qwen38.sh"]),
+         ["ssh", host, f"bash {remote}/lanes/qwen/serve-qwen38.sh"]),
     ]
 
 
@@ -1033,45 +1033,45 @@ def vector_paths(lane_idx):
 
 # remote files each lane deploys, paired with their local sources
 DEPLOY_MAP = {
-    0: [("recipe/anemll/.env.dsv4", "dspark-miaai/.env.dsv4"),
-        ("recipe/anemll/docker-compose.dsv4.yml", "dspark-miaai/docker-compose.dsv4.yml"),
-        ("recipe/anemll/start-deepseek-v4-flash-dspark.sh", "dspark-miaai/start-deepseek-v4-flash-dspark.sh"),
+    0: [("lanes/anemll/.env.dsv4", "dspark-miaai/.env.dsv4"),
+        ("lanes/anemll/docker-compose.dsv4.yml", "dspark-miaai/docker-compose.dsv4.yml"),
+        ("lanes/anemll/start-deepseek-v4-flash-dspark.sh", "dspark-miaai/start-deepseek-v4-flash-dspark.sh"),
         ("patches/hotfix-dsv4-steering-projective.py", "dspark-miaai/patches/hotfix-dsv4-steering-projective.py")],
-    1: [("recipe/qwen/serve-qwen38.sh", "dspark-deploy/recipe/qwen/serve-qwen38.sh"),
-        ("recipe/qwen/.env.qwen", "dspark-deploy/recipe/qwen/.env.qwen"),
+    1: [("lanes/qwen/serve-qwen38.sh", "dspark-deploy/lanes/qwen/serve-qwen38.sh"),
+        ("lanes/qwen/.env.qwen", "dspark-deploy/lanes/qwen/.env.qwen"),
         ("patches/hotfix-qwen38-steering-projective.py", "dspark-deploy/patches/hotfix-qwen38-steering-projective.py")],
-    2: [("recipe/qwen38fn/.env.qwen38fn", "dspark-qwen38fn/.env.qwen38fn"),
-        ("recipe/qwen38fn/start-qwen38-flash-next-dspark.sh", "dspark-qwen38fn/start-qwen38-flash-next-dspark.sh"),
+    2: [("lanes/qwen38fn/.env.qwen38fn", "dspark-qwen38fn/.env.qwen38fn"),
+        ("lanes/qwen38fn/start-qwen38-flash-next-dspark.sh", "dspark-qwen38fn/start-qwen38-flash-next-dspark.sh"),
         ("patches/hotfix-qwen38fn-steering-projective.py", "dspark-qwen38fn/patches/hotfix-qwen38fn-steering-projective.py"),
         ("patches/patch-qwen38fn-ple-fp8-nvfp4.py", "dspark-qwen38fn/patches/patch-qwen38fn-ple-fp8-nvfp4.py")],
-    3: [("recipe/glm53/.env.glm53", "dspark-glm53/.env.glm53"),
-        ("recipe/glm53/start-glm53-flash-dspark.sh", "dspark-glm53/start-glm53-flash-dspark.sh"),
+    3: [("lanes/glm53/.env.glm53", "dspark-glm53/.env.glm53"),
+        ("lanes/glm53/start-glm53-flash-dspark.sh", "dspark-glm53/start-glm53-flash-dspark.sh"),
         ("patches/hotfix-glm53-steering-projective.py", "dspark-glm53/patches/hotfix-glm53-steering-projective.py"),
         ("patches/vendor/sparse_attn_indexer_kpool_sm121.py", "dspark-glm53/patches/sparse_attn_indexer_kpool_sm121.py")],
-    4: [("recipe/inkling/.env.inkling", "dspark-inkling/.env.inkling"),
-        ("recipe/inkling/start-inkling-sm121.sh", "dspark-inkling/start-inkling-sm121.sh"),
+    4: [("lanes/inkling/.env.inkling", "dspark-inkling/.env.inkling"),
+        ("lanes/inkling/start-inkling-sm121.sh", "dspark-inkling/start-inkling-sm121.sh"),
         ("patches/hotfix-inkling-steering-projective.py", "dspark-inkling/hotfix-inkling-steering-projective.py"),
         ("patches/hotfix-inkling-gb10-load-reclaim.py", "dspark-inkling/hotfix-inkling-gb10-load-reclaim.py"),
         ("patches/hotfix-inkling-sm121-relattn.py", "dspark-inkling/hotfix-inkling-sm121-relattn.py"),
-        ("recipe/inkling/files/fa4_rel_attention-sm121.py", "dspark-inkling/files/fa4_rel_attention-sm121.py"),
-        ("recipe/inkling/files/inkling-model-gb10.py", "dspark-inkling/files/inkling-model-gb10.py"),
-        ("recipe/inkling/files/inkling-model-gb10-steered.py", "dspark-inkling/files/inkling-model-gb10-steered.py")],
-    5: [("recipe/glm53tp2/.env.glm53tp2", "dspark-glm53tp2/.env.glm53tp2"),
-        ("recipe/glm53tp2/start-glm53-flash-tp2.sh", "dspark-glm53tp2/start-glm53-flash-tp2.sh"),
+        ("lanes/inkling/files/fa4_rel_attention-sm121.py", "dspark-inkling/files/fa4_rel_attention-sm121.py"),
+        ("lanes/inkling/files/inkling-model-gb10.py", "dspark-inkling/files/inkling-model-gb10.py"),
+        ("lanes/inkling/files/inkling-model-gb10-steered.py", "dspark-inkling/files/inkling-model-gb10-steered.py")],
+    5: [("lanes/glm53tp2/.env.glm53tp2", "dspark-glm53tp2/.env.glm53tp2"),
+        ("lanes/glm53tp2/start-glm53-flash-tp2.sh", "dspark-glm53tp2/start-glm53-flash-tp2.sh"),
         ("patches/hotfix-glm53-steering-projective.py", "dspark-glm53tp2/patches/hotfix-glm53-steering-projective.py"),
         ("patches/vendor/sparse_attn_indexer_kpool_sm121.py", "dspark-glm53tp2/patches/sparse_attn_indexer_kpool_sm121.py")],
-    6: [("recipe/nemotron35/.env.nemotron35", "nemotron35-glp/recipe/nemotron35/.env.nemotron35"),
-        ("recipe/nemotron35/serve-nemotron35.sh", "nemotron35-glp/recipe/nemotron35/serve-nemotron35.sh"),
+    6: [("lanes/nemotron35/.env.nemotron35", "nemotron35-glp/lanes/nemotron35/.env.nemotron35"),
+        ("lanes/nemotron35/serve-nemotron35.sh", "nemotron35-glp/lanes/nemotron35/serve-nemotron35.sh"),
         ("patches/hotfix-nemotron35-steering-projective.py", "nemotron35-glp/patches/hotfix-nemotron35-steering-projective.py")],
-    7: [("recipe/museglimmer/.env.museglimmer", "museglimmer/recipe/museglimmer/.env.museglimmer"),
-        ("recipe/museglimmer/serve-museglimmer.sh", "museglimmer/recipe/museglimmer/serve-museglimmer.sh")],
-    9: [("recipe/anemll/.env.dsv4vx", "dspark-visionexp/.env.dsv4vx"),
-         ("recipe/anemll/docker-compose.dsv4.yml", "dspark-visionexp/docker-compose.dsv4.yml"),
-         ("recipe/anemll/start-deepseek-v4-flash-visionexp-dspark.sh", "dspark-visionexp/start-deepseek-v4-flash-visionexp-dspark.sh"),
+    7: [("lanes/museglimmer/.env.museglimmer", "museglimmer/lanes/museglimmer/.env.museglimmer"),
+        ("lanes/museglimmer/serve-museglimmer.sh", "museglimmer/lanes/museglimmer/serve-museglimmer.sh")],
+    9: [("lanes/anemll/.env.dsv4vx", "dspark-visionexp/.env.dsv4vx"),
+         ("lanes/anemll/docker-compose.dsv4.yml", "dspark-visionexp/docker-compose.dsv4.yml"),
+         ("lanes/anemll/start-deepseek-v4-flash-visionexp-dspark.sh", "dspark-visionexp/start-deepseek-v4-flash-visionexp-dspark.sh"),
          ("patches/hotfix-dsv4-steering-projective.py", "dspark-visionexp/patches/hotfix-dsv4-steering-projective.py")],
-    10: [("recipe/dsv4vl/.env.dsv4vl", "dspark-dsv4vl/.env.dsv4vl"),
-         ("recipe/dsv4vl/docker-compose.dsv4vl.yml", "dspark-dsv4vl/docker-compose.dsv4vl.yml"),
-         ("recipe/dsv4vl/start-dsv4-vl-dspark.sh", "dspark-dsv4vl/start-dsv4-vl-dspark.sh"),
+    10: [("lanes/dsv4vl/.env.dsv4vl", "dspark-dsv4vl/.env.dsv4vl"),
+         ("lanes/dsv4vl/docker-compose.dsv4vl.yml", "dspark-dsv4vl/docker-compose.dsv4vl.yml"),
+         ("lanes/dsv4vl/start-dsv4-vl-dspark.sh", "dspark-dsv4vl/start-dsv4-vl-dspark.sh"),
          ("patches/hotfix-dsv4vl-steering-projective.py", "dspark-dsv4vl/patches/hotfix-dsv4vl-steering-projective.py")],
 }
 
@@ -2480,7 +2480,7 @@ def remote_diagnose(io, host):
         io.err("crash loop: a serving container restarted "
                f"{max(int(c) for c in crash)} times — vLLM exits fast when its "
                "fabric peer is gone and the restart policy re-runs the boot.")
-        io.info("the peer gate in recipe/anemll/docker-compose.dsv4.yml holds the "
+        io.info("the peer gate in lanes/anemll/docker-compose.dsv4.yml holds the "
                 "boot instead of looping — redeploy the lane to pick it up")
     if "(no fabric address on this node)" in out:
         io.err("fabric: this node has NO 192.168.100.x address — the inter-Spark "

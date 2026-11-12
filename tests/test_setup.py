@@ -328,7 +328,7 @@ class AssetAndParkingTests(unittest.TestCase):
         self.assertNotIn("rsync model cache", commands)  # single node
         deploy = setup.deploy_commands(6, self.values, "head.local")
         text = "\n".join(shlex.join(argv) for _, argv in deploy)
-        self.assertIn("nemotron35-glp/recipe/nemotron35", text)
+        self.assertIn("nemotron35-glp/lanes/nemotron35", text)
         self.assertIn("nemotron35-glp/patches", text)
         self.assertIn("serve-nemotron35.sh", deploy[-1][1][-1])
         self.assertEqual(setup.CONTAINER_GREP[6], "nemotron35")
@@ -352,7 +352,7 @@ class AssetAndParkingTests(unittest.TestCase):
         self.assertNotIn("rsync model cache", commands)  # single node
         deploy = setup.deploy_commands(7, self.values, "head.local")
         text = "\n".join(shlex.join(argv) for _, argv in deploy)
-        self.assertIn("museglimmer/recipe/museglimmer", text)
+        self.assertIn("museglimmer/lanes/museglimmer", text)
         self.assertNotIn("hotfix", text)  # stock vLLM serves the arch natively
         self.assertIn("serve-museglimmer.sh", deploy[-1][1][-1])
         self.assertEqual(setup.CONTAINER_GREP[7], "museglimmer")

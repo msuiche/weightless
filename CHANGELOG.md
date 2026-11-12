@@ -71,7 +71,7 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 ## 2026-11-08 (SGLang plugin, Thireus fork)
 
 ### Added
-- **`sglang-plugin/`: DeepSeek-V4.1-Flash row** (`weightless_sglang/archs/dsv41.py`,
+- **`plugins/sglang/`: DeepSeek-V4.1-Flash row** (`weightless_sglang/archs/dsv41.py`,
   row `DeepseekV4ForCausalLM:deepseek_v41`; SGLang rewrites the V4.1 name to the V4
   class). It edits the 4 hyper-connection copies inside each layer's FFN post
   (`ffn_boundary.update.post`), before the next layer's Engram read, with the
@@ -102,7 +102,7 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 ## 2026-10-31
 
 ### Added
-- **GLP spec_version 3 fold-site serving** (`vllm-plugin/archs/dsv41.py`) —
+- **GLP spec_version 3 fold-site serving** (`plugins/vllm/archs/dsv41.py`) —
   `hc_fold_pre_engram` on DeepSeek-V4.1-Flash-1017: the fold materializes
   (the tree's own Engram pattern), `h = mean over the 4 hc copies`, every
   copy loses `alpha*(h.d)d`, `direction[i-1]` at layer i (post-loop for the
@@ -139,7 +139,7 @@ live in `BENCHMARK.md`; this file tracks what shipped.
   first prefill, two config groups round the fp32 cumsum differently, and the
   pick fixes the boot's greedy output for its life. Not the plugin, the load
   history, or CUDA graphs (analysis: @Thireus). `BENCHMARK.md` now carries
-  the resolution; `TROUBLESHOOTING.md` and `sglang-plugin/README.md` carry
+  the resolution; `TROUBLESHOOTING.md` and `plugins/sglang/README.md` carry
   the pinning recipe (`TRITON_CACHE_AUTOTUNING=1`, one shared
   `TRITON_CACHE_DIR`). The fixed-config fix under
   `--enable-deterministic-inference` is upstream SGLang's.
@@ -325,7 +325,7 @@ live in `BENCHMARK.md`; this file tracks what shipped.
   base-model integrity). FAQ: "Can a GLP file hide a backdoor?"
 
 ### Changed
-- `sglang-plugin/README.md` names the validated SGLang pin (`2f5c9ac43d76`)
+- `plugins/sglang/README.md` names the validated SGLang pin (`2f5c9ac43d76`)
   and the re-pin policy: upstream 0.5.21 already fails 11 structure-pin
   tests, and a newer SGLang is unsupported until the rows go green against
   it. (Post-merge follow-up on PR #4; the GLM-5.3-Flash steered-boot
@@ -334,7 +334,7 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 ## 2026-10-05
 
 ### Changed
-- **`sglang-plugin/` serves SGLang's stage-boundary layer layout**
+- **`plugins/sglang/` serves SGLang's stage-boundary layer layout**
   (`sglang.srt.layers.layer_boundary`, SGLang main since 2026-09-30) next
   to the older one, picked per rank from what the layers hold. Qwen3.8-27B
   steers through the forward batch's residual stream; GLM-5.3-Flash steers
@@ -346,7 +346,7 @@ live in `BENCHMARK.md`; this file tracks what shipped.
   fails a site that ran twice in one forward. Rows not ported yet
   (GLM-5.3, Hy4-preview, Qwen3.8-Flash-Next, Nemotron-3.5-Lightning,
   Nanbeige) are refused on stage-boundary trees. 407 CPU tests. Details:
-  `sglang-plugin/README.md`, "SGLang layouts".
+  `plugins/sglang/README.md`, "SGLang layouts".
 
 ## 2026-10-04
 
@@ -405,9 +405,9 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 ## 2026-09-26
 
 ### Added
-- **`sglang-plugin/`: GLP steering for SGLang** (dist `weightless-sglang`,
+- **`plugins/sglang/`: GLP steering for SGLang** (dist `weightless-sglang`,
   `sglang.srt.plugins` entry point, no SGLang source change): the same
-  files, `WEIGHTLESS_STEER_*` variables, loader and gates as `vllm-plugin/`,
+  files, `WEIGHTLESS_STEER_*` variables, loader and gates as `plugins/vllm/`,
   one module per architecture in `weightless_sglang/archs/`, and a fused
   Triton kernel self-checked at start-up against a torch path with the same
   bits.
@@ -460,7 +460,7 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 ## 2026-09-21
 
 ### Added
-- **Lane 12: DSV4-Vision-Exp VL TP=2** (`recipe/dsv4vl/`) — the
+- **Lane 12: DSV4-Vision-Exp VL TP=2** (`lanes/dsv4vl/`) — the
   vision-capable counterpart of lane 11. Serves the unstripped Vision-Exp
   snapshot `6821d6ad` through `DeepseekV4ForConditionalGeneration` on
   `vllm-upstream-vision:k2-topk512` (day-0 vLLM 0.28.1rc1 + PR #54566 with
@@ -538,7 +538,7 @@ live in `BENCHMARK.md`; this file tracks what shipped.
   upstream support outlook (23 entries total).
 - Lane 11 (`setup.py serve 11`): **DSV4-Vision-Exp TP=2 serving — 2x DGX
   Spark, Anemll recipe**. Same image and DeepseekV4ForCausalLM arch as lane
-  0, but its own env (`recipe/anemll/.env.dsv4vx`, tracked
+  0, but its own env (`lanes/anemll/.env.dsv4vx`, tracked
   `.env.dsv4vx.example`), compose project (`deepseek-v4-flash-visionexp`)
   and remote dir (`dspark-visionexp`), so the 0731 lane's on-rig files
   survive swaps. New start-script variant
@@ -597,7 +597,7 @@ live in `BENCHMARK.md`; this file tracks what shipped.
   Drivers must pass `chat_template_kwargs={"enable_thinking": false}` —
   this broke the first dsv4 plugin eval run before it was caught
   (`modal/out-dsv4-plugin-test/run1-thinking-on/NOTE.md`; caveat also in
-  `vllm-plugin/README.md`).
+  `plugins/vllm/README.md`).
 
 ### Blocked
 - The FP8 original checkpoint carries the vision tower (259 `vision.*`
@@ -646,7 +646,7 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 
 ### Changed
 - README: the delivery split is now explicit — `patches/hotfix-*.py` is the
-  current production mechanism; `vllm-plugin/weightless_steer/archs/` (one
+  current production mechanism; `plugins/vllm/weightless_steer/archs/` (one
   adapter per architecture, registry shadowing) is where new archs land.
 
 ## 2026-09-11
@@ -922,7 +922,7 @@ live in `BENCHMARK.md`; this file tracks what shipped.
 ### Added
 - Qwen TP=1 serving profile with projective steering; three-lane serving
   matrix (DSV4 TP=2, DSV4 TP=1 EXL3, Qwen TP=1).
-- Live Anemll recipe state vendored into `recipe/anemll`; projective
+- Live Anemll recipe state vendored into `lanes/anemll`; projective
   steering ported to the 0.25.2 stack as a boot hotfix.
 - Refusal probe tool (`scripts/probe-refusal.py`).
 

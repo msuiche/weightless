@@ -24,7 +24,7 @@ payload='{
   "temperature": 0
 }'
 
-# Known server-side flake (documented in recipe/anemll/README.md): the image
+# Known server-side flake (documented in lanes/anemll/README.md): the image
 # occasionally emits raw control characters inside JSON strings on this path.
 # One retry absorbs the flake; a second failure is a real regression and fails
 # with the byte offset + context.

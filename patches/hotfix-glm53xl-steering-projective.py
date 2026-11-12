@@ -2,7 +2,7 @@
 """Hotfix: projective activation steering for GLM-5.3 (743B flagship,
 arch ``glm_moe_dsa``) on tonyd2wild's GB10 stack (image
 ``vllm-node-tf5-glm52-b12x:probe-modded`` + the ``glm-triton`` kernel overlay
-— see recipe/glm53xl/README.md).
+— see lanes/glm53xl/README.md).
 
 Same intervention as the other lanes (spec in weightless/docs/spec/GLP.md):
 
