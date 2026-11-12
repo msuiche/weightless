@@ -4,6 +4,23 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-11-11
+
+### Added
+- **`weightless lane` — the lane executor** (`scripts/lane.py`): the first
+  consumer of the `weightless.json` convention. `lane list` shows every
+  lane in `lanes/`; `lane up <name>` clones the recipe at its pin, verifies
+  the vector sha256 fail-closed, places it per the lane's placement
+  (`config`/`env`/`self`), runs the recipe's own check then up, and reports
+  whether the boot line shows steering armed or stock. `--dry-run` prints
+  the full plan without executing. Unit-tested (`tests/test_lane.py`, 9
+  tests).
+- **captain-vector 0.8.0: `token-lens` and `firing-profile`** (derive-time
+  gates from the Beaker/Takehi weight-space learnings): what a direction
+  writes (cosine against the unembedding rows) and where in the answer it
+  fires (coefficient per position with the flare metric, the garbling
+  predictor).
+
 ## 2026-11-09
 
 ### Removed

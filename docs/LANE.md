@@ -61,6 +61,7 @@ recipe repo root when the recipe maintains its own:
 | `name` | lane name, used in output and lock files. |
 | `description` | one line. |
 | `pin.ref` | git ref the lane is developed against. |
+| `checkout` | optional path of the recipe's canonical working checkout (e.g. `~/projects/spark-ds41f`). When it exists, the launcher fetches and pins there instead of cloning to its own cache: some recipes deploy from a fixed on-node path, and a side clone is not the deployment. |
 | `pin.recommended_revision` | optional 40-hex the lane author last verified. The launcher records what it used. |
 | `glp` | the GLP steering section. The file is sectioned on purpose — future sections (model, auth, …) extend it without a schema bump. |
 | `glp.placement` | how the vector reaches the engine: `config` (the recipe reads it from a config file the launcher renders), `env` (the launcher sets environment variables), or `self` (the recipe fetches it given repo/revision/file/sha256 from its own config, which the launcher verifies and may set). |
