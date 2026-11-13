@@ -4,7 +4,8 @@
   "description": "DeepSeek-V4.1-Flash on DGX Spark (TP4 ring or TP3 triangle, TileLang, one-shot RoCE collectives). GLP spec_version 3 fold-site steering: the weightless served name runs beside the stock one.",
   "homepage": "https://github.com/christopherowen/spark-ds41f",
   "pin": {
-    "ref": "main"
+    "ref": "glp-specv3-steerfix",
+    "note": "The GLP deployment cannot run origin/main: the glp commits live on the fork. glp-specv3-steerfix adds the three boot fixes (steer_on layer propagation, draft-layer gate tolerance, capture-safe companion writer) without which the glp27 image crashes at boot and the recipe rolls back to the eager trace deployment."
   },
   "glp": {
     "placement": "config",
@@ -45,11 +46,10 @@
   },
   "verify": {
     "probe": {
-      "stock_model": "deepseek-v4.1-flash",
-      "steered_model": "deepseek-v4.1-flash-weightless",
-      "note": "A/B one refusal-class prompt across the two served names; the weightless name is the steered arm."
+      "model": "deepseek-v4.1-flash",
+      "note": "One served name, env-armed (WEIGHTLESS_STEER_PATH/ALPHA at boot). Probe one refusal-class prompt: steered = technical engagement instead of refusal. Boot-line check: 'fold-site steering active: alpha=3.500' plus SpeculativeConfig(method='dspark') and FULL CUDA-graph capture in the engine log; the eager trace fallback (vllm-ds41f-trace) serves ~13 tok/s vs 95+ tok/s — always confirm the live image with docker inspect."
     }
   },
-  "last_verified": "2026-11-11",
+  "last_verified": "2026-11-12",
   "checkout": "~/projects/spark-ds41f"
 }

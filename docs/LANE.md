@@ -97,6 +97,16 @@ recipe repo root when the recipe maintains its own:
 whatever the user added locally. The registry is a link list with freshness
 dates, not a fork of anyone's recipe.
 
+## Local overrides: `weightless.local.json`
+
+A lane directory may also carry `weightless.local.json` (gitignored). It is
+merged recursively over `weightless.json` at load time: override values win,
+dicts merge key by key. Use it for anything machine-specific that must not
+be committed — the `checkout` path, a `pin.ref` that differs from the
+committed default, or a `live` block recording the last verified live state
+(deployment commit, image tag, measured speed). `lane list` shows the
+effective (merged) values.
+
 ## Where the file lives: weightless first, recipe-repo override
 
 The convention has two locations:

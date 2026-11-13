@@ -26,6 +26,25 @@ class LaneFileTests(unittest.TestCase):
             finally:
                 L.LANES_DIR = old
 
+    def test_local_override_merges_recursively(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = self._lane_dir(td, "ok", {
+                "schema": L.SCHEMA, "name": "ok",
+                "pin": {"ref": "main", "note": "committed"},
+                "checkout": "/committed/path"})
+            with open(os.path.join(d, "weightless.local.json"), "w") as f:
+                json.dump({"pin": {"ref": "fix-branch"},
+                           "checkout": "/local/path"}, f)
+            old = L.LANES_DIR
+            L.LANES_DIR = td
+            try:
+                lane = L.load_lane("ok")
+            finally:
+                L.LANES_DIR = old
+            self.assertEqual(lane["pin"]["ref"], "fix-branch")
+            self.assertEqual(lane["pin"]["note"], "committed")
+            self.assertEqual(lane["checkout"], "/local/path")
+
     def test_load_lane_refuses_wrong_schema(self):
         with tempfile.TemporaryDirectory() as td:
             self._lane_dir(td, "bad", {"schema": "weightless/lane/0", "name": "bad"})

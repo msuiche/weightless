@@ -25,3 +25,4 @@ __pycache__/
 # pip build output
 build/
 dist/
+lanes/*/weightless.local.json

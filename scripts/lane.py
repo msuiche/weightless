@@ -28,11 +28,25 @@ WORK = os.path.join(os.path.expanduser("~"), ".cache", "weightless-lanes")
 SCHEMA = "weightless/lane/1"
 
 
+def _merge(base, over):
+    """Recursive dict merge: override values win, dicts merge key by key."""
+    for k, v in over.items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            _merge(base[k], v)
+        else:
+            base[k] = v
+
+
 def load_lane(name):
     path = os.path.join(LANES_DIR, name, "weightless.json")
     if not os.path.isfile(path):
         raise SystemExit(f"lane {name!r}: no {path}")
     lane = json.load(open(path))
+    local = os.path.join(LANES_DIR, name, "weightless.local.json")
+    if os.path.isfile(local):
+        # Machine-specific overlay (gitignored): checkout paths, pin refs,
+        # anything that must not be committed for every operator.
+        _merge(lane, json.load(open(local)))
     if lane.get("schema") != SCHEMA:
         raise SystemExit(f"lane {name!r}: schema {lane.get('schema')!r} "
                          f"!= {SCHEMA!r} (refusing)")
