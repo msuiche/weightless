@@ -96,6 +96,9 @@ def clone_at_pin(lane, ref, dry):
     a canonical on-node path, and a side cache clone is not the deployment."""
     home = lane["homepage"]
     dest = os.path.expanduser(lane.get("checkout") or os.path.join(WORK, lane["name"]))
+    if not os.path.isdir(os.path.join(dest, ".git")):
+        # the canonical checkout is absent; fall back to the cache clone
+        dest = os.path.join(WORK, lane["name"])
     if os.path.isdir(os.path.join(dest, ".git")):
         if dry:
             print(f"  $ git -C {dest} fetch origin {ref} && git checkout <pin> (existing checkout)")
@@ -105,7 +108,6 @@ def clone_at_pin(lane, ref, dry):
         rev = run(["git", "-C", dest, "rev-parse", "HEAD"]).stdout.strip()
         print(f"  checkout {dest} pinned: {rev[:12]}")
         return dest
-    dest = os.path.join(WORK, lane["name"])
     if dry:
         print(f"  $ git clone --depth 50 {home} {dest} (or fetch + checkout {ref})")
         return dest

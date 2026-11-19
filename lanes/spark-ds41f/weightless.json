@@ -2,25 +2,15 @@
   "schema": "weightless/lane/1",
   "name": "spark-ds41f",
   "description": "DeepSeek-V4.1-Flash on DGX Spark (TP4 ring or TP3 triangle, TileLang, one-shot RoCE collectives). GLP spec_version 3 fold-site steering: the weightless served name runs beside the stock one.",
-  "homepage": "https://github.com/christopherowen/spark-ds41f",
+  "homepage": "https://github.com/msuiche/spark-ds41f",
   "pin": {
     "ref": "glp-specv3-steerfix",
-    "note": "The GLP deployment cannot run origin/main: the glp commits live on the fork. glp-specv3-steerfix adds the three boot fixes (steer_on layer propagation, draft-layer gate tolerance, capture-safe companion writer) without which the glp27 image crashes at boot and the recipe rolls back to the eager trace deployment."
+    "note": "The GLP deployment cannot run origin/main: the glp commits live on the fork (msuiche/spark-ds41f), which is why homepage points there; upstream is christopherowen/spark-ds41f. glp-specv3-steerfix adds the three boot fixes (steer_on layer propagation, draft-layer gate tolerance, capture-safe companion writer) without which the glp27 image crashes at boot and the recipe rolls back to the eager trace deployment."
   },
   "glp": {
-    "placement": "config",
-    "config": {
-      "path": "config/cluster.json",
-      "key": "glp",
-      "fields": {
-        "repo": "repo",
-        "revision": "revision",
-        "file": "file",
-        "sha256": "sha256",
-        "served_model_name": "served_model_name"
-      }
-    },
-    "note": "The recipe pins repo/revision/file/sha256 in config/cluster.json and its doctor validates the vector on every node before launch. The default serves msuiche/DeepSeek-V4.1-Flash-1017-abliterated-cyber-GLP-27-L11-37-a3.5 (GLP spec 3, L11-37, alpha 3.5)."
+    "placement": "self",
+    "self": {},
+    "note": "At the pin, GLP is env-armed in config/cluster.json (WEIGHTLESS_STEER_PATH=/vectors/dsv41-perlayer-dirs-ffn.pt, WEIGHTLESS_STEER_ALPHA=3.5) with the vector pre-staged on every node; the recipe's doctor validates it before launch. The default serves msuiche/DeepSeek-V4.1-Flash-1017-abliterated-cyber-GLP-27-L11-37-a3.5 (GLP spec 3, L11-37, alpha 3.5)."
   },
   "commands": {
     "check": [
@@ -50,6 +40,6 @@
       "note": "One served name, env-armed (WEIGHTLESS_STEER_PATH/ALPHA at boot). Probe one refusal-class prompt: steered = technical engagement instead of refusal. Boot-line check: 'fold-site steering active: alpha=3.500' plus SpeculativeConfig(method='dspark') and FULL CUDA-graph capture in the engine log; the eager trace fallback (vllm-ds41f-trace) serves ~13 tok/s vs 95+ tok/s — always confirm the live image with docker inspect."
     }
   },
-  "last_verified": "2026-11-12",
+  "last_verified": "2026-11-19",
   "checkout": "~/projects/spark-ds41f"
 }
