@@ -40,6 +40,5 @@
       "note": "One served name, env-armed (WEIGHTLESS_STEER_PATH/ALPHA at boot). Probe one refusal-class prompt: steered = technical engagement instead of refusal. Boot-line check: 'fold-site steering active: alpha=3.500' plus SpeculativeConfig(method='dspark') and FULL CUDA-graph capture in the engine log; the eager trace fallback (vllm-ds41f-trace) serves ~13 tok/s vs 95+ tok/s — always confirm the live image with docker inspect."
     }
   },
-  "last_verified": "2026-11-19",
-  "checkout": "~/projects/spark-ds41f"
+  "last_verified": "2026-11-19"
 }
