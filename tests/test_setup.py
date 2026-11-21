@@ -26,6 +26,24 @@ router = load("router", ROOT / "scripts/dspark-router.py")
 
 
 class SetupTests(unittest.TestCase):
+    def test_tool_smoke_checks_every_call(self):
+        valid = {"type": "function", "function": {
+            "name": "get_weather", "arguments": json.dumps({"city": "Paris"})}}
+        with tempfile.TemporaryDirectory() as tmp:
+            curl = Path(tmp) / "curl"
+            curl.write_text('#!/bin/sh\nprintf "%s\\n" "$TEST_RESPONSE"\n')
+            curl.chmod(0o755)
+            env = dict(os.environ, PATH=tmp + os.pathsep + os.environ["PATH"])
+            for second, expected in [({"city": "Paris"}, 0), ({}, 1), ({"city": None}, 1),
+                                     ("city", 1)]:
+                with self.subTest(second=second):
+                    calls = [valid, {"type": "function", "function": {
+                        "name": "get_weather", "arguments": json.dumps(second)}}]
+                    env["TEST_RESPONSE"] = json.dumps({"choices": [{"message": {"tool_calls": calls}}]})
+                    result = subprocess.run(["bash", str(ROOT / "tests/smoke/03-tool-call.sh")],
+                                            env=env, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+
     def test_chat_smoke_rejects_reasoning_leaked_into_answer(self):
         with tempfile.TemporaryDirectory() as tmp:
             curl = Path(tmp) / "curl"

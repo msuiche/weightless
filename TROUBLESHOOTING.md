@@ -53,6 +53,20 @@ Symptom → likely cause, in the order to check:
    Fix: serve glm5next with stock vLLM ≥0.30 (upstream since PR #53906,
    verified 0.31.0) — no breakable path. See lanes/glm53 README.
 
+## One tool call succeeds and the next is missing an argument
+
+On DeepSeek V4.1 Flash 1017 with GLP-27 v3, a two-file read produced one
+valid call followed by a call with empty arguments. The client rejected the
+second call because the file path was required. The final assistant reply
+contained malformed DSML text. The stock served name completed the same task.
+The steered route also completed a single forced tool call, so that check alone
+misses this failure.
+
+Use the stock served name for affected workflows. To diagnose a recurrence,
+compare the structured arguments in the server response with those received by
+the client. Distinguishing generation from parsing also requires the generated
+tokens for the failed turn. Treat tool markup in assistant text as text.
+
 ## Spark wedges (silent freeze)
 
 The known GB10 failure class: the journal stops mid-entry with no panic, no
