@@ -52,15 +52,22 @@ except json.JSONDecodeError as e:
   break
 done
 
-echo "$resp" | python3 -c '
+printf "%s\n" "$resp" | python3 -c '
 import json, sys
 d = json.loads(sys.stdin.read())
 m = d["choices"][0]["message"]
-calls = m.get("tool_calls") or []
-assert calls, "no tool_calls in response: %s" % json.dumps(m)[:400]
-fn = calls[0]["function"]
-assert fn["name"] == "get_weather", "unexpected tool: %s" % fn["name"]
-args = json.loads(fn["arguments"])
-assert "city" in args, "bad arguments: %s" % fn["arguments"]
-print("PASS: tool call get_weather(%s)" % json.dumps(args))
-' || { echo "FAIL: tool-call assertion failed"; echo "$resp" | head -c 800; exit 1; }
+calls = m.get("tool_calls")
+if not isinstance(calls, list) or not calls:
+    sys.exit("FAIL: expected at least one structured tool call")
+for index, call in enumerate(calls, start=1):
+    fn = call.get("function") if isinstance(call, dict) else None
+    if not isinstance(fn, dict) or call.get("type") != "function" or fn.get("name") != "get_weather":
+        sys.exit(f"FAIL: tool call {index} must be a get_weather function call")
+    try:
+        args = json.loads(fn["arguments"])
+    except (KeyError, TypeError, ValueError):
+        sys.exit(f"FAIL: tool call {index} has invalid JSON arguments")
+    if not isinstance(args, dict) or not isinstance(args.get("city"), str) or not args["city"].strip():
+        sys.exit(f"FAIL: tool call {index} requires a nonempty string city")
+print(f"PASS: validated {len(calls)} get_weather tool call(s)")
+'
