@@ -529,6 +529,36 @@ above, then reads the file back and asserts the round-trip: layer ids written
 verbatim, fp32, 1-D, exact tensor equality, and that `mode` and `hook_point`
 survived. It refuses layer 0 rather than emitting `direction.0`.
 
+## Calibrating the dose
+
+A file's `glp.alpha_default` is a claim about behaviour, and the refusal
+ladder alone cannot carry it. The dose that clears a refusal suite can
+derail behaviour the suite never exercises. Measured on GLP-27
+(DeepSeek-V4.1-Flash-1017, this spec's fold site): at the published
+α 3.5, auto tool calling collapses — the model enters the tool channel
+and never exits it, burning the token budget with no call and no content —
+while forced `tool_choice` still works, which is how it hides. At
+α 2.0 the refusal effect is retained and tool calling passes. The
+dose-response is a cliff, not a slope: clean at 1.5 and 2.0, boundary
+corruption (markup inside argument strings, empty and dropped arguments)
+at 2.5, severe at 3.0, total at 3.5. No refusal-only ladder shows any of
+this.
+
+Before an `alpha_default` is published, the dose must also pass, at that
+dose, on the target checkpoint:
+
+- a tool-calling gate: auto `tool_choice` (never only forced), single and
+  parallel calls, multi-turn continuation after a tool result, and
+  schema-shaped arguments — scored on the calls emitted, not on prose
+  about calls;
+- a finish-reason check on plain generation: no `finish_reason=length`
+  vanish (budget burned, no content) beyond the stock model's own rate
+  at the same budgets.
+
+Record both in `glp.validation` beside the refusal ladder, with the suite
+named. A dose that has only been refusal-gated is an uncalibrated dose,
+whatever its refusal numbers say.
+
 ## Quantised base models
 
 The file carries no weights, so it pairs with **any quantisation of the same
