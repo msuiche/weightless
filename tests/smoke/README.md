@@ -69,7 +69,7 @@ sh tests/smoke/run.sh
 |---|---|
 | `01-endpoint.sh` | `/v1/models` answers and lists our model id |
 | `02-chat.sh` | a chat completion follows the exact `pong` instruction, without reasoning leaking into the answer |
-| `03-tool-call.sh` | the model emits a well-formed tool call (omp's foundation) |
+| `03-tool-call.sh` | the response contains structured tool calls and every call supplies the required city |
 | `04-omp-headless.sh` | `omp -p` drives our endpoint to create a file in a scratch dir |
 
 Exit code 2 from a test means SKIP (e.g. omp not installed); `run.sh` only

@@ -1525,7 +1525,7 @@ def run_suite(io, base, model):
         canned = {
             "01-endpoint.sh": f"PASS: {model} listed at {base}",
             "02-chat.sh": "PASS: chat completion returned: pong",
-            "03-tool-call.sh": 'PASS: tool call get_weather({"city": "Paris"})',
+            "03-tool-call.sh": "PASS: validated 1 get_weather tool call(s)",
             "04-omp-headless.sh": f"PASS: omp agent loop created omp_probe.txt via {PROVIDER}/{model}",
         }
         for t in tests:
