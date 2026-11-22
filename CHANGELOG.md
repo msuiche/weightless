@@ -4,6 +4,64 @@ Date-based sections — the repo has no versioned releases yet; captain-vector
 carries its own version numbers. Newest first. Steering-effectiveness numbers
 live in `BENCHMARK.md`; this file tracks what shipped.
 
+## 2026-11-22
+
+### Action required (serving GLP vectors)
+- **Serve GLP-27 at alpha 2.0 for tool-calling traffic, not the published
+  3.5.** Measured on the 4x DGX Spark tp4-ring deployment (kkref image,
+  DeepSeek-V4.1-Flash-1017): auto `tool_choice` at temp 0.3 scored 2/6 at
+  alpha 3.5 against 6/6 stock — prose instead of calls — and 6/6 at 2.0
+  with the refusal effect retained (weaponize32 8/32 vs 4/32). Forced
+  `tool_choice` still works at 3.5, which is how a refusal-only
+  qualification misses it. The GLP-27 model card now carries a "Serving
+  dose" section with these numbers.
+- **Do not serve tool traffic at temp 1.0 defaults.** Recipes that mirror
+  the model card (DeepSeek-V4.1-Flash-1017 ships no
+  `generation_config.json`) hand every request that sets no sampling temp
+  1.0/top_p 1.0, which corrupts structured tool markup on the *stock*
+  name — mangled DSML envelopes, doubled quotes, empty invokes. Ship
+  0.3/0.95; explicit per-request temperature still overrides.
+- **Arm from the GLP GGUF only.** A metadata-free `.pt` export is how the
+  reference deployment ran GLP-39-L1-39 directions at alpha 3.5 — 4.7x
+  that vector's published 0.75 — for ten days under a GLP-27 label. The
+  boot line (`fold-site steering active: alpha=... layers=NN`) is the only
+  reliable identity check on current images: GLP-27 shows `layers=27`.
+
+### Added
+- **GLP.md: "Calibrating the dose" (#29, @TysAIs).** A published
+  `alpha_default` must now pass, at that dose, a tool-calling gate (auto
+  `tool_choice` — never only forced — single and parallel calls,
+  multi-turn continuation, schema-shaped arguments, scored on the calls
+  emitted) plus a finish-reason check on plain generation, both recorded
+  in `glp.validation` beside the refusal ladder. A refusal ladder cannot
+  see dose-graded structured-emission collapse; the production failure
+  above is the case in point.
+
+### Fixed
+- **Smoke test `03-tool-call.sh` checked only `tool_calls[0]` (#28,
+  @loanengine99-jpg).** A response with one valid call followed by an
+  empty-arguments call false-passed. The checker now validates function,
+  type and required arguments on every call and names failures by
+  position, with a regression fixture for the three malformed-second-call
+  shapes. TROUBLESHOOTING gained the signature (valid call, then `{}`
+  arguments, malformed DSML in prose) and the stock workaround.
+- **Lane hygiene:** `lanes/spark-ds41f/weightless.json` no longer carries
+  a machine-local `checkout` path; per-machine state lives in the
+  gitignored `weightless.local.json`.
+
+### spark-ds41f recipe
+- **Upstream PR christopherowen/spark-ds41f#1319:** `generation_defaults`
+  0.3/0.95, and the `glp` block repinned from GLP-39 to the GLP-27 GGUF
+  (revision `4d570926`, sha256 `24e97d41...`), with `setup.md` staging
+  instructions to match.
+- **Fork `glp-specv3-steerfix` `c6e14b10`:** steer-ctrl `{"off": true}`
+  zeroed `model._steer_alpha` and `_ds41_load_steer` never refilled it,
+  so an off-to-re-arm sequence ran writer-only steering — the under-dose
+  spec v3 forbids — until a process restart. `_ds41_load_steer` now
+  refills `_steer_alpha` from `_steer_alpha_val`. Current kkref images
+  keep the bug until the next rebuild: treat `{"off": true}` as
+  restart-to-undo.
+
 ## 2026-11-11
 
 ### Added
