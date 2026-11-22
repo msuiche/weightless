@@ -5,12 +5,12 @@
   "homepage": "https://github.com/msuiche/spark-ds41f",
   "pin": {
     "ref": "glp-specv3-steerfix",
-    "note": "The GLP deployment cannot run origin/main: the glp commits live on the fork (msuiche/spark-ds41f), which is why homepage points there; upstream is christopherowen/spark-ds41f. glp-specv3-steerfix adds the three boot fixes (steer_on layer propagation, draft-layer gate tolerance, capture-safe companion writer) without which the glp27 image crashes at boot and the recipe rolls back to the eager trace deployment."
+    "note": "The GLP deployment cannot run origin/main: the glp commits live on the fork (msuiche/spark-ds41f), which is why homepage points there; upstream is christopherowen/spark-ds41f. glp-specv3-steerfix adds the three boot fixes (steer_on layer propagation, draft-layer gate tolerance, capture-safe companion writer) without which the glp27 image crashes at boot and the recipe rolls back to the eager trace deployment. c6e14b10 also restores fold alpha on steer-ctrl reloads after off."
   },
   "glp": {
     "placement": "self",
     "self": {},
-    "note": "At the pin, GLP is env-armed in config/cluster.json (WEIGHTLESS_STEER_PATH=/vectors/dsv41-perlayer-dirs-ffn.pt, WEIGHTLESS_STEER_ALPHA=3.5) with the vector pre-staged on every node; the recipe's doctor validates it before launch. The default serves msuiche/DeepSeek-V4.1-Flash-1017-abliterated-cyber-GLP-27-L11-37-a3.5 (GLP spec 3, L11-37, alpha 3.5)."
+    "note": "At the pin, GLP is env-armed in config/cluster.json (WEIGHTLESS_STEER_PATH=/vectors/dsv41-perlayer-dirs-ffn.pt, WEIGHTLESS_STEER_ALPHA=2.0) with the vector pre-staged on every node; the recipe's doctor validates it before launch. The boot file carries GLP-27-L11-37 directions converted from the pinned GGUF (sha256 24e97d41a9a4f77adad78ff4cb888cb4e339eb62151dbf37a7fcd3ea30eb442e). The vector's alpha_default 3.5 is for refusal evaluation; the deployment serves 2.0 for tool-calling traffic (6/6 auto tool_choice at 2.0 vs 2/6 at 3.5). Upstream PR christopherowen/spark-ds41f#1319 adds first-class glp.alpha rendering on main."
   },
   "commands": {
     "check": [
@@ -37,8 +37,8 @@
   "verify": {
     "probe": {
       "model": "deepseek-v4.1-flash",
-      "note": "One served name, env-armed (WEIGHTLESS_STEER_PATH/ALPHA at boot). Probe one refusal-class prompt: steered = technical engagement instead of refusal. Boot-line check: 'fold-site steering active: alpha=3.500' plus SpeculativeConfig(method='dspark') and FULL CUDA-graph capture in the engine log; the eager trace fallback (vllm-ds41f-trace) serves ~13 tok/s vs 95+ tok/s — always confirm the live image with docker inspect."
+      "note": "One served name, env-armed (WEIGHTLESS_STEER_PATH/ALPHA at boot). Probe one refusal-class prompt: steered = technical engagement instead of refusal. Boot-line check: 'fold-site steering active: alpha=2.000 layers=27' — layers=27 is the GLP-27 identity check; layers=39 means a stale GLP-39 export. Also require SpeculativeConfig(method='dspark') and FULL CUDA-graph capture in the engine log; the eager trace fallback (vllm-ds41f-trace) serves ~13 tok/s vs 95+ tok/s — always confirm the live image with docker inspect. Verify tool calling with auto tool_choice, not only forced: 3.5 passes forced calls while auto calls degrade."
     }
   },
-  "last_verified": "2026-11-19"
+  "last_verified": "2026-11-22"
 }
