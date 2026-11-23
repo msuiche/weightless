@@ -99,10 +99,10 @@ Standard GGUF v3. Tensor convention is llama.cpp's, unchanged:
 
 | | |
 |---|---|
-| tensor names | `direction.<N>`, `N >= 1` — `direction.0` is invalid. Rank-k files add `direction.<N>.<j>`, j = 1..k−1 (see *Rank-k* below). |
+| tensor names | `direction.<N>`, `N >= 1` — `direction.0` is invalid **except** for `hook_point = residual_stream_post_layer`, where it is expressible and producer-gated (never emitted by default). Rank-k files add `direction.<N>.<j>`, j = 1..k−1 (see *Rank-k* below). |
 | dtype | `F32` |
 | shape | 1-D, `n_embd`, identical across all tensors |
-| layer mapping | **`direction.N` applies at layer `N`.** No offset. Layer 0 cannot be expressed. |
+| layer mapping | **`direction.N` applies at layer `N`.** No offset. `direction.0` applies at the output of layer 0, and only for `residual_stream_post_layer`; fold-site mappings cannot express it. |
 
 ### The layer mapping, stated flatly because we got it wrong
 
@@ -360,7 +360,11 @@ A conforming reader **must**:
 1. Read `glp.mode`. Treat absence as `add`.
 2. **Fail** on a value it does not implement. Never fall back to `add`.
 3. **Fail** if `glp.hook_point` names a hook it does not apply at.
-4. Reject `direction.0` and apply `direction.N` at layer `N`.
+4. Reject `direction.0` unless the file's `hook_point` is
+   `residual_stream_post_layer`; in that case apply `direction.0` at the output
+   of layer 0. Apply `direction.N` at layer `N` in all cases. Readers that
+   implement no layer-0 apply must reject the file rather than silently skip
+   `direction.0` — a silent skip is a partial apply, and it is invisible.
 5. Not fold `alpha` into the data in `project` mode.
 6. Refuse to merge a `project` file with any other control vector. Elementwise
    summing is meaningful for additive vectors only; two projections do not
@@ -527,7 +531,11 @@ instead of a data multiplier.
 refusal-research repo) — writes the metadata
 above, then reads the file back and asserts the round-trip: layer ids written
 verbatim, fp32, 1-D, exact tensor equality, and that `mode` and `hook_point`
-survived. It refuses layer 0 rather than emitting `direction.0`.
+survived. It refuses layer 0 rather than emitting `direction.0` — layer 0 stays
+producer-gated: expressible for `residual_stream_post_layer` since issue #11,
+but never emitted by default. Producers that opt in must have a validated
+direction at layer 0; per-layer fitting there is where the noise lives (the
+layer-0 fit fails the shuffled-label null).
 
 ## Calibrating the dose
 
