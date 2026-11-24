@@ -59,7 +59,7 @@ that accept TP. When steering is on, every rank logs a line like this one;
 check it:
 
 ```
-weightless GLP steering active (sglang): source=env tp_rank=0 layers=10..58 (49; 12 full-attn, 37 linear) alpha=1.000 hook=residual_stream_post_layer file_sha256=... diag=0 pp_rank=0 row=Qwen3_5ForConditionalGeneration install=hook site=decoder-layer output (residual stream) width=5120 layout=stage-boundary kernel=triton (auto: fused Triton kernel, start-up self-check passed (width 5120, with residual))
+weightless GLP steering active (sglang): source=env tp_rank=0 layers=10..58 (49; 12 full-attn, 37 linear) alpha=1.000 hook=residual_stream_post_layer file_sha256=... diag=0 per_request=0 pp_rank=0 row=Qwen3_5ForConditionalGeneration install=hook site=decoder-layer output (residual stream) width=5120 layout=stage-boundary kernel=triton (auto: fused Triton kernel, start-up self-check passed (width 5120, with residual))
 ```
 
 `layout=` names the SGLang layer layout the sites were installed on (see
@@ -85,9 +85,76 @@ the variable and also runs stock, so no log line means no steering.
 | `WEIGHTLESS_STEER_DIAG` | unset | `1`: eager-only per-layer statistics of the edit (use with `--disable-cuda-graph`) |
 | `WEIGHTLESS_STEER_DIAG_DIR` | the working directory | where the statistics go |
 | `WEIGHTLESS_STEER_HC_COPIES` | `mean` | DeepSeek-V4.1 only: how the edit lands on the 4 hyper-connection copies. `mean`: every copy gets the same subtraction, alpha times the mean's component along the direction (the mean is projected, the copy differences stay). `each`: every copy is projected on its own (its mean is projected too). See Architectures |
+| `WEIGHTLESS_STEER_PER_REQUEST` | `0` | `1`: one strength per request instead of the scalar above. Needs an SGLang build that carries per-request GLP alpha (upstream SGLang does not), launched with `--glp-alpha-per-request`; `WEIGHTLESS_STEER_ALPHA` must be `0` (the engine's per-row vector is the only strength). See Per-request alpha |
 
 `SGLANG_PLUGINS` is SGLang's own optional allowlist; if you set it, include
 `weightless_steer`.
+
+## Per-request alpha
+
+With `WEIGHTLESS_STEER_PER_REQUEST=1` the strength is data, one value per
+token row, instead of the scalar `WEIGHTLESS_STEER_ALPHA`. It needs an SGLang
+build that carries per-request GLP alpha, which upstream SGLang does not: the
+`sglang.srt.glp_alpha` module, the `--glp-alpha-per-request` server flag, and
+two `ForwardBatch` fields on every forward, `glp_alpha_rows` (float32, one
+value per token row, in `batch.reqs` order) and `glp_any_steered` (whether
+any row of the forward is steered). The wrapper on the backbone's forward
+binds them for that forward, and every site passes the row vector to the
+edit (a per-stream site without its own edit gives each token's value to
+each of its streams). The kernels read `alpha[row]` / `alpha[token]`.
+
+What the plugin does in this mode:
+
+- an eager forward whose rows are all 0 runs no edit: every site hands its
+  stream on unchanged (on DeepSeek-V4.1 the HcState itself, so SGLang's own
+  precomputed next input is kept; a stage-boundary hook row still completes
+  the layer's output first, the collective the next layer would otherwise
+  run);
+- every other forward runs the edit on every row: an eager forward with any
+  row steered (the alpha-0 rows of a mixed batch included) and every decode
+  or verify CUDA-graph replay, because a capture always records the edit
+  (its rows are 0, so that a replay can steer). There a row at 0 comes back
+  bit for bit as it went in, -0.0 included, even when its coefficient is not
+  finite (a zero-padded graph row holds garbage), in both torch paths and
+  both fused kernels. It is not SGLang's stock code path, though: every
+  decode step pays for the edit, and on DeepSeek-V4.1 the next input is
+  recomputed from the copies for every row. The plugin's CPU tests do not
+  show that an alpha-0 request served that way reads exactly as on a stock
+  engine; measure it on your model before relying on it;
+- a capture that arrives without the vector fails the boot rather than
+  record an unsteered graph. An eager forward without it fails closed too,
+  unless it has no token rows or is SGLang's FlashInfer autotune warm-up,
+  which the engine runs at start-up on a dummy batch of its own (its
+  pipeline-parallel DeepGEMM warm-up, `SGLANG_PP_PARALLEL_DEEPGEMM_WARMUP=1`,
+  is not marked that way and fails the boot); and so does a backbone forward
+  whose forward batch cannot be found;
+- a row vector that is not a float32 vector on the stream's device, or whose
+  length is not the stream's token count, fails closed;
+- with `auto` or `triton`, the start-up self-check also runs the per-row
+  lane of the row's kernel against the torch path: a mixed vector with the
+  4.0 ceiling, an all-zero row at a non-zero alpha, and alpha-0 rows that
+  hold -0.0 or values whose coefficient overflows, which must come back as
+  they went in. Scalar mode never compiles or checks that lane.
+
+Each rank arms itself: once its sites are installed it tells the engine
+(`sglang.srt.glp_alpha.mark_per_request_armed`), which refuses a non-zero
+alpha in that process until then, and logs `weightless per-request alpha
+armed (...)`. The boot line says `per_request=1`; the manifest records
+`per_request`, `per_request_armed` (true once the engine was told) and, per
+capture, `fired_at_capture[].per_request` and `fired_at_capture[].rows` (the
+vector's length). A speculative-decoding draft model stays stock, as in
+scalar mode.
+
+Refused at boot: per-request mode with a non-zero server alpha
+(`WEIGHTLESS_STEER_ALPHA`, or the file's `glp.alpha_default` when it is
+unset), with prefill CUDA graphs on (SGLang turns them on by default on
+CUDA: launch with `--disable-prefill-cuda-graph` unless your configuration
+already resolves them off), with `SGLANG_RAGGED_VERIFY_MODE` other than
+`static`, with `WEIGHTLESS_STEER_DIAG=1`, without the engine's
+`--glp-alpha-per-request`, on an SGLang whose `ForwardBatch` does not declare
+the two fields, or on a rank that holds no backbone (it could not arm while
+the others do); and a scalar plugin on an engine that carries rows (it would
+steer every request at the scalar alpha while the client asked for Off).
 
 ## Kernel
 
@@ -278,8 +345,10 @@ SGLang package folders for the structure tests, os.pathsep separated). The
 tests that run SGLang's own code need SGLang in the environment; the
 GLM-5.3-Flash and Qwen3.8-27B ones build the real model classes from the two
 config files (`tests/test_archs/sglang_tiny.py`) and run on either SGLang
-layout. Every skip names what is missing. The suite has 481 tests (407
-before the DeepSeek-V4.1 row; its own are `tests/test_archs/test_dsv41.py`, `test_dsv41_stages.py`
+layout. Every skip names what is missing. The suite has 557 tests (481
+before per-request alpha, whose own are `tests/test_per_request.py` and
+`tests/test_archs/test_per_request_tiny.py`; 407
+before the DeepSeek-V4.1 row, whose own are `tests/test_archs/test_dsv41.py`, `test_dsv41_stages.py`
 and, for spec_version 3 files, `test_dsv41_fold.py`). On
 a CPU host, with `WEIGHTLESS_TEST_GLP_DIR`, the GLM-5.3-Flash and Qwen3.8-27B
 configs and both trees in `WEIGHTLESS_TEST_SGLANG_TREES` (no
@@ -287,7 +356,8 @@ configs and both trees in `WEIGHTLESS_TEST_SGLANG_TREES` (no
 b62df575 (the older layout), 64 on 15aa0b5a (stage boundaries: the rows not
 ported to it skip their older-layout tests). The DeepSeek-V4.1 tests also run
 SGLang's own V4.1 mHC boundary code when SGLang is importable, and the fused
-hc-mean kernel under Triton's CPU interpreter (`TRITON_INTERPRET=1`).
+hc-mean kernel, with both kernels' per-row lane, under Triton's CPU
+interpreter (`TRITON_INTERPRET=1`).
 
 The structure tests pin what each row relies on in SGLang's model files, and
 upstream moves fast. A newer SGLang is not supported until the rows are

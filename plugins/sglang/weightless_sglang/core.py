@@ -87,7 +87,10 @@ def steer_delta(x: torch.Tensor, r, d: torch.Tensor, alpha: torch.Tensor) -> tor
     """Return x' such that x' + r == (x + r) - alpha * ((x + r) . d) d.
 
     x, r: [..., H] (r may be None: then the stream is x itself).
-    d: fp32 [H] unit direction. alpha: fp32 0-d tensor. The math runs in
+    d: fp32 [H] unit direction. alpha: fp32 0-d tensor (one strength for the
+    batch) or a tensor with one value per row of x, shaped like x's leading
+    dimensions; with one value per row, a row at 0 is returned as it is.
+    The math runs in
     fp32 and rounds once to x.dtype. float64 inputs (used by the tests to
     compare against the exact form) use a plain float64 dot product.
     This is one pass over all rows; ``steer_rows`` is the bounded-memory
@@ -103,9 +106,16 @@ def steer_delta(x: torch.Tensor, r, d: torch.Tensor, alpha: torch.Tensor) -> tor
         h = xf + r.to(ct)
     c = dot_fixed(h, d) if ct == torch.float32 else h @ d  # [...]
     del h
-    t = (alpha.to(ct) * c).unsqueeze(-1)
+    a = alpha.to(ct)
+    t = (a * c).unsqueeze(-1)
     td = t * d
-    return torch.sub(xf, td, out=td).to(x.dtype)  # xf - t d, written over td
+    out = torch.sub(xf, td, out=td).to(x.dtype)  # xf - t d, written over td
+    if a.dim():
+        # Per-row alpha: a row at 0 comes back as it went in, bit for bit
+        # (-0.0 included, and the garbage of a zero-padded graph row, whose
+        # coefficient may not be finite: 0 * inf would be NaN).
+        torch.where((a == 0).unsqueeze(-1), x, out, out=out)
+    return out
 
 
 # Bounded memory for the torch path. Per row element, one pass allocates at
@@ -127,9 +137,22 @@ def steer_rows(x: torch.Tensor, r, d: torch.Tensor, alpha: torch.Tensor) -> torc
     """``steer_delta`` over x's rows (all leading dims flattened), at most
     ``chunk_rows(W)`` rows at a time. The same bits as one pass, because
     every row is computed on its own. The slice count depends only on x's
-    shape, so the loop is fixed for a captured shape."""
+    shape, so the loop is fixed for a captured shape.
+
+    ``alpha`` is a 0-d tensor or one value per row of x; a per-row alpha is
+    sliced with the rows it belongs to."""
     W = x.shape[-1]
     n = x.numel() // W if W else 0
+    per_row = alpha.dim() > 0
+    if per_row and alpha.numel() != n:
+        raise SiteError(
+            f"weightless: per-row alpha has {alpha.numel()} values for {n} rows; "
+            f"the forward's row vector does not match its stream. Failing closed."
+        )
+    if per_row:
+        # One value per row of this stream: keep x's own leading shape so the
+        # multiply broadcasts per row (a 3-D [T, S, H] stream gets [T, S]).
+        alpha = alpha.reshape(x.shape[:-1])
     step = chunk_rows(W)
     if n <= step:
         return steer_delta(x, r, d, alpha)
@@ -138,7 +161,8 @@ def steer_rows(x: torch.Tensor, r, d: torch.Tensor, alpha: torch.Tensor) -> torc
     out = torch.empty_like(x2)
     for s in range(0, n, step):
         e = min(n, s + step)
-        out[s:e].copy_(steer_delta(x2[s:e], None if r2 is None else r2[s:e], d, alpha))
+        a = alpha.reshape(n)[s:e] if per_row else alpha
+        out[s:e].copy_(steer_delta(x2[s:e], None if r2 is None else r2[s:e], d, a))
     return out.reshape(x.shape)
 
 
@@ -183,6 +207,90 @@ def _sglang_capture_mode() -> bool:
         return False
 
 
+_AUTOTUNE_RUN = []
+
+
+def _sglang_autotune_dummy_run() -> bool:
+    """True inside SGLang's FlashInfer autotune warm-up forwards, when this
+    SGLang build says so. The engine runs them on a dummy batch it builds
+    itself, with no request in it (runner/base_runner.py ``_dummy_run``, under
+    ``autotune_dummy_run_mode``); their output is discarded."""
+    if not _AUTOTUNE_RUN:
+        try:
+            from sglang.srt.layers.logits_processor import get_in_autotune_dummy_run
+        except Exception:
+            get_in_autotune_dummy_run = None
+        _AUTOTUNE_RUN.append(get_in_autotune_dummy_run)
+    fn = _AUTOTUNE_RUN[0]
+    if fn is None:
+        return False
+    try:
+        return bool(fn())
+    except Exception:
+        return False
+
+
+class AlphaRowsBinding:
+    """The current forward's per-token alpha, bound by the backbone wrapper.
+
+    In per-request mode the engine puts one float32 alpha per token row on the
+    forward batch (``glp_alpha_rows``, in ``batch.reqs`` order) and a flag that
+    says whether any row of this forward is steered (``glp_any_steered``). The
+    wrapper on the backbone's forward binds both for the duration of that
+    forward; every site reads them through here.
+
+    ``rows is None`` means the engine carried no vector for this forward. With
+    ``--glp-alpha-per-request`` on, the engine leaves it out only where no
+    request is steered: on a forward with no token rows (an idle batch), on a
+    forward mode it does not carry alphas into (it refuses a steered request
+    there), and on the FlashInfer autotune warm-up forwards it runs on a
+    dummy batch of its own at start-up. A site accepts such a forward only
+    when it has no token rows or is that warm-up (``make_site``); anything
+    else fails closed, a CUDA-graph capture included (also
+    ``FiredCheck.end``), so a missing vector can never serve a steered row
+    unsteered or bake an unsteered graph.
+    """
+
+    FIELDS = ("glp_alpha_rows", "glp_any_steered")
+
+    def __init__(self):
+        self.rows = None
+        self.any_steered = False
+
+    def bind(self, forward_batch):
+        """Bind one forward; returns the previous state to restore. Refuses a
+        forward whose batch cannot be found or does not carry both fields."""
+        missing = [f for f in self.FIELDS if not hasattr(forward_batch, f)]
+        if missing:
+            raise SiteError(
+                f"weightless: per-request mode found "
+                f"{'no forward batch' if forward_batch is None else type(forward_batch).__name__} "
+                f"in the backbone's forward call, without {', '.join(missing)}: the "
+                f"per-request alpha of this forward cannot be read (the call style or the "
+                f"engine's ForwardBatch changed). Failing closed."
+            )
+        prev = (self.rows, self.any_steered)
+        self.rows = forward_batch.glp_alpha_rows
+        self.any_steered = bool(forward_batch.glp_any_steered)
+        return prev
+
+    def restore(self, prev):
+        self.rows, self.any_steered = prev
+
+    def editing(self):
+        """True when this forward must run the edit.
+
+        An eager forward with every row at alpha 0 skips it: the sites hand
+        their stream on unchanged. A capture never skips: its rows are all 0
+        but the recorded graph must contain the edit so that a replay can
+        steer. A forward without a vector (``rows is None``) is never edited;
+        the site decides whether it may run at all.
+        """
+        if self.rows is None:
+            return False
+        return self.any_steered or _capturing() or _sglang_capture_mode()
+
+
 class FiredCheck:
     """Proof that every steered local site ran exactly once, per forward.
 
@@ -207,6 +315,9 @@ class FiredCheck:
         self.forwards = 0
         self.fired_at_capture = []
         self.on_capture = None  # callable(), e.g. rewrite the manifest
+        # Set at install in per-request mode: the alpha vector of the forward
+        # being run, bound by wrap_forward.
+        self.binding = None
 
     def bump(self, layer_id, x):
         self.fired[layer_id] = self.fired.get(layer_id, 0) + 1
@@ -228,11 +339,26 @@ class FiredCheck:
         missing = [i for i in self.layer_ids if not self.fired.get(i)]
         stream_cap = _capturing()
         if stream_cap or _sglang_capture_mode():
+            # Only a stream capture records a graph. SGLang's capture mode
+            # also covers warm-up forwards run before it (a recapture's
+            # FlashInfer autotune, on a dummy batch without the vector); the
+            # sites judge those.
+            if stream_cap and self.binding is not None and self.binding.rows is None:
+                raise RuntimeError(
+                    "weightless: a CUDA-graph capture ran without the per-request "
+                    "alpha vector (glp_alpha_rows), so the recorded graph would "
+                    "carry no steering and every replay would silently serve "
+                    "unsteered. The engine did not put the vector on the capture "
+                    "batch. Failing closed."
+                )
             self.fired_at_capture.append({
                 "tokens": self.tokens,
                 "fired": len(self.layer_ids) - len(missing),
                 "expected": len(self.layer_ids),
                 "stream_capturing": bool(stream_cap),
+                "per_request": self.binding is not None,
+                "rows": (None if self.binding is None or self.binding.rows is None
+                         else int(self.binding.rows.numel())),
             })
             if self.on_capture is not None:
                 self.on_capture()
@@ -254,20 +380,33 @@ class FiredCheck:
                 f"reflection undoes the first). Failing closed."
             )
 
-    def wrap_forward(self, module):
-        """Wrap ``module.forward`` on the instance. Returns an undo callable."""
+    def wrap_forward(self, module, binding=None):
+        """Wrap ``module.forward`` on the instance. Returns an undo callable.
+
+        ``binding`` (per-request mode) binds that forward's alpha vector for
+        the duration of the call; the sites read it through the owner.
+        """
         orig = module.forward
         check = self
 
         @functools.wraps(orig)
         def forward(*args, **kwargs):
             check.begin()
+            prev = None
             try:
+                if binding is not None and check.depth == 1:
+                    prev = binding.bind(_forward_batch_of(args, kwargs))
                 out = orig(*args, **kwargs)
             except BaseException:
+                if prev is not None:
+                    binding.restore(prev)
                 check.depth -= 1
                 raise
-            check.end()
+            try:
+                check.end()
+            finally:
+                if prev is not None:
+                    binding.restore(prev)
             return out
 
         forward._weightless_fired_check = self
@@ -583,10 +722,71 @@ def make_site(owner, layer_id: int, *, next_layer_id=None, diag=None, kernel="to
     alpha, kernel)`` (archs/base.py EDIT; the DeepSeek-V4.1 row's edit of the
     hyper-connection copies). Everything else the site does is unchanged; the
     diagnostics see ``edit.diag_view(x, x')`` when the edit has one.
+
+    In per-request mode ``owner._weightless_alpha_rows`` holds the current
+    forward's per-token alphas (core.AlphaRowsBinding); the site then passes a
+    [T] alpha to the edit instead of the scalar buffer (on a per-stream
+    [T, S, W] stream without its own edit, each token's alpha once per
+    stream), and returns x untouched for a forward whose rows are all 0 and
+    that is not being captured. The vector must be a float32 [T] on the
+    stream's device, T the stream's token count, or the site refuses; so does
+    a forward without a vector, unless it has no token rows or is SGLang's
+    autotune warm-up (AlphaRowsBinding).
     """
     UnreducedOutput, reduce_output = _unreduced()
     rowname = row or "unnamed"
     unchecked = [True]
+
+    def resolve_alpha(x):
+        """``(alpha, editing)`` for this call: the batch scalar, or the row
+        vector when the engine bound one."""
+        binding = getattr(owner, "_weightless_alpha_rows", None)
+        if binding is None:
+            return owner._steer_alpha, True
+        rows = binding.rows
+        if rows is None:
+            if _capturing():
+                raise SiteError(
+                    f"weightless: layer {layer_id}: a CUDA-graph capture reached this "
+                    f"site without the per-request alpha vector (glp_alpha_rows); the "
+                    f"graph would replay unsteered. Failing closed."
+                )
+            if x.shape[0] and not _sglang_autotune_dummy_run():
+                raise SiteError(
+                    f"weightless: layer {layer_id}: a forward of {x.shape[0]} token rows "
+                    f"carried no per-request alpha vector (glp_alpha_rows is None), and it "
+                    f"is not SGLang's autotune warm-up; its steered rows would be served "
+                    f"unsteered. Failing closed."
+                )
+            return owner._steer_alpha, False
+        if not binding.editing():
+            return owner._steer_alpha, False
+        if rows.numel() != x.shape[0]:
+            raise SiteError(
+                f"weightless: layer {layer_id}: per-request alpha has {rows.numel()} "
+                f"values for a stream of {x.shape[0]} token rows; the engine's row "
+                f"vector and this forward disagree. Failing closed."
+            )
+        if rows.dim() != 1 or rows.dtype != torch.float32 or rows.device != x.device:
+            raise SiteError(
+                f"weightless: layer {layer_id}: per-request alpha is {_found(rows)} on "
+                f"{rows.device}, expected a float32 vector on {x.device}. Failing closed."
+            )
+        if per_stream and edit is None:
+            # One alpha per token for each of its streams: the row-wise edit
+            # takes one value per [T, S] row, in the stream's row order.
+            rows = rows.repeat_interleave(x.shape[1])
+        return rows, True
+
+    def note(x):
+        """Count this forward's visit to the site without editing.
+
+        Every wrapper must call exactly one of ``site`` or ``note`` per forward:
+        a site that decides not to edit (an all-zero eager forward) still has to
+        report that it ran, or the fired check cannot tell it apart from a model
+        that stopped reaching it."""
+        if check is not None:
+            check.bump(layer_id, x)
 
     def site(x, r=None):
         if UnreducedOutput is not None and isinstance(x, UnreducedOutput):
@@ -628,24 +828,30 @@ def make_site(owner, layer_id: int, *, next_layer_id=None, diag=None, kernel="to
                 f"weightless: layer {layer_id} stream is {tuple(x.shape)}, expected {want}; "
                 f"refusing"
             )
-        if check is not None:
-            check.bump(layer_id, x)
+        note(x)
+        alpha, editing = resolve_alpha(x)
+        if not editing:
+            return x
         d = owner._steer_stack[layer_id, 0]
         if edit is not None:
-            x_new = edit(x, r, d, owner._steer_alpha, kernel)
+            x_new = edit(x, r, d, alpha, kernel)
         elif kernel == "triton" and x.is_cuda:
             from .fused import steer_delta_fused
-            x_new = steer_delta_fused(x, r, d, owner._steer_alpha)
+            x_new = steer_delta_fused(x, r, d, alpha)
         else:
-            x_new = steer_rows(x, r, d, owner._steer_alpha)
+            x_new = steer_rows(x, r, d, alpha)
         if diag is not None:
             d_next = owner._steer_stack[next_layer_id, 0] if next_layer_id is not None else None
             dx, dxn = (x, x_new) if getattr(edit, "diag_view", None) is None else \
                 edit.diag_view(x, x_new)
-            diag.record(layer_id, dx, r, dxn, d, d_next, alpha=owner._steer_alpha,
+            diag.record(layer_id, dx, r, dxn, d, d_next, alpha=alpha,
                         next_layer_id=next_layer_id)
         return x_new
 
+    # The decision, without counting the visit: a caller that then calls
+    # ``site`` must not bump twice, and a caller that skips must call ``note``.
+    site.edits_this_forward = lambda x: resolve_alpha(x)[1]
+    site.note = note
     return site
 
 
@@ -749,6 +955,15 @@ def _forward_batch_of(args, kwargs):
     fb = kwargs.get("forward_batch")
     if fb is None:
         fb = next((a for a in args if hasattr(a, "residual_stream")), None)
+    if fb is None:
+        # A ForwardBatch always carries the (None-defaulted) residual_stream
+        # field today; the isinstance check keeps the per-forward alpha binding
+        # working if that field ever leaves the batch.
+        try:
+            from sglang.srt.model_executor.forward_batch_info import ForwardBatch
+        except Exception:  # no SGLang here: no ForwardBatch to find
+            return None
+        fb = next((a for a in args if isinstance(a, ForwardBatch)), None)
     return fb
 
 
