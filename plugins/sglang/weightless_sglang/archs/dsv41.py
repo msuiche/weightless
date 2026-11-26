@@ -103,7 +103,7 @@ import os
 
 import torch
 
-from ..core import TEMP_BUDGET_BYTES, dot_fixed
+from ..core import TEMP_BUDGET_BYTES, SiteError, dot_fixed
 from .base import (HOOK_POINT, ArchRow, hidden_size, register_companion, register_preflight,
                    register_special)
 
@@ -192,7 +192,9 @@ def hc_mean_delta(x, d, alpha):
 
     The same steps and roundings as core.steer_delta, with the coefficient
     of the mean in place of each row's own. float64 inputs (the tests'
-    exact reference) use a plain float64 dot product.
+    exact reference) use a plain float64 dot product. ``alpha`` is 0-d or
+    one value per token; with one value per token, a token at 0 is returned
+    as it is.
     """
     S = x.shape[-2]
     ct = torch.promote_types(x.dtype, torch.float32)
@@ -201,9 +203,16 @@ def hc_mean_delta(x, d, alpha):
     m = copies_sum(xf) * (1.0 / S)
     c = dot_fixed(m, d) if ct == torch.float32 else m @ d
     del m
-    t = (alpha.to(ct) * c).unsqueeze(-1)
+    a = alpha.to(ct)
+    t = (a * c).unsqueeze(-1)
     td = (t * d).unsqueeze(-2)  # [..., 1, W]: one subtraction for every copy
-    return (xf - td).to(x.dtype)
+    out = (xf - td).to(x.dtype)
+    if a.dim():
+        # Per-token alpha: a token at 0 comes back as it went in, bit for bit
+        # (-0.0 included, and the garbage of a zero-padded graph token, whose
+        # coefficient may not be finite: 0 * inf would be NaN).
+        torch.where((a == 0)[..., None, None], x, out, out=out)
+    return out
 
 
 # Per token (bf16 copies, fp32 math), at most: f32(x) 4S, the result in fp32
@@ -219,15 +228,25 @@ def hc_chunk_tokens(S, W):
 def hc_mean_rows(x, d, alpha):
     """``hc_mean_delta`` over x [T, S, W], at most ``hc_chunk_tokens`` tokens at
     a time (every token is computed on its own, so the slices give the same
-    bits as one pass; the slice count depends only on the shape)."""
+    bits as one pass; the slice count depends only on the shape).
+
+    ``alpha`` is a 0-d tensor or one value per token; a per-token alpha is
+    sliced with the tokens it belongs to."""
     T, S, W = x.shape
+    per_row = alpha.dim() > 0
+    if per_row and (alpha.dim() != 1 or alpha.numel() != T):
+        raise SiteError(
+            f"weightless: per-token alpha has shape {tuple(alpha.shape)} for {T} "
+            f"tokens; the forward's row vector does not match its stream. "
+            f"Failing closed."
+        )
     step = hc_chunk_tokens(S, W)
     if T <= step:
         return hc_mean_delta(x, d, alpha)
     out = torch.empty_like(x)
     for s in range(0, T, step):
         e = min(T, s + step)
-        out[s:e].copy_(hc_mean_delta(x[s:e], d, alpha))
+        out[s:e].copy_(hc_mean_delta(x[s:e], d, alpha[s:e] if per_row else alpha))
     return out
 
 
@@ -250,6 +269,10 @@ class HcEdit:
             raise RuntimeError("weightless: the DeepSeek-V4.1 site has no residual; refusing")
         from ..core import steer_rows
         if self.mode == "each":
+            # Row-wise: one value per stream row, so a per-token alpha repeats
+            # once per hyper-connection copy.
+            if alpha.dim():
+                alpha = alpha.repeat_interleave(x.shape[-2])
             if kernel == "triton" and x.is_cuda:
                 from ..fused import steer_delta_fused
                 return steer_delta_fused(x, None, d, alpha)
@@ -265,11 +288,12 @@ class HcEdit:
         S = x.shape[-2]
         return (copies_sum(x.float()) * (1.0 / S), copies_sum(x_new.float()) * (1.0 / S))
 
-    def self_check(self, device, dtype, width):
+    def self_check(self, device, dtype, width, per_row=False):
         from .. import fused
         if self.mode == "each":
-            return fused.self_check(device, dtype=dtype, width=width, with_residual=False)
-        return fused.self_check_hc_mean(device, dtype=dtype, width=width)
+            return fused.self_check(device, dtype=dtype, width=width, with_residual=False,
+                                    per_row=per_row)
+        return fused.self_check_hc_mean(device, dtype=dtype, width=width, per_row=per_row)
 
     @property
     def form(self):
@@ -436,6 +460,15 @@ def dsv41_hc_post(layer, site, *, layer_id, backbone, row):
             raise Dsv41SiteError(
                 f"{where}: the post-layer streams have shape {tuple(streams.shape)}, expected "
                 f"[T, {hc}, {width}]. Failing closed.")
+        if not site.edits_this_forward(streams):
+            # Nothing to steer in this forward (per-request mode: every row at
+            # alpha 0 in an eager forward, or SGLang's autotune warm-up).
+            # Keeping the HcState untouched keeps SGLang's precomputed next
+            # input and statistics, which is today's stock path exactly. The
+            # visit is still counted, or the fired check would read this
+            # forward as one that stopped reaching the site.
+            site.note(streams)
+            return state
         return state.with_residual(site(streams, None))
 
     post._weightless_layer_id = int(layer_id)

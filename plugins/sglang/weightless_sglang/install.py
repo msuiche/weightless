@@ -32,8 +32,8 @@ import torch
 
 from .archs import ARCH, BOUNDARY_SITE, COMPANION, EDIT, PREFLIGHT, REFUSED, SPECIAL, VARIANTS
 from .archs.base import EXEC_IDS, INSTALL_MODES
-from .core import (FiredCheck, LayerDiag, make_post_layer_hook, make_site, make_stream_hook,
-                   stage_boundaries, uses_stage_boundaries, wrap_forward)
+from .core import (AlphaRowsBinding, FiredCheck, LayerDiag, make_post_layer_hook, make_site,
+                   make_stream_hook, stage_boundaries, uses_stage_boundaries, wrap_forward)
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +142,158 @@ def _emit(line):
 
 KERNELS = ("auto", "triton", "torch")
 
+# Per-request alpha: the engine puts one alpha per token row on each forward
+# (SGLang's --glp-alpha-per-request), and the sites read it instead of the
+# scalar buffer. WEIGHTLESS_STEER_PER_REQUEST=1 turns it on.
+PER_REQUEST_ENV = "WEIGHTLESS_STEER_PER_REQUEST"
+
+
+def per_request_requested() -> bool:
+    raw = os.environ.get(PER_REQUEST_ENV, "").strip().lower()
+    if raw in ("", "0", "false", "no", "off"):
+        return False
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    raise RuntimeError(
+        f"weightless: {PER_REQUEST_ENV}={raw!r} is not a boolean (use 1 or 0)"
+    )
+
+
+def _engine_per_request_support():
+    """``(sglang.srt.glp_alpha, flag)``: the engine's per-request alpha
+    support and whether this engine runs with ``--glp-alpha-per-request``,
+    or raise RuntimeError.
+
+    A build without the module predates the feature: arming per-request mode
+    there would serve every request as if the scalar alpha were each
+    client's, so the boot refuses instead. A process with no published
+    serving config (no engine started here: a stand-in runner) cannot say
+    whether the flag is on, and raises too.
+    """
+    try:
+        from sglang.srt import glp_alpha
+        from sglang.srt.runtime_context import get_context, get_serving
+    except Exception as e:
+        raise RuntimeError(
+            f"weightless: {PER_REQUEST_ENV} asks for per-request alpha, but this "
+            f"SGLang build has no sglang.srt.glp_alpha ({type(e).__name__}: {e}). "
+            f"Use an SGLang build with per-request GLP alpha and launch it with "
+            f"--glp-alpha-per-request."
+        ) from e
+    if not get_context().is_config_namespace_published("serving"):
+        raise RuntimeError(
+            f"weightless: {PER_REQUEST_ENV} asks for per-request alpha, but SGLang's "
+            f"serving config is not published in this process (no engine runs here), so "
+            f"whether --glp-alpha-per-request is on cannot be read. Failing closed."
+        )
+    try:
+        enabled = bool(get_serving().glp_alpha_per_request)
+    except AttributeError as e:
+        raise RuntimeError(
+            f"weightless: {PER_REQUEST_ENV} asks for per-request alpha, but this "
+            f"SGLang build has no --glp-alpha-per-request setting "
+            f"({type(e).__name__}: {e}). Failing closed."
+        ) from e
+    return glp_alpha, enabled
+
+
+def prepare_per_request(runner, core, *, alpha_from="env"):
+    """Check everything per-request alpha needs, before anything is hooked.
+
+    The engine must carry the alpha vector on every forward, which it only
+    does with ``--glp-alpha-per-request``, on a ForwardBatch that declares
+    it; the server alpha must be 0 (the vector is the only strength); the
+    forwards the engine cannot carry a vector into must be off; and the
+    engine must not be routing rows the plugin would ignore.
+    ``alpha_from`` says where the server alpha came from, for the refusal:
+    "env" (WEIGHTLESS_STEER_ALPHA), "argument" or "file" (glp.alpha_default).
+    """
+    glp_alpha, enabled = _engine_per_request_support()
+    if not enabled:
+        raise RuntimeError(
+            f"weightless: {PER_REQUEST_ENV} is set but this engine was launched "
+            f"without --glp-alpha-per-request, so no forward would carry a "
+            f"per-request alpha. Failing closed."
+        )
+    if core.alpha != 0.0:
+        where = {"env": f"WEIGHTLESS_STEER_ALPHA={core.alpha:g} is set",
+                 "argument": f"alpha={core.alpha:g} was passed with the path",
+                 "file": (f"WEIGHTLESS_STEER_ALPHA is unset, so the file's glp.alpha_default "
+                          f"({core.alpha:g}) applies")}.get(alpha_from, f"alpha={core.alpha:g}")
+        raise RuntimeError(
+            f"weightless: per-request mode serves alpha 0 as its base and takes "
+            f"each request's strength from the engine, but {where}. Set "
+            f"WEIGHTLESS_STEER_ALPHA=0"
+        )
+    from sglang.srt.model_executor.forward_batch_info import ForwardBatch
+
+    declared = getattr(ForwardBatch, "__dataclass_fields__", {})
+    missing = [f for f in AlphaRowsBinding.FIELDS if f not in declared]
+    if missing:
+        raise RuntimeError(
+            f"weightless: per-request alpha reads {', '.join(AlphaRowsBinding.FIELDS)} off "
+            f"SGLang's ForwardBatch, and this SGLang's ForwardBatch does not declare "
+            f"{', '.join(missing)}. Failing closed."
+        )
+    from sglang.srt.model_executor.cuda_graph_config import (
+        Backend,
+        default_cuda_graph_config,
+    )
+    from sglang.srt.runtime_context import get_exec
+
+    try:
+        prefill_backend = get_exec().graph.cuda_graph_config.prefill.backend
+    except ValueError:
+        # The exec config is not published (a stand-in runner): judge SGLang's
+        # defaults instead, which turn prefill graphs on for CUDA (refused
+        # here) and off elsewhere.
+        prefill_backend = default_cuda_graph_config().prefill.backend
+    if prefill_backend != Backend.DISABLED:
+        raise RuntimeError(
+            "weightless: per-request alpha is wired into the decode and eager "
+            "forward paths, not into prefill CUDA graphs. Disable prefill graphs "
+            "(--disable-prefill-cuda-graph) or turn per-request mode off."
+        )
+    from sglang.srt.speculative.ragged_verify import read_ragged_verify_mode
+
+    mode = read_ragged_verify_mode()
+    if mode.value != "static":
+        raise RuntimeError(
+            f"weightless: per-request alpha needs the uniform verify widths of "
+            f"SGLANG_RAGGED_VERIFY_MODE=static, not {mode.value!r}. Failing closed."
+        )
+    if os.environ.get("WEIGHTLESS_STEER_DIAG", "") == "1":
+        raise RuntimeError(
+            "weightless: WEIGHTLESS_STEER_DIAG reports one alpha per forward, so "
+            "it is not defined with per-request alphas. Turn the diagnostics off."
+        )
+    return glp_alpha
+
+
+def refuse_scalar_lane_with_per_request_engine(per_request: bool) -> None:
+    """A per-request engine must run a per-request plugin.
+
+    With the engine flag on, every request carries its own alpha (0 for
+    "Off"). A plugin left in scalar mode would ignore those rows and steer
+    every request at the server alpha, which a client that chose 0 would read
+    as stock. Refuse rather than serve the wrong strength silently.
+    """
+    try:
+        _, enabled = _engine_per_request_support()
+    except RuntimeError:
+        # An engine with no per-request support, or no engine in this process
+        # (its serving config unpublished), cannot be in the mismatch;
+        # per-request mode itself reports that failure in prepare_per_request.
+        return
+    if enabled and not per_request:
+        raise RuntimeError(
+            f"weightless: this engine runs --glp-alpha-per-request but "
+            f"{PER_REQUEST_ENV} is not set, so per-request alphas would be "
+            f"ignored and every request served at WEIGHTLESS_STEER_ALPHA. Set "
+            f"{PER_REQUEST_ENV}=1, or launch the engine without "
+            f"--glp-alpha-per-request. Failing closed."
+        )
+
 
 def _act_dtype(runner):
     """The dtype of the hidden states (the model dtype), bf16 if unknown."""
@@ -149,7 +301,8 @@ def _act_dtype(runner):
     return dt if isinstance(dt, torch.dtype) else torch.bfloat16
 
 
-def pick_kernel(choice, device, dtype, width, with_residual=True, check=None, form=None):
+def pick_kernel(choice, device, dtype, width, with_residual=True, check=None, form=None,
+                per_row=False):
     """Pick the kernel for the edit. Returns (kernel, reason).
 
     WEIGHTLESS_STEER_KERNEL: "auto" (default) uses the fused Triton kernel
@@ -163,6 +316,9 @@ def pick_kernel(choice, device, dtype, width, with_residual=True, check=None, fo
     self-check runs exactly the kernel variant the model will run. A row
     with its own edit passes that edit's start-up check as ``check``
     (``check(device, dtype=, width=) -> bool``) and its text as ``form``.
+    ``per_row`` (per-request mode only) also checks the per-row lane, with
+    ``per_row=True`` passed to the check; scalar mode never compiles or
+    checks that lane, so its kernel choice is the one it always was.
     """
     choice = (choice or "").strip().lower() or "auto"
     if choice not in KERNELS:
@@ -174,6 +330,10 @@ def pick_kernel(choice, device, dtype, width, with_residual=True, check=None, fo
 
     form = (f"{form}, width {int(width)}" if form else
             f"width {int(width)}, {'with' if with_residual else 'no'} residual")
+    kw = {}
+    if per_row:
+        form += ", per-row alpha"
+        kw["per_row"] = True
     why = None
     if not fused.available():
         why = "Triton or a CUDA device is not available"
@@ -181,8 +341,9 @@ def pick_kernel(choice, device, dtype, width, with_residual=True, check=None, fo
         why = f"the model is on {device}, not on a CUDA device"
     else:
         try:
-            ok = (check(device, dtype=dtype, width=width) if check is not None else
-                  fused.self_check(device, dtype=dtype, width=width, with_residual=with_residual))
+            ok = (check(device, dtype=dtype, width=width, **kw) if check is not None else
+                  fused.self_check(device, dtype=dtype, width=width, with_residual=with_residual,
+                                   **kw))
             if not ok:
                 why = (f"the fused kernel did not give the same bits as the torch path at "
                        f"start-up ({form})")
@@ -348,6 +509,16 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
 
     backbone, _ = resolve_backbone(model, row)
     if backbone is None:
+        if per_request_requested():
+            # The engine admits a steered request only where the plugin armed
+            # per-request mode, per process: a rank that cannot arm would
+            # refuse what the other ranks serve, and the stages would diverge.
+            raise RuntimeError(
+                f"weightless: {row_name} has no backbone on this rank (pp_rank={pp_rank} "
+                f"tp_rank={tp_rank}), so this rank cannot arm per-request alpha "
+                f"({PER_REQUEST_ENV}=1) while the ranks that hold the model do. "
+                f"Failing closed."
+            )
         _emit(f"weightless GLP steering: {row_name} has no backbone on this rank "
               f"(pp_rank={pp_rank} tp_rank={tp_rank}); nothing is steered here")
         return None
@@ -387,6 +558,15 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
             core = exec_core_from_env(hook=file_hook, exec_steps=loop.steps, hidden_size=width)
     if core is None:  # cannot happen with a path set; keep fail-closed
         raise RuntimeError("weightless: steering requested but no core was built")
+
+    per_request = per_request_requested()
+    refuse_scalar_lane_with_per_request_engine(per_request)
+    glp_alpha = None
+    if per_request:
+        given = (os.environ.get("WEIGHTLESS_STEER_ALPHA", "") if source == "env"
+                 else "" if alpha is None else str(alpha)).strip()
+        alpha_from = ("env" if source == "env" else "argument") if given else "file"
+        glp_alpha = prepare_per_request(runner, core, alpha_from=alpha_from)
 
     hint = meta.get("controlvector.model_hint")
     types = _model_types(runner, backbone)
@@ -439,9 +619,15 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
     kernel, kernel_why = pick_kernel(
         os.environ.get("WEIGHTLESS_STEER_KERNEL", ""), dev, _act_dtype(runner), width,
         with_residual=row.residual_index is not None,
-        check=getattr(edit, "self_check", None), form=getattr(edit, "form", None))
+        check=getattr(edit, "self_check", None), form=getattr(edit, "form", None),
+        per_row=per_request)
 
     check = FiredCheck(local, what=f"steered {site_name}")
+    # The wrapper on the backbone binds each forward's per-token alpha here;
+    # in scalar mode the attribute stays None and the sites read _steer_alpha.
+    binding = AlphaRowsBinding() if per_request else None
+    backbone._weightless_alpha_rows = binding
+    check.binding = binding
     handles = []
     codec_kw = dict(diag=diag, kernel=kernel, arity=row.arity, hidden_index=row.hidden_index,
                     residual_index=row.residual_index, width=width, per_stream=row.per_stream,
@@ -467,7 +653,7 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
                              hidden_slot=site_name, edit=edit)
             handles.append(special[0](backbone.layers[i], site, layer_id=i, backbone=backbone,
                                       row=row))
-    undo_check = check.wrap_forward(backbone) if local else None
+    undo_check = check.wrap_forward(backbone, binding=binding) if local else None
 
     # A companion site some files need next to the main one (archs/base.py
     # COMPANION): the layer at position k gets stack row k + row_offset, so it
@@ -483,9 +669,11 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
                 raise RuntimeError(f"weightless: layer {k} (companion {comp.site}) is {cls}, not "
                                    f"one of {sorted(row.layers)}. Failing closed.")
         wkernel, wkernel_why = pick_kernel(os.environ.get("WEIGHTLESS_STEER_KERNEL", ""), dev,
-                                           _act_dtype(runner), width, with_residual=False)
+                                           _act_dtype(runner), width, with_residual=False,
+                                           per_row=per_request)
         wcheck = FiredCheck([r for _, r in pairs],
                             what=f"companion {comp.site} (stack row = layer + {comp.row_offset})")
+        wcheck.binding = binding
         for k, r in pairs:
             wsite = make_site(backbone, r, kernel=wkernel, width=width, per_stream=False,
                               check=wcheck, row=row_name, hidden_slot=comp.site)
@@ -496,7 +684,8 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
                   "kernel": wkernel, "kernel_reason": wkernel_why,
                   "fired_check": "armed" if pairs else "no local sites",
                   "fired_at_capture": wcheck.fired_at_capture,
-                  "undo_check": wcheck.wrap_forward(backbone) if pairs else None,
+                  "undo_check": (wcheck.wrap_forward(backbone, binding=binding)
+                                 if pairs else None),
                   "check": wcheck}
 
     ltypes = [type(backbone.layers[phys(i)]).__name__ for i in local]
@@ -514,6 +703,7 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
         f"weightless GLP steering active (sglang): source={source} tp_rank={tp_rank} "
         f"layers={rng} ({len(local)}{kinds}) "
         f"alpha={core.alpha:.3f} hook={file_hook} file_sha256={sha} diag={int(diag is not None)} "
+        f"per_request={int(per_request)} "
         f"pp_rank={pp_rank} row={row_name} install={install} site={site_name} width={width} "
         f"layout={layout} "
         + (f"exec=looped({loop.num_loops}x{loop.per_loop}, direction.N=step N-1) "
@@ -533,6 +723,7 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
         "path": core.path,
         "file_sha256": sha,
         "alpha": core.alpha,
+        "per_request": per_request,
         "tp_rank": tp_rank,
         "tp_size": tp_size,
         "pp_rank": pp_rank,
@@ -560,6 +751,8 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
         "fired_at_capture": check.fired_at_capture,
         "exec_id": row.exec_id,
     }
+    if per_request:
+        rec["per_request_armed"] = False  # True once the engine is told, below
     if edit is not None:
         rec["edit"] = getattr(edit, "label", type(edit).__name__)
     if writer is not None:
@@ -593,4 +786,20 @@ def install_steering(runner, *, source="env", path=None, alpha=None, layers=None
         check.on_capture = write_manifest
         if writer is not None:
             writer["check"].on_capture = write_manifest
+    if per_request:
+        # The engine armed its per-row plumbing at boot; this tells it the
+        # plugin is really installed in this process (each rank arms its
+        # own), so a non-zero alpha is served and not refused. Refusing is
+        # the engine's default until this call, which comes after every
+        # check and every site.
+        glp_alpha.mark_per_request_armed(file_sha256=sha)
+        rec["per_request_armed"] = True
+        if mdir:
+            write_manifest()
+        _emit(
+            f"weightless per-request alpha armed (pp_rank={pp_rank} tp_rank={tp_rank}; "
+            f"one value per token row from the engine's glp_alpha_rows, which bounds each "
+            f"request's alpha to [0, {glp_alpha.GLP_ALPHA_MAX:g}] and keeps each non-zero "
+            f"alpha in its own prefix-cache namespace)"
+        )
     return rec

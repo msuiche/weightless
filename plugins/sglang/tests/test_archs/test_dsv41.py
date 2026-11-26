@@ -180,25 +180,116 @@ from weightless_sglang import fused, core
 from weightless_sglang.archs import dsv41
 out = {}
 T, S = 9, 4
+
+
+def bits(t):
+    return t.contiguous().view(-1).view(torch.uint8)
+
+
+def step(o, want):
+    return float(((o.float() - want.float()).abs() / want.float().abs().clamp_min(1e-30)).max())
+
+
+def put(key, o, want):
+    out[key] = [bool(torch.equal(bits(o), bits(want))), step(o, want)]
+
+
+def hc(xs, d, al, per_row):
+    W = xs.shape[-1]
+    o = torch.empty_like(xs)
+    fused._glp_hc_mean_kernel[(xs.shape[0],)](xs, d, al, o, W, xs.stride(0), xs.stride(1),
+                                              o.stride(0), o.stride(1), core.fixed_point_bits(W),
+                                              1.0 / S, PER_ROW=per_row, S=S,
+                                              BLOCK=1 << (W - 1).bit_length())
+    return o
+
+
+def row(xs, rs, d, al, per_row, blk, nblk):
+    W = xs.shape[-1]
+    o = torch.empty_like(xs)
+    rr = xs if rs is None else rs
+    fused._glp_row_kernel[(xs.shape[0],)](xs, rr, d, al, o, W, xs.stride(0), rr.stride(0),
+                                          o.stride(0), core.fixed_point_bits(W),
+                                          HAS_R=rs is not None, PER_ROW=per_row, BLOCK=blk,
+                                          NBLK=nblk)
+    return o
+
+
 for W in (5120, 72):
     g = torch.Generator().manual_seed(W)
     x = torch.randn(T, S, W, generator=g) * 4.0
     x[:, :, ::max(1, W // 3)] *= 400.0
     x[0].zero_()
     d = torch.randn(W, dtype=torch.float64, generator=g); d = (d / d.norm()).float()
+    blk = 1 << (W - 1).bit_length()
+    shapes = ((blk, 1), (blk // 2, 2))  # the whole row in registers, and two blocks
     for a in (0.0, 0.75, 2.0):
         al = torch.tensor(a)
         for name, xs in (("fp32", x), ("bf16", x.bfloat16())):
-            want = dsv41.hc_mean_rows(xs, d, al)
-            o = torch.empty_like(xs)
-            fused._glp_hc_mean_kernel[(T,)](xs, d, al, o, W, xs.stride(0), xs.stride(1), o.stride(0),
-                                            o.stride(1), core.fixed_point_bits(W), 1.0 / S, S=S,
-                                            BLOCK=1 << (W - 1).bit_length())
-            same = bool(torch.equal(o.view(-1).view(torch.uint8), want.view(-1).view(torch.uint8)))
-            step = float(((o.float() - want.float()).abs() / want.float().abs().clamp_min(1e-30)).max())
-            out[f"{W}/{a}/{name}"] = [same, step]
+            put(f"{W}/{a}/{name}", hc(xs, d, al, False), dsv41.hc_mean_rows(xs, d, al))
+    # Per-request alpha: one value per token, with one token at 0.
+    alr = torch.rand(T, generator=g) * 2.0
+    alr[0] = 0.0
+    for name, xs in (("fp32", x), ("bf16", x.bfloat16())):
+        put(f"{W}/perrow/{name}", hc(xs, d, alr, True), dsv41.hc_mean_rows(xs, d, alr))
+    # The row kernel reads alpha per row of the flattened stream, with and
+    # without a residual, in one block and in two.
+    xr, rs = x[:, 0, :].contiguous(), x[:, 1, :].contiguous()
+    for name, cast in (("fp32", lambda t: t), ("bf16", lambda t: t.bfloat16())):
+        for res in (None, rs):
+            for b, n in shapes:
+                key = f"{W}/perrowrow-r{int(res is not None)}-nblk{n}/{name}"
+                xx, rr = cast(xr), None if res is None else cast(res)
+                put(key, row(xx, rr, d, alr, True, b, n), core.steer_rows(xx, rr, d, alr))
+    # The per-row lane at alpha a gives the bits of the scalar lane (the one
+    # scalar mode runs) at a, row by row, in both kernels and both dtypes:
+    # the same interpreter rounding on both sides, so exact.
+    alt = torch.tensor([0.0, 0.75, 2.0, 0.75, 0.0, 2.0, 4.0, 0.75, 4.0])
+    each = sorted(set(alt.tolist()))
+    for name, cast in (("fp32", lambda t: t), ("bf16", lambda t: t.bfloat16())):
+        xs = cast(x)
+        o = hc(xs, d, alt, True)
+        out[f"{W}/t2/hc/{name}/exact"] = [all(torch.equal(
+            bits(o[alt == a]), bits(hc(xs, d, torch.tensor(a), False)[alt == a]))
+            for a in each), 0.0]
+        for res in (None, rs):
+            for b, n in shapes:
+                xx, rr = cast(xr), None if res is None else cast(res)
+                o = row(xx, rr, d, alt, True, b, n)
+                out[f"{W}/t2/row-r{int(res is not None)}-nblk{n}/{name}/exact"] = [all(torch.equal(
+                    bits(o[alt == a]), bits(row(xx, rr, d, torch.tensor(a), False, b, n)[alt == a]))
+                    for a in each), 0.0]
+    # Alpha-0 rows come back bit for bit: the all-zero row 0, -0.0 elements
+    # (row 1), values whose coefficient overflows to inf (row 2) and an inf
+    # (row 4), next to steered rows.
+    alz = torch.tensor([0.0, 0.0, 0.0, 0.75, 0.0, 2.0, 4.0, 0.75, 1.5])
+    zero = alz == 0
+    xz = x.clone()
+    xz[1, :, ::7] = -0.0
+    xz[2] = 3.0e38 * torch.sign(d)
+    xz[4, 2, 3] = float("inf")
+    xzr = xz[:, 0, :].contiguous()
+    xzr[4, 3] = float("inf")
+    for name, cast in (("fp32", lambda t: t), ("bf16", lambda t: t.bfloat16())):
+        xs = cast(xz)
+        o = hc(xs, d, alz, True)
+        out[f"{W}/zero/hc/{name}/exact"] = [bool(torch.equal(bits(o[zero]), bits(xs[zero]))), 0.0]
+        if name == "fp32":
+            put(f"{W}/zero-vs-torch/hc/fp32", o, dsv41.hc_mean_rows(xs, d, alz))
+        xx = cast(xzr)
+        for b, n in shapes:
+            o = row(xx, None, d, alz, True, b, n)
+            out[f"{W}/zero/row-nblk{n}/{name}/exact"] = [
+                bool(torch.equal(bits(o[zero]), bits(xx[zero]))), 0.0]
+            if name == "fp32":
+                put(f"{W}/zero-vs-torch/row-nblk{n}/fp32", o, core.steer_rows(xx, None, d, alz))
 print(json.dumps(out))
 '''
+
+# The exact keys the child must report, besides the scalar and per-row ones.
+_INTERP_EXACT = [f"{W}/{part}/{name}/exact" for W in (5120, 72) for name in ("fp32", "bf16")
+                 for part in ("t2/hc", "t2/row-r0-nblk1", "t2/row-r1-nblk1", "t2/row-r0-nblk2",
+                              "t2/row-r1-nblk2", "zero/hc", "zero/row-nblk1", "zero/row-nblk2")]
 
 
 class FusedUnderTheInterpreter(unittest.TestCase):
@@ -217,9 +308,10 @@ class FusedUnderTheInterpreter(unittest.TestCase):
         if p.returncode != 0:
             self.fail(p.stderr[-2000:])
         res = json.loads(p.stdout.strip().splitlines()[-1])
+        self.assertLessEqual(set(_INTERP_EXACT), set(res))
         for key, (same, step) in sorted(res.items()):
             with self.subTest(key):
-                if key.endswith("fp32") or key.split("/")[1] == "0.0":
+                if key.endswith(("/exact", "fp32")) or key.split("/")[1] == "0.0":
                     self.assertTrue(same, f"{key}: max relative step {step}")
                 else:  # the interpreter's bf16 store is not round-to-nearest-even
                     self.assertLessEqual(step, 2.0 ** -7)
